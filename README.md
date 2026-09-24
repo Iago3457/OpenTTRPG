@@ -27,7 +27,7 @@ Project originally developed for the AED1 course at UFSCar. The idea is to build
 * **Interface:** Terminal / CLI
 * **Estruturas de Dados (Grupo 1):** 
     * **Listas Cadastrais:** Gerenciamento de inventário, equipamentos e lista de habilidades dos personagens.
-    * **Filas:** Sistema de iniciativa básico (ordem de turnos no combate).
+    * **Filas:** Sistema de iniciativa básico (ordem de turnos no caombate).
 * **Objetivo:** Garantir a nota da Fase 1 da disciplina construindo um "motor" de RPG robusto e independente.
 
 ### Fase 2 (AED1) — Tabletop Tático e Estruturas do 2º Grupo
