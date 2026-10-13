@@ -1,0 +1,30 @@
+# Compilação e Binários
+bin/
+build/
+obj/
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+
+# Diretórios de build do CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+install_manifest.txt
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs e arquivos temporários
+*.log
+scratch/
