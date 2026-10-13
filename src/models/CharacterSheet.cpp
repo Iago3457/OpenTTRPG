@@ -98,10 +98,10 @@ int CharacterSheet::getDefense() const {
 }
 
 int CharacterSheet::getMaxSlots() const {
-    // Regra de Carga de T20 Jogo do Ano:
-    // O limite de carga é Força x 3 (mínimo de 10 espaços para personagens médios)
+    // Regra canônica de Carga de Tormenta20 Jogo do Ano:
+    // Limite de 10 espaços + 2 espaços por ponto de Força (ou -1 se Força for negativa)
     int str = getAttribute(core::AttributeType::Strength).getModifier();
-    return std::max(10, str * 3);
+    return (str >= 0) ? (10 + str * 2) : (10 + str);
 }
 
 int CharacterSheet::getCurrentSlots() const {

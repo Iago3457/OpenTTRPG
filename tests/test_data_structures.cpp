@@ -84,9 +84,13 @@ void testTormenta20SheetIntegration() {
     // Equipa Cota de Malha (+5 Defesa, 2 espaços)
     hero.addItem(openttrpg::models::Item("Cota de Malha", "Armadura", openttrpg::core::ItemType::Armor, 2, "", "20/x2", 5, -2, 150, true));
     assert(hero.getDefense() == 17); // 12 + 5 = 17
-    assert(hero.getCurrentSlots() == 2);
-    assert(hero.getMaxSlots() == 10); // max(10, Força * 3) -> max(10, 9) = 10
+    assert(hero.getMaxSlots() == 16); // 10 + (Força * 2) -> 10 + 6 = 16 espaços (Regra T20 JdA)
     assert(!hero.isOverburdened());
+
+    // Teste com Força negativa (ex: FOR -1 -> 9 espaços)
+    hero.setAttributeValue(openttrpg::core::AttributeType::Strength, -1);
+    assert(hero.getMaxSlots() == 9);
+    hero.setAttributeValue(openttrpg::core::AttributeType::Strength, 3); // Restaura FOR 3
 
     // Teste de consumo de PM (recurso central de T20)
     assert(hero.getCurrentPm() == 3);
