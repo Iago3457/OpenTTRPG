@@ -45,13 +45,13 @@ Diferente do d20 tradicional (que utilizava valores de 10 a 18 e calculava `(val
 
 Tormenta20 Jogo do Ano aboliu a contagem de peso em quilogramas, utilizando o sistema intuitivo de **Espaços**:
 
-* **Limite de Carga do Personagem:**
-  $$\text{Espaços Máximos} = \max(10, \text{Força} \times 3)$$
+* **Limite de Carga do Personagem (Regra Oficial T20 JdA):**
+  $$\text{Espaços Máximos} = 10 + (2 \times \text{Força}) \quad (\text{se } \text{Força} \ge 0) \quad \text{ou} \quad 10 + \text{Força} \quad (\text{se } \text{Força} < 0)$$
 * **Tamanhos e Espaços típicos dos Itens:**
   * Itens pequenos / leves: 0 ou 1 espaço.
   * Armas de uma mão: 1 espaço.
   * Armas de duas mãos / Armaduras pesadas: 2 ou mais espaços.
-* Se a soma dos espaços dos itens no inventário ultrapassar o limite, a ficha acusa o status **[SOBRECARREGADO!]**.
+* **Sobrecarga:** Um personagem pode carregar até o dobro ($2\times$) do seu limite. Caso ultrapasse o limite normal (ficando até o dobro), adquire a condição **Sobrecarregado** (–5 na penalidade de armadura e –3m no deslocamento). É proibido carregar além do dobro.
 * Moeda padrão: **Tibares (T$)**, a moeda oficial do Reinado de Arton.
 
 ---

@@ -18,7 +18,7 @@ namespace openttrpg::models {
  * - Recursos vitais de T20: PV (Pontos de Vida) e PM (Pontos de Mana).
  * - Defesa calculada (10 + DES + Armaduras/Escudos).
  * - Os 6 Atributos canônicos de Arton (FOR, DES, CON, INT, SAB, CAR).
- * - Capacidade de carga por Espaços (limite = max(10, Força * 3)).
+ * - Capacidade de carga por Espaços (limite = 10 + 2*FOR, ou 10+FOR se FOR < 0).
  * - Listas Cadastrais (AED1): Inventário e Poderes/Habilidades.
  */
 class CharacterSheet {
@@ -74,7 +74,7 @@ public:
     // Cálculo dinâmico de Defesa (T20: 10 + Destreza + Armadura + Escudo + Outros)
     [[nodiscard]] int getDefense() const;
 
-    // Capacidade de Carga (Regra de Espaços do Tormenta20: max(10, Força * 3))
+    // Capacidade de Carga (Regra de Espaços do Tormenta20 JdA: 10 + 2*Força)
     [[nodiscard]] int getMaxSlots() const;
     [[nodiscard]] int getCurrentSlots() const;
     [[nodiscard]] bool isOverburdened() const;
