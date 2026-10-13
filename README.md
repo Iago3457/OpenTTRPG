@@ -18,7 +18,6 @@ O projeto adota uma arquitetura orientada a objetos desacoplada, com estruturas 
     * **Capacidade de Carga por Espaços (Regra Oficial T20 JdA):**
         * **Limite normal de carga:** $10 + (2 \times \text{FOR})$ espaços (se $\text{FOR} \ge 0$) ou $10 + \text{FOR}$ espaços (se $\text{FOR} < 0$).
         * **Sobrecarga:** Um personagem pode carregar até o dobro ($2\times$) do seu limite. Caso ultrapasse o limite normal (ficando até o dobro), adquire a condição **Sobrecarregado** (penalidade de armadura –5 e deslocamento –3m). É proibido carregar além do dobro.
-        > *Nota:* A menção anterior a $\max(10, \text{FOR} \times 3)$ era um resquício da regra legada pré-JdA (que utilizava contagem de peso em kg, calculada como $\text{FOR} \times 3\text{ kg}$). Na Edição Jogo do Ano, o sistema adota exclusivamente o modelo de **Espaços**.
     * **Economia de Arton:** Gerenciamento de dinheiro na moeda oficial do Reinado, **Tibares (T$)**.
     * **Rolagem de Dados Poliédricos:** Rolador de testes em d20 com detecção automática de **20 Natural** (Acerto Crítico!) e **1 Natural** (Falha Crítica!), além de rolagem de dados de dano com multiplicadores de crítico (ex: $1\text{d}8$ com crítico $\times 2$ rola $2\text{d}8$).
 
