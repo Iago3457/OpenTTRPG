@@ -51,15 +51,88 @@ bool parseDiceString(const std::string& input, int& count, int& sides) {
 }
 
 // Extrai o multiplicador de crítico (aceita "2", "x2", "X2", "*2", "3", "x3", etc.)
+// Se o valor contiver sinal negativo ou for inválido, retorna -1 para invalidar
 int parseMultiplier(const std::string& input) {
-    if (input.empty()) return 1;
-    std::regex rgx(R"([xX\*]?\s*(\d+))");
-    std::smatch match;
-    if (std::regex_search(input, match, rgx)) {
-        int m = std::stoi(match[1].str());
-        return std::max(1, m);
+    if (input.empty()) return -1;
+    // Se contiver sinal de menos, é negativo -> inválido
+    if (input.find('-') != std::string::npos) {
+        return -1;
     }
-    return 1;
+    std::regex rgx(R"(^[xX\*]?\s*(\d+)$)");
+    std::smatch match;
+    if (std::regex_match(input, match, rgx)) {
+        try {
+            int m = std::stoi(match[1].str());
+            return std::max(1, m);
+        } catch (...) {
+            return -1;
+        }
+    }
+    std::regex critRgx(R"([xX\*]\s*(\d+))");
+    if (std::regex_search(input, match, critRgx)) {
+        try {
+            return std::max(1, std::stoi(match[1].str()));
+        } catch (...) {
+            return -1;
+        }
+    }
+    return -1;
+}
+
+// Tenta converter uma string limpa em inteiro de forma segura (sem exceções não tratadas)
+bool tryParseInt(const std::string& input, int& outVal) {
+    if (input.empty()) return false;
+    try {
+        std::size_t pos = 0;
+        outVal = std::stoi(input, &pos);
+        return pos == input.size();
+    } catch (...) {
+        return false;
+    }
+}
+
+// Lê um inteiro no intervalo [minVal, maxVal], repetindo até que uma entrada válida seja fornecida.
+// Invalida entradas negativas, não-numéricas ou fora dos limites estabelecidos.
+int promptIntInRange(const std::string& promptMsg, int minVal, int maxVal) {
+    while (true) {
+        std::cout << promptMsg;
+        std::string line = getCleanLine();
+        int val = 0;
+        if (!tryParseInt(line, val)) {
+            std::cout << "Entrada inválida! Digite um número inteiro.\n";
+            continue;
+        }
+        if (val < minVal || val > maxVal) {
+            if (val < 0 && minVal >= 0) {
+                std::cout << "Entrada inválida! O valor não pode ser negativo.\n";
+            } else {
+                std::cout << "Opção inválida! Escolha um valor entre " << minVal << " e " << maxVal << ".\n";
+            }
+            continue;
+        }
+        return val;
+    }
+}
+
+// Solicita um número inteiro não-negativo (>= 0), permitindo valor padrão se linha vazia.
+int promptNonNegativeInt(const std::string& promptMsg, int defaultVal = 0) {
+    while (true) {
+        std::cout << promptMsg;
+        std::string line = getCleanLine();
+        if (line.empty()) {
+            return defaultVal;
+        }
+        int val = 0;
+        if (!tryParseInt(line, val)) {
+            std::cout << "Entrada inválida! Digite um número inteiro.\n";
+            continue;
+        }
+        if (val < 0) {
+            std::cout << "Entrada inválida! O valor não pode ser negativo.\n";
+            continue;
+        }
+        return val;
+    }
 }
 
 // Extrai bônus numérico fixo (aceita "+3", "3", "-2", etc.)
@@ -152,15 +225,10 @@ void CLIController::handleCreateCharacter() {
     std::cout << "Divindade (ex: Valkaria, Khalmyr, Wynna, Lena, Arsenal): ";
     std::string deity = getCleanLine();
 
-    std::cout << "Pontos de Vida Máximos (PV): ";
-    std::string hpStr = getCleanLine();
-    int maxHp = parseMultiplier(hpStr);
+    int maxHp = promptNonNegativeInt("Pontos de Vida Máximos (PV): ", 20);
     if (maxHp <= 0) maxHp = 20;
 
-    std::cout << "Pontos de Mana Máximos (PM): ";
-    std::string pmStr = getCleanLine();
-    int maxPm = parseMultiplier(pmStr);
-    if (maxPm < 0) maxPm = 3;
+    int maxPm = promptNonNegativeInt("Pontos de Mana Máximos (PM): ", 3);
 
     models::CharacterSheet sheet(name, charClass, race, origin, deity, 1, maxHp, maxPm);
 
@@ -200,14 +268,8 @@ void CLIController::handleManageCharacter() {
     for (std::size_t i = 0; i < characters.size(); ++i) {
         std::cout << "  " << (i + 1) << ". " << characters[i].getName() << "\n";
     }
-    std::cout << "Número do personagem: ";
-    std::string choiceStr = getCleanLine();
-    std::size_t choice = parseMultiplier(choiceStr);
-
-    if (choice < 1 || choice > characters.size()) {
-        std::cout << "Seleção inválida.\n";
-        return;
-    }
+    int charChoice = promptIntInRange("Número do personagem: ", 1, static_cast<int>(characters.size()));
+    std::size_t choice = static_cast<std::size_t>(charChoice);
 
     models::Character& selected = characters[choice - 1];
 
@@ -221,26 +283,22 @@ void CLIController::handleManageCharacter() {
     std::cout << "  7. Recuperar Pontos de Mana (PM)\n";
     std::cout << "  8. Sofrer Dano em Pontos de Vida (PV)\n";
     std::cout << "  9. Curar Pontos de Vida (PV)\n";
-    std::cout << "Opção: ";
-    std::string subOptStr = getCleanLine();
-    int subOpt = parseMultiplier(subOptStr);
-
+    int subOpt = promptIntInRange("Opção: ", 1, 9);
+    
     if (subOpt == 1) {
         std::cout << "Nome do Item: ";
         std::string itemName = getCleanLine();
         std::cout << "Descrição: ";
         std::string desc = getCleanLine();
 
-        std::cout << "Tipo (1=Arma, 2=Armadura, 3=Escudo, 4=Consumível, 5=Outros): ";
-        int typeChoice = parseMultiplier(getCleanLine());
+        int typeChoice = promptIntInRange("Tipo (1=Arma, 2=Armadura, 3=Escudo, 4=Consumível, 5=Outros): ", 1, 5);
         core::ItemType itType = core::ItemType::Weapon;
         if (typeChoice == 2) itType = core::ItemType::Armor;
         else if (typeChoice == 3) itType = core::ItemType::Shield;
         else if (typeChoice == 4) itType = core::ItemType::Consumable;
         else if (typeChoice == 5) itType = core::ItemType::Miscellaneous;
 
-        std::cout << "Espaços de carga ocupados no T20 (padrão 1): ";
-        int slots = parseMultiplier(getCleanLine());
+        int slots = promptNonNegativeInt("Espaços de carga ocupados no T20 (padrão 1): ", 1);
 
         std::string damage, crit = "20/x2";
         int defBonus = 0, penalty = 0;
@@ -258,8 +316,7 @@ void CLIController::handleManageCharacter() {
             penalty = parseBonus(getCleanLine());
         }
 
-        std::cout << "Preço em Tibares (T$): ";
-        int price = parseMultiplier(getCleanLine());
+        int price = promptNonNegativeInt("Preço em Tibares (T$): ", 0);
 
         selected.getSheet().addItem(models::Item(itemName, desc, itType, slots, damage, crit, defBonus, penalty, price, false));
         std::cout << "[OK] Item adicionado ao inventário de Tormenta20!\n";
@@ -268,11 +325,9 @@ void CLIController::handleManageCharacter() {
         std::string skillName = getCleanLine();
         std::cout << "Descrição mecânica: ";
         std::string desc = getCleanLine();
-        std::cout << "Custo em Pontos de Mana (PM): ";
-        int pmCost = parseMultiplier(getCleanLine());
+        int pmCost = promptNonNegativeInt("Custo em Pontos de Mana (PM): ", 0);
 
-        std::cout << "Tipo de Ação (1=Padrão, 2=Movimento, 3=Livre, 4=Reação): ";
-        int actionChoice = parseMultiplier(getCleanLine());
+        int actionChoice = promptIntInRange("Tipo de Ação (1=Padrão, 2=Movimento, 3=Livre, 4=Reação): ", 1, 4);
         core::ActionType actType = core::ActionType::Standard;
         if (actionChoice == 2) actType = core::ActionType::Movement;
         else if (actionChoice == 3) actType = core::ActionType::Free;
@@ -284,56 +339,69 @@ void CLIController::handleManageCharacter() {
         selected.getSheet().addSkill(models::Skill(skillName, desc, pmCost, actType, mod));
         std::cout << "[OK] Poder/Magia adicionado à lista de Tormenta20!\n";
     } else if (subOpt == 3) {
-        std::cout << "Índice do item para alternar Equipado (0 a " << (selected.getSheet().getInventory().size() - 1) << "): ";
-        std::size_t idx = parseMultiplier(getCleanLine());
-        if (idx < selected.getSheet().getInventory().size()) {
+        if (selected.getSheet().getInventory().is_empty()) {
+            std::cout << "[AVISO] O inventário está vazio.\n";
+        } else {
+            int maxIdx = static_cast<int>(selected.getSheet().getInventory().size() - 1);
+            int idxVal = promptIntInRange("Índice do item para alternar Equipado (0 a " + std::to_string(maxIdx) + "): ", 0, maxIdx);
+            std::size_t idx = static_cast<std::size_t>(idxVal);
             bool currentState = selected.getSheet().getInventory().get(idx).isEquipped();
             selected.getSheet().equipItem(idx, !currentState);
             std::cout << "[OK] Status do item alterado para: " << (!currentState ? "EQUIPADO" : "DESEQUIPADO") << "\n";
             std::cout << "Nova Defesa calculada: " << selected.getSheet().getDefense() << "\n";
-        } else {
-            std::cout << "[ERRO] Índice inválido.\n";
         }
     } else if (subOpt == 4) {
-        std::cout << "Índice do item a remover: ";
-        std::size_t idx = parseMultiplier(getCleanLine());
-        if (selected.getSheet().removeItem(idx)) {
-            std::cout << "[OK] Item removido.\n";
+        if (selected.getSheet().getInventory().is_empty()) {
+            std::cout << "[AVISO] O inventário está vazio.\n";
         } else {
-            std::cout << "[ERRO] Índice inválido.\n";
+            int maxIdx = static_cast<int>(selected.getSheet().getInventory().size() - 1);
+            int idxVal = promptIntInRange("Índice do item a remover (0 a " + std::to_string(maxIdx) + "): ", 0, maxIdx);
+            std::size_t idx = static_cast<std::size_t>(idxVal);
+            if (selected.getSheet().removeItem(idx)) {
+                std::cout << "[OK] Item removido.\n";
+            } else {
+                std::cout << "[ERRO] Índice inválido.\n";
+            }
         }
     } else if (subOpt == 5) {
-        std::cout << "Índice da habilidade a remover: ";
-        std::size_t idx = parseMultiplier(getCleanLine());
-        if (selected.getSheet().removeSkill(idx)) {
-            std::cout << "[OK] Habilidade removida.\n";
+        if (selected.getSheet().getSkills().is_empty()) {
+            std::cout << "[AVISO] A lista de habilidades está vazia.\n";
         } else {
-            std::cout << "[ERRO] Índice inválido.\n";
+            int maxIdx = static_cast<int>(selected.getSheet().getSkills().size() - 1);
+            int idxVal = promptIntInRange("Índice da habilidade a remover (0 a " + std::to_string(maxIdx) + "): ", 0, maxIdx);
+            std::size_t idx = static_cast<std::size_t>(idxVal);
+            if (selected.getSheet().removeSkill(idx)) {
+                std::cout << "[OK] Habilidade removida.\n";
+            } else {
+                std::cout << "[ERRO] Índice inválido.\n";
+            }
         }
     } else if (subOpt == 6) {
-        std::cout << "Quantidade de PM a gastar: ";
-        int pm = parseMultiplier(getCleanLine());
-        if (selected.getSheet().spendPm(pm)) {
+        int pm = promptNonNegativeInt("Quantidade de PM a gastar: ", 0);
+        if (pm <= 0) {
+            std::cout << "[AVISO] A quantidade de PM deve ser maior que zero.\n";
+        } else if (selected.getSheet().spendPm(pm)) {
             std::cout << "[OK] " << pm << " PM gastos. PM Atual: " << selected.getSheet().getCurrentPm() << "/" << selected.getSheet().getMaxPm() << "\n";
         } else {
             std::cout << "[ERRO] Pontos de Mana insuficientes!\n";
         }
     } else if (subOpt == 7) {
-        std::cout << "Quantidade de PM a recuperar: ";
-        int pm = parseMultiplier(getCleanLine());
-        selected.getSheet().recoverPm(pm);
-        std::cout << "[OK] PM recuperados. PM Atual: " << selected.getSheet().getCurrentPm() << "/" << selected.getSheet().getMaxPm() << "\n";
+        int pm = promptNonNegativeInt("Quantidade de PM a recuperar: ", 0);
+        if (pm <= 0) {
+            std::cout << "[AVISO] A quantidade de PM deve ser maior que zero.\n";
+        } else {
+            selected.getSheet().recoverPm(pm);
+            std::cout << "[OK] PM recuperados. PM Atual: " << selected.getSheet().getCurrentPm() << "/" << selected.getSheet().getMaxPm() << "\n";
+        }
     } else if (subOpt == 8) {
-        std::cout << "Dano sofrido em PV: ";
-        int dmg = parseMultiplier(getCleanLine());
+        int dmg = promptNonNegativeInt("Dano sofrido em PV: ", 0);
         selected.getSheet().takeDamage(dmg);
         std::cout << "[OK] Dano aplicado. PV Atual: " << selected.getSheet().getCurrentHp() << "/" << selected.getSheet().getMaxHp() << "\n";
     } else if (subOpt == 9) {
-        std::cout << "Cura recebida em PV: ";
-        int heal = parseMultiplier(getCleanLine());
+        int heal = promptNonNegativeInt("Cura recebida em PV: ", 0);
         selected.getSheet().healHp(heal);
         std::cout << "[OK] Cura aplicada. PV Atual: " << selected.getSheet().getCurrentHp() << "/" << selected.getSheet().getMaxHp() << "\n";
-    }
+    }    
 }
 
 void CLIController::handleDiceRoll() {
@@ -344,8 +412,7 @@ void CLIController::handleDiceRoll() {
     std::cout << "  4. Rolar Fórmula Livre (ex: 2d6+4, 1d12-1, 3d8)\n";
     std::cout << "Opção: ";
 
-    std::string optStr = getCleanLine();
-    int opt = parseMultiplier(optStr);
+    int opt = promptIntInRange("Opção: ", 1, 4);
 
     if (opt == 1) {
         std::cout << "Digite o modificador total da perícia/ataque (ex: +5, -1, ou 0): ";
@@ -376,6 +443,7 @@ void CLIController::handleDiceRoll() {
             std::cout << "Multiplicador de Crítico de T20 (ex: x2, 2, x3, 3, ou Enter para x1 normal): ";
             std::string multStr = getCleanLine();
             critMult = parseMultiplier(multStr);
+            if (critMult <= 0) critMult = 1;
         }
 
         // Verifica se o usuário já especificou o bônus na mesma linha (ex: "1d8+3" ou "1d8 x2 +3")
@@ -408,13 +476,8 @@ void CLIController::handleDiceRoll() {
         for (std::size_t i = 0; i < characters.size(); ++i) {
             std::cout << "  " << (i + 1) << ". " << characters[i].getName() << "\n";
         }
-        std::cout << "Número: ";
-        std::string charChoiceStr = getCleanLine();
-        std::size_t cIdx = parseMultiplier(charChoiceStr);
-        if (cIdx < 1 || cIdx > characters.size()) {
-            std::cout << "[ERRO] Personagem inválido.\n";
-            return;
-        }
+        int charChoice = promptIntInRange("Número: ", 1, static_cast<int>(characters.size()));
+        std::size_t cIdx = static_cast<std::size_t>(charChoice);
 
         auto& hero = characters[cIdx - 1];
         auto& inv = hero.getSheet().getInventory();
@@ -436,13 +499,8 @@ void CLIController::handleDiceRoll() {
             std::cout << "  " << (i + 1) << ". " << w.getName()
                       << " (Dano: " << w.getDamage() << " | Crítico: " << w.getCritical() << ")\n";
         }
-        std::cout << "Escolha a arma: ";
-        std::string wChoiceStr = getCleanLine();
-        std::size_t wChoice = parseMultiplier(wChoiceStr);
-        if (wChoice < 1 || wChoice > weaponIndices.size()) {
-            std::cout << "[ERRO] Arma inválida.\n";
-            return;
-        }
+        int wChoiceNum = promptIntInRange("Escolha a arma: ", 1, static_cast<int>(weaponIndices.size()));
+        std::size_t wChoice = static_cast<std::size_t>(wChoiceNum);
 
         const auto& weapon = inv.get(weaponIndices[wChoice - 1]);
         int count = 1, sides = 8;
@@ -527,10 +585,7 @@ void CLIController::handleInitiativeCombat() {
             std::cout << "  3. Usar Poder / Magia (Gastar PM)\n";
             std::cout << "  4. Sofrer Dano neste Turno\n";
             std::cout << "  5. Encerrar Combate\n";
-            std::cout << "Escolha uma ação: ";
-
-            std::string actionStr = getCleanLine();
-            int action = parseMultiplier(actionStr);
+            int action = promptIntInRange("Escolha uma ação: ", 1, 5);
 
             if (action == 2) {
                 std::cout << "Modificador do ataque/perícia (ex: +6, 0): ";
@@ -538,16 +593,16 @@ void CLIController::handleInitiativeCombat() {
                 auto roll = diceRoller.rollTest(mod);
                 std::cout << "Resultado: " << roll.format() << "\n";
             } else if (action == 3) {
-                std::cout << "Custo em PM do poder/magia: ";
-                int pm = parseMultiplier(getCleanLine());
-                if (initiativeSystem.spendPmCurrent(pm)) {
+                int pm = promptNonNegativeInt("Custo em PM do poder/magia: ", 0);
+                if (pm <= 0) {
+                    std::cout << "[AVISO] O custo em PM deve ser maior que zero.\n";
+                } else if (initiativeSystem.spendPmCurrent(pm)) {
                     std::cout << "[OK] " << pm << " PM gastos para ativar o poder!\n";
                 } else {
                     std::cout << "[AVISO] PM insuficiente no turno!\n";
                 }
             } else if (action == 4) {
-                std::cout << "Dano sofrido: ";
-                int dmg = parseMultiplier(getCleanLine());
+                int dmg = promptNonNegativeInt("Dano sofrido: ", 0);
                 initiativeSystem.applyDamageToCurrent(dmg);
                 std::cout << "[OK] Dano aplicado.\n";
             } else if (action == 5) {
