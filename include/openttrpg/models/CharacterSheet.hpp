@@ -46,14 +46,7 @@ private:
     ds::LinkedList<Skill> skills;   // Lista Cadastral de Habilidades/Poderes (AED1)
 
 public:
-    CharacterSheet(std::string name = "Herói de Arton",
-                   std::string charClass = "Guerreiro",
-                   std::string race = "Humano",
-                   std::string origin = "Soldado",
-                   std::string deity = "Valkaria",
-                   int level = 1,
-                   int maxHp = 20,
-                   int maxPm = 3);
+    CharacterSheet(std::string name = "Herói de Arton", std::string charClass = "Guerreiro", std::string race = "Humano", std::string origin = "Soldado", std::string deity = "Valkaria", int level = 1, int maxHp = 20, int maxPm = 3);
 
     // Getters Biográficos
     [[nodiscard]] const std::string& getName() const;

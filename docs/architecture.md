@@ -6,53 +6,85 @@ Projeto desenvolvido no contexto acadêmico de **Algoritmos e Estruturas de Dado
 
 ## 1. Visão Geral do Sistema
 
-O projeto é construído em **C++17 puro** com arquitetura desacoplada em três camadas:
+O projeto adota uma arquitetura em camadas desacoplada em **C++17 puro**:
 
-1. **Camada de Estruturas de Dados (AED1):**
-   Implementações manuais de estruturas de dados lineares sem o uso de containers da STL para as estruturas avaliadas pela disciplina.
-2. **Camada de Domínio / Regras de Negócio (Tormenta20 JdA):**
-   Modelos orientados a objetos que implementam fichas, atributos, inventário com cálculo de espaços, magias com Pontos de Mana (PM) e rolagem de dados com críticos.
-3. **Camada de Apresentação (CLI na Fase 1 / Godot Engine na Fase 2):**
-   Interface textual rica via terminal na Fase 1, desenhada para ser compilada como biblioteca compartilhada (`.so`/`.dll`) e consumida via P/Invoke em C# na Fase 2.
+1. **Camada de Estruturas de Dados Manuais (AED1):**
+   Implementações manuais (`Node<T>`, `LinkedList<T>`, `Queue<T>`) com alocação dinâmica e respeito estrito à Regra dos Cinco (*Rule of Five*), sem uso de containers da STL nas estruturas avaliadas.
+2. **Camada Core Genérica (Motor Neutro de Regras / DLL para C#):**
+   Mecanismos universais de RPG que funcionam sem sistema pré-definido:
+   * **Iniciativa Ordenada & Turnos (`InitiativeTracker`):** Inserção/remoção dinâmica no meio do combate, desempates automáticos, reordenação de ações sem perda de turnos ou erro de contagem de rodadas.
+   * **Gerenciamento de Recursos (`ResourcePool`):** Barras com valores mín/máx/temporário para Vida, Mana, Estamina, Sanidade, etc., com absorção automática de dano por recurso temporário.
+   * **Pipeline de Dano e Defesas (`Damage`):** Tipos numéricos de dano, fraquezas/resistências/imunidades configuráveis, RD fixa (global ou por tipo) e ordens de aplicação flexíveis.
+   * **Condições e Efeitos (`ConditionTracker`):** Rastreamento de status com controle de acúmulo, intensidade e duração decrescente com base em gatilhos de turno e rodada.
+   * **Entidade Genérica (`Combatant`):** Combatente com recursos arbitrários, perfil de dano e vínculo de time.
+   * **Fachada de Combate (`Encounter`):** Orquestrador do encontro onde **todas as ações são direcionadas por ID de alvo** (resolvendo o problema de dano cair no primeiro da fila).
+   * **Motor de Dados (`DiceEngine`):** Avaliação determinística com suporte a expressões ("2d20kh1+5", "4d6dl1", dados explosivos "3d6!") e sementes fixas para replays/multiplayer.
+3. **Camada C ABI & Interop para C# (`openttrpg_api`):**
+   Interface estritamente em linguagem C com convenção `cdecl`, structs blittable (apenas `int32_t`), isolamento completo de exceções C++ via `ottrpg_last_error()` e buffers seguros gerenciados pelo chamador. Permite compilação como `.so` / `.dll` e carregamento direto via P/Invoke (`bindings/csharp/OpenTTRPG.cs`).
+4. **Camada de Domínio Tormenta20 (Regras Oficiais):**
+   Modelos que implementam fichas, atributos, inventário com regras de espaços e economia de Arton (T$).
+5. **Camada de Apresentação:**
+   CLI interativo via terminal (Fase 1) e integração com Godot Engine + C# (Fase 2).
 
 ```mermaid
 graph TD
-    subgraph Apresentacao ["Camada de Apresentacao"]
+    subgraph Apresentacao ["Camada de Apresentação"]
         CLI["CLIController (Terminal)"]
-        Godot["Godot + C# (Fase 2)"]
+        Godot["Godot Engine + C# (Fase 2)"]
     end
 
-    subgraph Dominio ["Motor de Tormenta20 (Core)"]
+    subgraph Interop ["Camada C ABI / DLL (P/Invoke)"]
+        C_API["openttrpg_api (C puro / extern 'C')"]
+        CS_Binding["OpenTTRPG.cs (C# Wrapper)"]
+    end
+
+    subgraph CoreGenerico ["Motor Core Genérico (Neutro de Sistema)"]
+        Enc["Encounter (Fachada de Combate)"]
+        InitTrack["InitiativeTracker (Lista Ordenada)"]
+        Combatant["Combatant (Alvos por ID)"]
+        ResPool["ResourcePool (PV, PM, Temp)"]
+        Dmg["Damage (Resistências, RD, Cálculo)"]
+        Cond["ConditionTracker (Status / Duração)"]
+        DiceEng["DiceEngine (Expressões, Vantagem)"]
+    end
+
+    subgraph DominioT20 ["Domínio Tormenta20 (Jogo do Ano)"]
         Sheet["CharacterSheet"]
         Char["Character"]
-        Attr["Attribute (FOR, DES, CON, INT, SAB, CAR)"]
-        Item["Item (Dano, Critico, Espacos, Defesa, T$)"]
-        Skill["Skill (Poderes com custo de PM)"]
-        Dice["DiceRoller (d20 com Critico / Dano)"]
-        Init["InitiativeSystem"]
+        Attr["Attribute"]
+        Item["Item"]
+        Skill["Skill"]
     end
 
     subgraph Estruturas ["Estruturas de Dados AED1"]
-        Node["Node&lt;T&gt; (Ponteiros / Alocacao Dinamica)"]
-        List["LinkedList&lt;T&gt; (Lista Cadastral)"]
-        Queue["Queue&lt;T&gt; (Fila de Iniciativa)"]
+        Node["Node&lt;T&gt;"]
+        List["LinkedList&lt;T&gt;"]
+        Queue["Queue&lt;T&gt;"]
     end
 
+    Godot --> CS_Binding
+    CS_Binding --> C_API
+    C_API --> Enc
+
     CLI --> Sheet
-    CLI --> Dice
-    CLI --> Init
-    Godot -.-> Sheet
-    
-    Char --> Sheet
-    Sheet --> Attr
-    Sheet --> List
+    CLI --> Enc
+
+    Enc --> InitTrack
+    Enc --> Combatant
+    Enc --> DiceEng
+    Combatant --> ResPool
+    Combatant --> Dmg
+    Combatant --> Cond
+
+    InitTrack --> List
+    Combatant --> List
+    Cond --> List
     List --> Node
+
+    Sheet --> List
+    Sheet --> Attr
     List -. Armazena .-> Item
     List -. Armazena .-> Skill
-
-    Init --> Queue
-    Queue --> Node
-    Init --> Dice
 ```
 
 ---
@@ -61,46 +93,54 @@ graph TD
 
 ```text
 OpenTTRPG/
+├── bindings/                           # Bindings para outras linguagens (Fase 2)
+│   └── csharp/
+│       └── OpenTTRPG.cs                # P/Invoke + Wrapper C# para Godot
 ├── docs/                               # Documentação técnica e de regras
 │   ├── architecture.md                 # Arquitetura e padrões do sistema
 │   └── tormenta20_rules.md             # Regras canônicas de Tormenta20 Jogo do Ano
-├── include/                            # Cabeçalhos (.hpp)
+├── include/                            # Cabeçalhos (.hpp e .h)
 │   └── openttrpg/
-│       ├── core/                       # Tipos fundamentais de T20 (AttributeType, ItemType, ActionType)
-│       │   └── Types.hpp
+│       ├── api/                        # ABI C estável para DLL/.so
+│       │   └── openttrpg_api.h
+│       ├── core/                       # Motor Genérico e Tipos Básicos
+│       │   ├── Combatant.hpp           # Combatente genérico por ID
+│       │   ├── Condition.hpp           # Efeitos e condições com duração
+│       │   ├── Damage.hpp              # Pipeline e cálculo de dano/resistências
+│       │   ├── Dice.hpp                # Motor determinístico de dados e expressões
+│       │   ├── Encounter.hpp           # Fachada de combate por turnos
+│       │   ├── InitiativeTracker.hpp   # Rastreador ordenado de iniciativa
+│       │   ├── Resource.hpp            # Barras com mín/máx/temporário
+│       │   └── Types.hpp               # Tipos e enums fundamentais
 │       ├── data_structures/            # Estruturas manuais com alocação dinâmica (AED1)
 │       │   ├── Node.hpp                # Nó encadeado genérico
-│       │   ├── LinkedList.hpp          # Lista Simplesmente Encadeada com gerenciamento de memória
-│       │   └── Queue.hpp               # Fila FIFO para sistema de turnos
+│       │   ├── LinkedList.hpp          # Lista Simplesmente Encadeada (AED1)
+│       │   └── Queue.hpp               # Fila FIFO (AED1)
 │       ├── models/                     # Entidades do RPG Tormenta20
-│       │   ├── Attribute.hpp           # 6 Atributos canônicos com modificador direto de T20
-│       │   ├── Item.hpp                # Itens com dano, margem de crítico, espaços e tibares
-│       │   ├── Skill.hpp               # Habilidades de classe e magias com custo em PM
-│       │   ├── CharacterSheet.hpp      # Ficha de personagem com PV, PM, Defesa e Carga
-│       │   └── Character.hpp           # Combatente ativo em sessão
-│       ├── systems/                    # Mecânicas do jogo
-│       │   ├── DiceRoller.hpp          # Rolagem com detecção de 20 e 1 natural
-│       │   └── InitiativeSystem.hpp    # Fila de combate e rotação de turnos
+│       ├── systems/                    # Mecânicas legadas do CLI de T20
 │       └── cli/
 │           └── CLIController.hpp       # Controlador da interface do terminal
 ├── src/                                # Implementações em C++ (.cpp)
+│   ├── api/
+│   │   └── openttrpg_api.cpp           # Implementação das funções C da DLL
+│   ├── core/                           # Implementação do motor genérico
+│   │   ├── Combatant.cpp
+│   │   ├── Condition.cpp
+│   │   ├── Damage.cpp
+│   │   ├── Dice.cpp
+│   │   ├── Encounter.cpp
+│   │   ├── InitiativeTracker.cpp
+│   │   └── Resource.cpp
 │   ├── models/
-│   │   ├── Attribute.cpp
-│   │   ├── Item.cpp
-│   │   ├── Skill.cpp
-│   │   ├── CharacterSheet.cpp
-│   │   └── Character.cpp
 │   ├── systems/
-│   │   ├── DiceRoller.cpp
-│   │   └── InitiativeSystem.cpp
 │   ├── cli/
-│   │   └── CLIController.cpp
 │   └── main.cpp                        # Ponto de entrada CLI
 ├── tests/
-│   └── test_data_structures.cpp        # Bateria de testes unitários automatizados
-├── Makefile                            # Build script com targets: all, test, run, clean
-├── CMakeLists.txt                      # Script para compilação modular no CMake
-└── .gitignore                          # Exclusão de binários e artefatos de compilação
+│   ├── test_data_structures.cpp        # Bateria de testes de estruturas e T20 (AED1)
+│   └── test_generic_core.cpp           # Bateria de testes do Core Genérico e C API (DLL)
+├── Makefile                            # Build script: all, lib, test, run, clean
+├── CMakeLists.txt                      # Script modular para CMake
+└── README.md
 ```
 
 ---
@@ -122,19 +162,23 @@ As estruturas lineares em `include/openttrpg/data_structures/`:
 
 ### Pré-requisitos
 * Compilador C++ com suporte a **C++17** (`g++` versão 9 ou superior).
-* Utilitário `make`.
+* Utilitário `make` ou `cmake` (3.15+).
 
 ### Comandos de Terminal
 
-* **Compilar e Rodar os Testes Unitários:**
-  ```bash
-  make test
-  ```
-* **Compilar o Executável da Aplicação CLI:**
+* **Compilar Tudo (Executável CLI + Biblioteca Compartilhada `.so`/`.dll`):**
   ```bash
   make all
   ```
-* **Executar a Aplicação:**
+* **Compilar apenas a Biblioteca Compartilhada (DLL):**
+  ```bash
+  make lib
+  ```
+* **Executar Ambas as Baterias de Testes Automatizados:**
+  ```bash
+  make test
+  ```
+* **Executar o Programa CLI no Terminal:**
   ```bash
   make run
   ```
@@ -142,3 +186,4 @@ As estruturas lineares em `include/openttrpg/data_structures/`:
   ```bash
   make clean
   ```
+

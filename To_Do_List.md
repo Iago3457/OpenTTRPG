@@ -1,12 +1,22 @@
-- Melorar Combate
-    - Fix: Pula turno ao executar alguma ação, como causar dano.
-    - Feat: Selecionar alvo de ataque e etc. (Ver com o Iberas)
-    - Feat: Verificação de ações
-    - Fix: Rolagem de iniciativa (todos participam do combate)
-    - Feat/Fix: Escolher habilidades e fazer o custo de PM de maneira dinâmica
-    - FIX ERRO CRÍTICO: Sofre dano o próximo integrante da fila pela iniciativa 
-    - Feat: Estado de MORRIDO
+- Melhorar Combate
+    - [x] Fix: Pula turno ao executar alguma ação, como causar dano (Resolvido no Core: ações não avançam turno; `nextTurn` é explícito)
+    - [x] Feat: Selecionar alvo de ataque e etc. (Resolvido no Core: `dealDamage(targetId, ...)` opera por ID de entidade)
+    - [x] Feat: Verificação de ações e custos (Resolvido no Core: `ResourcePool::spend` e `canSpend`)
+    - [x] Fix: Rolagem de iniciativa (todos participam do combate) (Resolvido no Core: `rollInitiativeForAll` no `Encounter`)
+    - [x] Feat/Fix: Escolher habilidades e fazer o custo de PM de maneira dinâmica (`spendResource(target, resourceId, amount)`)
+    - [x] FIX ERRO CRÍTICO: Sofre dano o próximo integrante da fila pela iniciativa (Resolvido no Core com alvo por ID)
+    - [x] Feat: Estado de MORRIDO / Fora de combate (Resolvido: `isDefeated`, `setForcedOut` e `autoSkipDefeated`)
 
-- Interface gráfica do projeto 
-    
-- Segunda fase do projeto(descrito no readme do github do projeto)
+- Core Genérico & Suporte a DLL (Fase 2 / Godot / C#)
+    - [x] Sistema de dados genérico (`DiceEngine`) com parsing de expressões ("2d20kh1", "4d6dl1", dados explosivos)
+    - [x] Gestor de recursos genérico (`ResourcePool`) com mín, máx e absorção de temporário
+    - [x] Pipeline de dano agnóstico (`Damage`) com resistências, fraquezas, imunidades e reduções de dano
+    - [x] Rastreador de condições e status (`ConditionTracker`) com durações e ticks de início/fim de turno
+    - [x] Fila de iniciativa ordenada dinâmica (`InitiativeTracker`) com desempates e suporte a atrasar ação
+    - [x] Fachada de encontro (`Encounter`) orquestrando combatentes, turnos e dados
+    - [x] C ABI estável (`openttrpg_api.h` / `src/api/openttrpg_api.cpp`) compilado para DLL / `.so` (`OTTRPG_BUILD_DLL`)
+    - [x] Bindings em C# com P/Invoke (`bindings/csharp/OpenTTRPG.cs`)
+    - [x] Bateria de testes unitários automatizados (`tests/test_generic_core.cpp`)
+
+- Interface gráfica do projeto
+    - Segunda fase do projeto com Godot Engine + C# (consumindo a DLL nativa)

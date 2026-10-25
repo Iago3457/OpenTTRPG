@@ -18,6 +18,9 @@ private:
     std::size_t count;
 
 public:
+    // Valor retornado por find_index quando nenhum elemento satisfaz o predicado
+    static constexpr std::size_t npos = static_cast<std::size_t>(-1);
+
     LinkedList() : head(nullptr), count(0) {}
 
     ~LinkedList() {
@@ -80,6 +83,24 @@ public:
         count++;
     }
 
+    // Insere na posição indicada (0 = início, size() = fim). Retorna false se o índice for inválido.
+    bool insert_at(std::size_t index, const T& value) {
+        if (index > count) {
+            return false;
+        }
+        if (index == 0) {
+            push_front(value);
+            return true;
+        }
+        Node<T>* curr = head;
+        for (std::size_t i = 0; i < index - 1; ++i) {
+            curr = curr->next;
+        }
+        curr->next = new Node<T>(value, curr->next);
+        count++;
+        return true;
+    }
+
     bool remove_at(std::size_t index) {
         if (index >= count || head == nullptr) {
             return false;
@@ -132,6 +153,49 @@ public:
             callback(curr->data, idx++);
             curr = curr->next;
         }
+    }
+
+    // Percorre a lista permitindo modificar os elementos (sem alterar a estrutura)
+    void for_each_mut(const std::function<void(T&, std::size_t)>& callback) {
+        Node<T>* curr = head;
+        std::size_t idx = 0;
+        while (curr != nullptr) {
+            callback(curr->data, idx++);
+            curr = curr->next;
+        }
+    }
+
+    // Busca linear: índice do primeiro elemento que satisfaz o predicado, ou npos
+    [[nodiscard]] std::size_t find_index(const std::function<bool(const T&)>& predicate) const {
+        Node<T>* curr = head;
+        std::size_t idx = 0;
+        while (curr != nullptr) {
+            if (predicate(curr->data)) {
+                return idx;
+            }
+            curr = curr->next;
+            idx++;
+        }
+        return npos;
+    }
+
+    // Busca linear: ponteiro para o primeiro elemento que satisfaz o predicado, ou nullptr
+    T* find_if(const std::function<bool(const T&)>& predicate) {
+        for (Node<T>* curr = head; curr != nullptr; curr = curr->next) {
+            if (predicate(curr->data)) {
+                return &curr->data;
+            }
+        }
+        return nullptr;
+    }
+
+    const T* find_if(const std::function<bool(const T&)>& predicate) const {
+        for (Node<T>* curr = head; curr != nullptr; curr = curr->next) {
+            if (predicate(curr->data)) {
+                return &curr->data;
+            }
+        }
+        return nullptr;
     }
 
     void clear() {
