@@ -116,6 +116,53 @@ namespace OpenTTRPG.Native
         public int NaturalMinCount;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ActionSlotInfo
+    {
+        public int ActionType;
+        public int Priority;
+        public int MaxPerTurn; // < 0 = ilimitado
+        public int Current;    // < 0 = ilimitado
+        public int FallbackCount;
+
+        public bool IsUnlimited => MaxPerTurn < 0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct QueuedActionInfo
+    {
+        public int ActionId;
+        public int RequiredType;
+        public int ConsumedType;
+        public int Cost;
+        public int TargetId;
+        public int Priority;
+    }
+
+    public sealed class QueuedActionEntry
+    {
+        public int ActionId { get; }
+        public string Name { get; }
+        public int RequiredType { get; }
+        public int ConsumedType { get; }
+        public int Cost { get; }
+        public int TargetId { get; }
+        public int Priority { get; }
+
+        public bool UsedFallback => RequiredType != ConsumedType;
+
+        public QueuedActionEntry(QueuedActionInfo info, string name)
+        {
+            ActionId = info.ActionId;
+            Name = name;
+            RequiredType = info.RequiredType;
+            ConsumedType = info.ConsumedType;
+            Cost = info.Cost;
+            TargetId = info.TargetId;
+            Priority = info.Priority;
+        }
+    }
+
     /// <summary>
     /// P/Invoke bindings diretas para a biblioteca nativa openttrpg_core (DLL / .so).
     /// </summary>
@@ -301,6 +348,78 @@ namespace OpenTTRPG.Native
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_dice_roll_expression(IntPtr encounter, [MarshalAs(UnmanagedType.LPUTF8Str)] string expressionUtf8,
                                                              out RollResult outResult);
+
+        // Economia de Ações e Fila de Prioridades de Turno (Genérico)
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_define_type(IntPtr encounter, int id, int actionType,
+                                                           [MarshalAs(UnmanagedType.LPUTF8Str)] string nameUtf8,
+                                                           int priority, int maxPerTurn);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_remove_type(IntPtr encounter, int id, int actionType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_add_fallback(IntPtr encounter, int id, int requiredType, int providerType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_remove_fallback(IntPtr encounter, int id, int requiredType, int providerType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_clear_fallbacks(IntPtr encounter, int id, int requiredType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_get_slot(IntPtr encounter, int id, int actionType, out ActionSlotInfo outInfo);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_set_max(IntPtr encounter, int id, int actionType, int maxPerTurn, int refillCurrent);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_set_current(IntPtr encounter, int id, int actionType, int current);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_modify_current(IntPtr encounter, int id, int actionType, int delta);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_reset_turn(IntPtr encounter, int id);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_can_use(IntPtr encounter, int id, int requiredType, out int outConsumedType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_spend(IntPtr encounter, int id, int requiredType, out int outConsumedType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_spend_compound(IntPtr encounter, int id, [In] int[] requiredTypes, int count);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_enqueue(IntPtr encounter, int id, int requiredType,
+                                                       [MarshalAs(UnmanagedType.LPUTF8Str)] string nameUtf8,
+                                                       int targetId, out int outActionId, out int outConsumedType);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_enqueue_compound(IntPtr encounter, int id, [In] int[] requiredTypes,
+                                                                int count, int executionPriority,
+                                                                [MarshalAs(UnmanagedType.LPUTF8Str)] string nameUtf8,
+                                                                int targetId, out int outActionId);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_queue_count(IntPtr encounter, int id);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_queue_get(IntPtr encounter, int id, int index,
+                                                         out QueuedActionInfo outInfo, [Out] byte[] nameBuffer,
+                                                         int bufferSize, out int outRequired);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_queue_pop(IntPtr encounter, int id,
+                                                         out QueuedActionInfo outInfo, [Out] byte[] nameBuffer,
+                                                         int bufferSize, out int outRequired);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_queue_cancel(IntPtr encounter, int id, int actionId, int refundSlot);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_action_queue_clear(IntPtr encounter, int id, int refundSlots);
     }
 
     /// <summary>
@@ -564,6 +683,250 @@ namespace OpenTTRPG.Native
                 throw new ArgumentException($"Expressão de dados inválida: {GetLastError()}");
             }
             return result;
+        }
+
+        // ----- Economia de Ações e Fila de Prioridades (Genérico) -----
+
+        public void DefineActionType(int combatantId, int actionType, string name, int priority, int maxPerTurn)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_define_type(_handle, combatantId, actionType, name, priority, maxPerTurn);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao definir tipo de ação: {GetLastError()}");
+            }
+        }
+
+        public void RemoveActionType(int combatantId, int actionType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_remove_type(_handle, combatantId, actionType);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao remover tipo de ação: {GetLastError()}");
+            }
+        }
+
+        public void AddActionFallback(int combatantId, int requiredType, int providerType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_add_fallback(_handle, combatantId, requiredType, providerType);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao adicionar regra de conversão de ação: {GetLastError()}");
+            }
+        }
+
+        public void RemoveActionFallback(int combatantId, int requiredType, int providerType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_remove_fallback(_handle, combatantId, requiredType, providerType);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao remover regra de conversão de ação: {GetLastError()}");
+            }
+        }
+
+        public void ClearActionFallbacks(int combatantId, int requiredType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_clear_fallbacks(_handle, combatantId, requiredType);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao limpar regras de conversão de ação: {GetLastError()}");
+            }
+        }
+
+        public ActionSlotInfo GetActionSlot(int combatantId, int actionType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_get_slot(_handle, combatantId, actionType, out ActionSlotInfo info);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao consultar slot de ação: {GetLastError()}");
+            }
+            return info;
+        }
+
+        public void SetActionSlotMax(int combatantId, int actionType, int maxPerTurn, bool refillCurrent = true)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_set_max(_handle, combatantId, actionType, maxPerTurn, refillCurrent ? 1 : 0);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao definir máximo de ações: {GetLastError()}");
+            }
+        }
+
+        public void SetActionSlotCurrent(int combatantId, int actionType, int current)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_set_current(_handle, combatantId, actionType, current);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao definir ações atuais: {GetLastError()}");
+            }
+        }
+
+        public void ModifyActionSlotCurrent(int combatantId, int actionType, int delta)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_modify_current(_handle, combatantId, actionType, delta);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao modificar ações atuais: {GetLastError()}");
+            }
+        }
+
+        public void ResetTurnActions(int combatantId)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_reset_turn(_handle, combatantId);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao resetar ações do turno: {GetLastError()}");
+            }
+        }
+
+        public bool CanUseAction(int combatantId, int requiredType, out int consumedType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_can_use(_handle, combatantId, requiredType, out consumedType);
+            if (res < 0)
+            {
+                throw new InvalidOperationException($"Erro ao verificar ação: {GetLastError()}");
+            }
+            return res == 1;
+        }
+
+        public bool SpendAction(int combatantId, int requiredType, out int consumedType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_spend(_handle, combatantId, requiredType, out consumedType);
+            if (res == (int)OttrpgStatus.ErrInsufficientResource)
+            {
+                return false;
+            }
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao gastar ação: {GetLastError()}");
+            }
+            return true;
+        }
+
+        public bool SpendCompoundAction(int combatantId, int[] requiredTypes)
+        {
+            EnsureNotDisposed();
+            if (requiredTypes == null || requiredTypes.Length == 0)
+            {
+                return true;
+            }
+            int res = NativeMethods.ottrpg_action_spend_compound(_handle, combatantId, requiredTypes, requiredTypes.Length);
+            if (res == (int)OttrpgStatus.ErrInsufficientResource)
+            {
+                return false;
+            }
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao gastar ação composta: {GetLastError()}");
+            }
+            return true;
+        }
+
+        public bool EnqueueAction(int combatantId, int requiredType, string name, int targetId,
+                                  out int actionId, out int consumedType)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_enqueue(_handle, combatantId, requiredType, name ?? string.Empty,
+                                                          targetId, out actionId, out consumedType);
+            if (res == (int)OttrpgStatus.ErrInsufficientResource)
+            {
+                return false;
+            }
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao enfileirar ação: {GetLastError()}");
+            }
+            return true;
+        }
+
+        public bool EnqueueCompoundAction(int combatantId, int[] requiredTypes, int executionPriority,
+                                          string name, int targetId, out int actionId)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_enqueue_compound(
+                _handle, combatantId, requiredTypes, requiredTypes?.Length ?? 0,
+                executionPriority, name ?? string.Empty, targetId, out actionId);
+            if (res == (int)OttrpgStatus.ErrInsufficientResource)
+            {
+                return false;
+            }
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao enfileirar ação composta: {GetLastError()}");
+            }
+            return true;
+        }
+
+        public int GetActionQueueCount(int combatantId)
+        {
+            EnsureNotDisposed();
+            return NativeMethods.ottrpg_action_queue_count(_handle, combatantId);
+        }
+
+        public QueuedActionEntry[] GetActionQueue(int combatantId)
+        {
+            EnsureNotDisposed();
+            int count = NativeMethods.ottrpg_action_queue_count(_handle, combatantId);
+            if (count <= 0)
+            {
+                return Array.Empty<QueuedActionEntry>();
+            }
+            var list = new QueuedActionEntry[count];
+            for (int i = 0; i < count; i++)
+            {
+                NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out QueuedActionInfo info, null, 0, out int req);
+                byte[] buf = new byte[Math.Max(1, req)];
+                NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out info, buf, buf.Length, out _);
+                string name = req > 1 ? Encoding.UTF8.GetString(buf, 0, req - 1) : string.Empty;
+                list[i] = new QueuedActionEntry(info, name);
+            }
+            return list;
+        }
+
+        public bool PopNextAction(int combatantId, out QueuedActionEntry entry)
+        {
+            EnsureNotDisposed();
+            int count = NativeMethods.ottrpg_action_queue_count(_handle, combatantId);
+            if (count <= 0)
+            {
+                entry = null;
+                return false;
+            }
+            NativeMethods.ottrpg_action_queue_get(_handle, combatantId, 0, out _, null, 0, out int req);
+            byte[] buf = new byte[Math.Max(1, req)];
+            int res = NativeMethods.ottrpg_action_queue_pop(_handle, combatantId, out QueuedActionInfo info, buf, buf.Length, out _);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                entry = null;
+                return false;
+            }
+            string name = req > 1 ? Encoding.UTF8.GetString(buf, 0, req - 1) : string.Empty;
+            entry = new QueuedActionEntry(info, name);
+            return true;
+        }
+
+        public bool CancelQueuedAction(int combatantId, int actionId, bool refundSlot = true)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_action_queue_cancel(_handle, combatantId, actionId, refundSlot ? 1 : 0);
+            return res == (int)OttrpgStatus.Ok;
+        }
+
+        public void ClearActionQueue(int combatantId, bool refundSlots = false)
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_action_queue_clear(_handle, combatantId, refundSlots ? 1 : 0);
         }
 
         public int CurrentTurn => NativeMethods.ottrpg_combat_current(_handle);

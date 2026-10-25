@@ -119,5 +119,7 @@ DamageProfile& Combatant::damageProfile() { return damageProfile_; }
 const DamageProfile& Combatant::damageProfile() const { return damageProfile_; }
 ConditionTracker& Combatant::conditions() { return conditions_; }
 const ConditionTracker& Combatant::conditions() const { return conditions_; }
+ActionEconomy& Combatant::actions() { return actions_; }
+const ActionEconomy& Combatant::actions() const { return actions_; }
 
 } // namespace openttrpg::core

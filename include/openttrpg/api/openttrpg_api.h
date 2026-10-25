@@ -138,6 +138,23 @@ typedef struct OttrpgRollResult {
     int32_t natural_min_count; /* dados mantidos que tiraram 1 */
 } OttrpgRollResult;
 
+typedef struct OttrpgActionSlotInfo {
+    int32_t action_type;
+    int32_t priority;
+    int32_t max_per_turn; /* < 0 = ilimitado */
+    int32_t current;      /* < 0 = ilimitado */
+    int32_t fallback_count;
+} OttrpgActionSlotInfo;
+
+typedef struct OttrpgQueuedActionInfo {
+    int32_t  action_id;
+    int32_t  required_type;
+    int32_t  consumed_type;
+    int32_t  cost;
+    OttrpgId target_id;
+    int32_t  priority;
+} OttrpgQueuedActionInfo;
+
 /* ------------------------------------------------------------------------- */
 /* Biblioteca                                                                */
 /* ------------------------------------------------------------------------- */
@@ -262,6 +279,59 @@ OTTRPG_API int32_t  ottrpg_combat_standing_team_count(OttrpgEncounter* encounter
 OTTRPG_API int32_t  ottrpg_combat_expired_count(OttrpgEncounter* encounter);
 OTTRPG_API int32_t  ottrpg_combat_expired_get(OttrpgEncounter* encounter, int32_t index, OttrpgId* out_entity,
                                               char* key_buffer, int32_t buffer_size, int32_t* out_required);
+
+/* ------------------------------------------------------------------------- */
+/* Economia de Ações e Fila de Prioridades de Turno (Genérico)               */
+/* ------------------------------------------------------------------------- */
+
+/* Define uma categoria arbitrária de ação (ex: Padrão, Bônus, Movimento, Livre, Reação, Ponto de Ação...) */
+OTTRPG_API int32_t ottrpg_action_define_type(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                             const char* name_utf8, int32_t priority, int32_t max_per_turn);
+OTTRPG_API int32_t ottrpg_action_remove_type(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type);
+
+/* Regra explícita e direcional de conversão: autoriza gastar `provider_type` quando `required_type` estiver zerado */
+OTTRPG_API int32_t ottrpg_action_add_fallback(OttrpgEncounter* encounter, OttrpgId id,
+                                              int32_t required_type, int32_t provider_type);
+OTTRPG_API int32_t ottrpg_action_remove_fallback(OttrpgEncounter* encounter, OttrpgId id,
+                                                 int32_t required_type, int32_t provider_type);
+OTTRPG_API int32_t ottrpg_action_clear_fallbacks(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type);
+
+OTTRPG_API int32_t ottrpg_action_get_slot(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                          OttrpgActionSlotInfo* out_info);
+OTTRPG_API int32_t ottrpg_action_set_max(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                         int32_t max_per_turn, int32_t refill_current);
+OTTRPG_API int32_t ottrpg_action_set_current(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                             int32_t current);
+OTTRPG_API int32_t ottrpg_action_modify_current(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                                int32_t delta);
+OTTRPG_API int32_t ottrpg_action_reset_turn(OttrpgEncounter* encounter, OttrpgId id);
+
+/* Retorna 1 se pode usar, 0 se não pode, ou < 0 em caso de erro. out_consumed_type recebe o slot que seria usado. */
+OTTRPG_API int32_t ottrpg_action_can_use(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type,
+                                         int32_t* out_consumed_type);
+OTTRPG_API int32_t ottrpg_action_spend(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type,
+                                       int32_t* out_consumed_type);
+OTTRPG_API int32_t ottrpg_action_spend_compound(OttrpgEncounter* encounter, OttrpgId id,
+                                                const int32_t* required_types, int32_t count);
+
+/* Enfileira ação na Fila de Prioridades do turno de acordo com a prioridade configurada para `required_type` */
+OTTRPG_API int32_t ottrpg_action_enqueue(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type,
+                                         const char* name_utf8, OttrpgId target_id,
+                                         int32_t* out_action_id, int32_t* out_consumed_type);
+OTTRPG_API int32_t ottrpg_action_enqueue_compound(OttrpgEncounter* encounter, OttrpgId id,
+                                                  const int32_t* required_types, int32_t count,
+                                                  int32_t execution_priority, const char* name_utf8,
+                                                  OttrpgId target_id, int32_t* out_action_id);
+OTTRPG_API int32_t ottrpg_action_queue_count(OttrpgEncounter* encounter, OttrpgId id);
+OTTRPG_API int32_t ottrpg_action_queue_get(OttrpgEncounter* encounter, OttrpgId id, int32_t index,
+                                           OttrpgQueuedActionInfo* out_info, char* name_buffer,
+                                           int32_t buffer_size, int32_t* out_required);
+OTTRPG_API int32_t ottrpg_action_queue_pop(OttrpgEncounter* encounter, OttrpgId id,
+                                           OttrpgQueuedActionInfo* out_info, char* name_buffer,
+                                           int32_t buffer_size, int32_t* out_required);
+OTTRPG_API int32_t ottrpg_action_queue_cancel(OttrpgEncounter* encounter, OttrpgId id, int32_t action_id,
+                                              int32_t refund_slot);
+OTTRPG_API int32_t ottrpg_action_queue_clear(OttrpgEncounter* encounter, OttrpgId id, int32_t refund_slots);
 
 /* ------------------------------------------------------------------------- */
 /* Dados (usam o gerador do encontro: mesma semente => mesma sequência)      */

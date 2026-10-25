@@ -146,6 +146,7 @@ bool Encounter::startCombat() {
         return false;
     }
     if (Combatant* first = find(tracker_.current())) {
+        first->actions().resetTurn();
         tickConditions(*first, TickTiming::TurnStart);
     }
     return true;
@@ -159,6 +160,7 @@ EntityId Encounter::nextTurn() {
 
     // Fim do turno de quem estava agindo
     if (Combatant* previous = find(tracker_.current())) {
+        previous->actions().clearQueue(false);
         tickConditions(*previous, TickTiming::TurnEnd);
     }
 
@@ -174,6 +176,7 @@ EntityId Encounter::nextTurn() {
     }
 
     if (Combatant* current = find(nextId)) {
+        current->actions().resetTurn();
         tickConditions(*current, TickTiming::TurnStart);
     }
     return nextId;
@@ -237,6 +240,30 @@ bool Encounter::addCondition(EntityId target, const Condition& condition, StackP
 
 bool Encounter::removeCondition(EntityId target, const std::string& key) {
     return require(target).conditions().remove(key);
+}
+
+bool Encounter::canUseAction(EntityId actor, ActionTypeId requiredType, ActionTypeId* outConsumedType) const {
+    const Combatant* c = find(actor);
+    if (c == nullptr) {
+        if (outConsumedType != nullptr) {
+            *outConsumedType = kInvalidActionType;
+        }
+        return false;
+    }
+    return c->actions().canUse(requiredType, 1, outConsumedType);
+}
+
+bool Encounter::spendAction(EntityId actor, ActionTypeId requiredType, ActionTypeId* outConsumedType) {
+    return require(actor).actions().spend(requiredType, 1, outConsumedType);
+}
+
+int Encounter::enqueueAction(EntityId actor, ActionTypeId requiredType, const std::string& name, int targetId,
+                             ActionTypeId* outConsumedType) {
+    return require(actor).actions().enqueueAction(requiredType, name, targetId, outConsumedType);
+}
+
+bool Encounter::popNextAction(EntityId actor, QueuedAction& outAction) {
+    return require(actor).actions().popNextAction(outAction);
 }
 
 // ---------------------------------------------------------------------------

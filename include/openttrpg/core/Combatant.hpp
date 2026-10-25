@@ -1,5 +1,6 @@
 #pragma once
 
+#include "openttrpg/core/ActionEconomy.hpp"
 #include "openttrpg/core/Condition.hpp"
 #include "openttrpg/core/Damage.hpp"
 #include "openttrpg/core/Resource.hpp"
@@ -80,6 +81,8 @@ public:
     [[nodiscard]] const DamageProfile& damageProfile() const;
     ConditionTracker& conditions();
     [[nodiscard]] const ConditionTracker& conditions() const;
+    ActionEconomy& actions();
+    [[nodiscard]] const ActionEconomy& actions() const;
 
 private:
     EntityId id_;
@@ -92,6 +95,7 @@ private:
     ds::LinkedList<NamedResource> resources_;
     DamageProfile damageProfile_;
     ConditionTracker conditions_;
+    ActionEconomy actions_;
 };
 
 } // namespace openttrpg::core

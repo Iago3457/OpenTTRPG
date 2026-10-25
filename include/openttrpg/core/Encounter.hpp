@@ -75,6 +75,13 @@ public:
     bool addCondition(EntityId target, const Condition& condition, StackPolicy policy = StackPolicy::Refresh);
     bool removeCondition(EntityId target, const std::string& key);
 
+    // ----- Economia de Ações e Fila de Prioridades por Turno -----
+    [[nodiscard]] bool canUseAction(EntityId actor, ActionTypeId requiredType, ActionTypeId* outConsumedType = nullptr) const;
+    bool spendAction(EntityId actor, ActionTypeId requiredType, ActionTypeId* outConsumedType = nullptr);
+    int enqueueAction(EntityId actor, ActionTypeId requiredType, const std::string& name, int targetId = 0,
+                      ActionTypeId* outConsumedType = nullptr);
+    bool popNextAction(EntityId actor, QueuedAction& outAction);
+
     // ----- Estado geral -----
     [[nodiscard]] bool isTeamDefeated(int team) const; // true se o time existe e todos estão fora
     [[nodiscard]] int standingTeamCount() const;       // Quantos times ainda têm alguém de pé
