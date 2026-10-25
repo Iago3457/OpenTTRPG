@@ -282,6 +282,99 @@ void testEncounterFaçade() {
     std::cout << "SUCESSO!\n";
 }
 
+void testActionPriorityQueueAndEconomy() {
+    std::cout << "[TEST] Fila de Prioridades e Economia de Ações Genérica (T20, D&D 5e, Fallbacks)... ";
+
+    // --- Cenário A: Tormenta20 (Livre -> Movimento -> Comum, com Padrão podendo pagar Movimento) ---
+    core::ActionEconomy t20Econ;
+    constexpr core::ActionTypeId kFree = 0;
+    constexpr core::ActionTypeId kMove = 1;
+    constexpr core::ActionTypeId kStd  = 2;
+
+    // Começa vazio (totalmente agnóstico)
+    assert(t20Econ.slots().is_empty());
+
+    t20Econ.defineActionType(kFree, "Ação Livre", 10, -1);
+    t20Econ.defineActionType(kMove, "Ação de Movimento", 20, 1);
+    t20Econ.defineActionType(kStd,  "Ação Comum", 30, 1);
+    // Regra explícita do sistema: Movimento pode usar Comum como substituto (mas não o contrário!)
+    assert(t20Econ.addFallback(kMove, kStd));
+
+    // 1. Enfileira ações FORA de ordem: primeiro uma Ação Comum, depois uma de Movimento, depois uma Livre
+    core::ActionTypeId consumed1 = core::kInvalidActionType;
+    core::ActionTypeId consumed2 = core::kInvalidActionType;
+    core::ActionTypeId consumed3 = core::kInvalidActionType;
+
+    int idStandard = t20Econ.enqueueAction(kStd,  "Golpe Pessoal", 2, &consumed1);
+    int idMovement = t20Econ.enqueueAction(kMove, "Avancar 9m", 0, &consumed2);
+    int idFree     = t20Econ.enqueueAction(kFree, "Ataque Especial", 0, &consumed3);
+
+    assert(idStandard > 0 && consumed1 == kStd);
+    assert(idMovement > 0 && consumed2 == kMove);
+    assert(idFree > 0 && consumed3 == kFree);
+    assert(t20Econ.queueSize() == 3);
+
+    // 2. Ao retirar da Fila de Prioridades, a ordem DEVE ser:
+    //    1º Ação Livre -> 2º Ação de Movimento -> 3º Ação Comum/Padrão
+    core::QueuedAction out;
+    assert(t20Econ.popNextAction(out));
+    assert(out.requiredType == kFree && out.name == "Ataque Especial");
+
+    assert(t20Econ.popNextAction(out));
+    assert(out.requiredType == kMove && out.name == "Avancar 9m");
+
+    assert(t20Econ.popNextAction(out));
+    assert(out.requiredType == kStd && out.name == "Golpe Pessoal");
+    assert(t20Econ.isQueueEmpty());
+
+    // 3. Testa a regra de substituição (Fallback):
+    //    Se o personagem gastar a Ação de Movimento, mas ainda tiver Ação Padrão,
+    //    ele PODE usar uma habilidade de Movimento pagando com a Ação Padrão!
+    t20Econ.resetTurn();
+    core::ActionTypeId usedSlot = core::kInvalidActionType;
+    assert(t20Econ.enqueueAction(kMove, "Andar 9m", 0, &usedSlot) > 0);
+    assert(usedSlot == kMove);
+    assert(t20Econ.remaining(kMove) == 0);
+    assert(t20Econ.remaining(kStd) == 1);
+
+    // Segunda ação de Movimento no mesmo turno -> deve consumir a Ação Padrão!
+    core::ActionTypeId fallbackSlot = core::kInvalidActionType;
+    assert(t20Econ.enqueueAction(kMove, "Sacar Arma", 0, &fallbackSlot) > 0);
+    assert(fallbackSlot == kStd);
+    assert(t20Econ.remaining(kStd) == 0);
+
+    // 4. O CONTRÁRIO NÃO VALE:
+    //    Se o personagem gastou sua Ação Padrão e só tem Ação de Movimento restante,
+    //    ele NÃO pode usar uma habilidade que exige Ação Padrão!
+    t20Econ.resetTurn();
+    assert(t20Econ.spend(kStd));
+    assert(t20Econ.remaining(kStd) == 0);
+    assert(t20Econ.remaining(kMove) == 1);
+
+    core::ActionTypeId failedSlot = core::kInvalidActionType;
+    assert(!t20Econ.canUse(kStd, 1, &failedSlot));
+    assert(t20Econ.enqueueAction(kStd, "Segundo Ataque Padrão", 0, &failedSlot) == 0);
+    assert(t20Econ.remaining(kMove) == 1);
+
+    // --- Cenário B: Sistema estilo D&D 5e (Ação, Ação Bônus, Movimento em metros, Reação) ---
+    // Onde Ação Padrão NÃO pode ser convertida em Ação Bônus mesmo tendo prioridade diferente!
+    core::ActionEconomy dnd5e;
+    constexpr core::ActionTypeId kDndBonus    = 10;
+    constexpr core::ActionTypeId kDndAction   = 20;
+    constexpr core::ActionTypeId kDndReaction = 30;
+    dnd5e.defineActionType(kDndBonus,    "Ação Bônus", 10, 1);
+    dnd5e.defineActionType(kDndAction,   "Ação Padrão", 20, 1);
+    dnd5e.defineActionType(kDndReaction, "Reação", 30, 1);
+    // Sem addFallback entre Ação Bônus e Ação Padrão!
+    assert(dnd5e.spend(kDndBonus));
+    assert(dnd5e.remaining(kDndBonus) == 0);
+    assert(dnd5e.remaining(kDndAction) == 1);
+    // Tentar usar outra Ação Bônus falha (Ação Padrão não paga Ação Bônus em D&D 5e)
+    assert(!dnd5e.canUse(kDndBonus));
+
+    std::cout << "SUCESSO!\n";
+}
+
 void testC_ApiDll() {
     std::cout << "[TEST] C API / DLL ABI (ottrpg_api.h P/Invoke compatível)... ";
     assert(ottrpg_api_version() == 1);
@@ -343,6 +436,37 @@ void testC_ApiDll() {
     assert(ottrpg_dice_roll_expression(enc, "1d20+4", &rollRes) == OTTRPG_OK);
     assert(rollRes.modifier == 4);
 
+    // Economia de Ações e Fila de Prioridades via C API (para P/Invoke C#)
+    constexpr int32_t kActFree = 0;
+    constexpr int32_t kActMove = 1;
+    constexpr int32_t kActStd  = 2;
+    assert(ottrpg_action_define_type(enc, p2, kActFree, "Livre", 10, -1) == OTTRPG_OK);
+    assert(ottrpg_action_define_type(enc, p2, kActMove, "Movimento", 20, 1) == OTTRPG_OK);
+    assert(ottrpg_action_define_type(enc, p2, kActStd,  "Padrao", 30, 1) == OTTRPG_OK);
+    assert(ottrpg_action_add_fallback(enc, p2, kActMove, kActStd) == OTTRPG_OK);
+
+    int32_t actId = 0, consumedType = -1;
+    // Enfileira Comum e depois Livre para p2 (que está no turno atual)
+    assert(ottrpg_action_enqueue(enc, p2, kActStd, "Mordida", p1, &actId, &consumedType) == OTTRPG_OK);
+    assert(consumedType == kActStd);
+    assert(ottrpg_action_enqueue(enc, p2, kActFree, "Grito de Guerra", 0, &actId, &consumedType) == OTTRPG_OK);
+    assert(ottrpg_action_queue_count(enc, p2) == 2);
+
+    // Pop deve devolver primeiro a Ação Livre ("Grito de Guerra") e depois a Comum ("Mordida")
+    OttrpgQueuedActionInfo qInfo;
+    char actName[64];
+    int32_t actReq = 0;
+    assert(ottrpg_action_queue_pop(enc, p2, &qInfo, actName, sizeof(actName), &actReq) == OTTRPG_OK);
+    assert(qInfo.required_type == kActFree);
+    assert(std::string(actName) == "Grito de Guerra");
+
+    assert(ottrpg_action_queue_pop(enc, p2, &qInfo, actName, sizeof(actName), &actReq) == OTTRPG_OK);
+    assert(qInfo.required_type == kActStd);
+    assert(std::string(actName) == "Mordida");
+
+    // Como p2 já gastou a Ação Padrão e só tem Movimento, tentar outra Padrão deve falhar
+    assert(ottrpg_action_can_use(enc, p2, kActStd, &consumedType) == 0);
+
     ottrpg_encounter_destroy(enc);
     std::cout << "SUCESSO!\n";
 }
@@ -356,6 +480,7 @@ int main() {
     testConditionTracker();
     testInitiativeTracker();
     testEncounterFaçade();
+    testActionPriorityQueueAndEconomy();
     testC_ApiDll();
     std::cout << "\n>>> TODOS OS TESTES DO CORE GENÉRICO PASSARAM COM ÊXITO! <<<\n";
     return 0;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using OpenTTRPG.Native;
+using OpenTTRPG.Tormenta20;
 
 namespace OpenTTRPG.CLI
 {
@@ -172,6 +173,7 @@ namespace OpenTTRPG.CLI
             warrior.Inventory.Add(new CharacterItem("Escudo Leve", "Escudo de madeira reforçada", ItemType.Shield, 1, "", "20/x2", 1, -1, 5, true));
             warrior.Inventory.Add(new CharacterItem("Bálsamo Restaurador", "Cura 2d4 PV", ItemType.Consumable, 1, "", "20/x2", 0, 0, 10, false));
             warrior.Skills.Add(new CharacterSkill("Ataque Especial", "Gasta 1 PM para receber +4 no ataque ou +1d6 no dano", 1, ActionType.Free, 4));
+            warrior.Skills.Add(new CharacterSkill("Avanço Tático", "Desloca-se pelo campo de batalha buscando flanco", 0, ActionType.Movement, 0));
             warrior.Skills.Add(new CharacterSkill("Golpe Pessoal", "Ataque devastador personalizado de classe", 2, ActionType.Standard, 0));
             _characters.Add(warrior);
 
@@ -187,9 +189,22 @@ namespace OpenTTRPG.CLI
             };
             mage.Inventory.Add(new CharacterItem("Varinha Arcana", "Foco arcano para canalização", ItemType.Weapon, 1, "1d4", "20/x2", 0, 0, 20, true));
             mage.Inventory.Add(new CharacterItem("Poção de Mana", "Recupera 2d4 PM", ItemType.Consumable, 1, "", "20/x2", 0, 0, 30, false));
+            mage.Skills.Add(new CharacterSkill("Passo Etéreo", "Reposicionamento rápido arcano (Movimento)", 1, ActionType.Movement, 0));
             mage.Skills.Add(new CharacterSkill("Mísseis Mágicos", "Projéteis de essência: 2d4+2 de dano sem teste de resistência", 1, ActionType.Standard, 0));
             mage.Skills.Add(new CharacterSkill("Curar Ferimentos", "Recupera 2d8+2 PV de um aliado tocado", 1, ActionType.Standard, 0));
             _characters.Add(mage);
+        }
+
+        private static T20ActionType MapActionType(ActionType action)
+        {
+            return action switch
+            {
+                ActionType.Free => T20ActionType.Free,
+                ActionType.Movement => T20ActionType.Movement,
+                ActionType.Standard => T20ActionType.Standard,
+                ActionType.Reaction => T20ActionType.Reaction,
+                _ => T20ActionType.Standard
+            };
         }
 
         private static string GetCleanLine()
@@ -452,6 +467,7 @@ namespace OpenTTRPG.CLI
                 session.SetResourceCurrent(eid, HealthResourceId, c.CurrentHp);
                 session.AddResource(eid, ManaResourceId, "PM", c.MaxPm, 0);
                 session.SetResourceCurrent(eid, ManaResourceId, c.CurrentPm);
+                Tormenta20ActionRules.ConfigureTurnActions(session, eid, standardActions: 1, movementActions: 1, freeActions: -1);
                 charEntityIds.Add(eid);
 
                 string dexStr = c.Dexterity >= 0 ? $"+{c.Dexterity}" : c.Dexterity.ToString();
@@ -576,22 +592,51 @@ namespace OpenTTRPG.CLI
                 Console.WriteLine("\n======================================================================");
                 Console.WriteLine($">> [RODADA {session.Round}]");
                 Console.WriteLine($">> VEZ DE: {currentName} (ID {currentId}) | PV: {hp.Current}/{hp.Max} | PM: {pm.Current}/{pm.Max} | DEFESA: {defense} | INICIATIVA: {info.Initiative}");
+                Console.WriteLine($">> AÇÕES NO TURNO (T20): {Tormenta20ActionRules.FormatRemainingActions(session, currentId)}");
+
+                QueuedActionEntry[] queued = session.GetActionQueue(currentId);
+                if (queued.Length > 0)
+                {
+                    Console.WriteLine(">> FILA DE PRIORIDADES DE AÇÕES (Ordem: Livre -> Movimento -> Padrão):");
+                    for (int q = 0; q < queued.Length; q++)
+                    {
+                        var qa = queued[q];
+                        string reqName = Tormenta20ActionRules.GetActionTypeName((T20ActionType)qa.RequiredType);
+                        string consName = Tormenta20ActionRules.GetActionTypeName((T20ActionType)qa.ConsumedType);
+                        string conv = qa.UsedFallback ? $" [Pagou usando {consName}]" : "";
+                        Console.WriteLine($"     {q + 1}º. [{reqName}] {qa.Name}{conv}");
+                    }
+                }
                 Console.WriteLine("======================================================================");
 
                 Console.WriteLine("Ações de Tormenta20 no Turno:");
-                Console.WriteLine("  1. Encerrar Turno (Passar para o próximo combatente ativo)");
-                Console.WriteLine("  2. Rolar Ataque / Teste de Perícia (1d20 + Modificador)");
-                Console.WriteLine("  3. Usar Poder / Habilidade / Magia (Custo dinâmico de PM)");
-                Console.WriteLine("  4. Causar Dano a um Alvo (Selecionar por ID)");
-                Console.WriteLine("  5. Curar um Alvo (Selecionar por ID)");
-                Console.WriteLine("  6. Alternar Estado Fora de Combate / Morrido de um Combatente");
-                Console.WriteLine("  7. Encerrar Combate");
+                Console.WriteLine("  1. Encerrar Turno (Executa a Fila de Prioridades: Livre -> Movimento -> Padrão e avança)");
+                Console.WriteLine("  2. Realizar Ataque Padrão (Consome Ação Padrão; bloqueia se só tiver Movimento)");
+                Console.WriteLine("  3. Realizar Ação de Movimento (Consome Movimento, ou usa Ação Padrão se não tiver Movimento!)");
+                Console.WriteLine("  4. Usar Poder / Habilidade / Magia (Enfileira por Prioridade: Livre -> Movimento -> Padrão)");
+                Console.WriteLine("  5. Executar Próxima Ação da Fila de Prioridades Agora");
+                Console.WriteLine("  6. Causar Dano a um Alvo (Selecionar por ID)");
+                Console.WriteLine("  7. Curar um Alvo (Selecionar por ID)");
+                Console.WriteLine("  8. Alternar Estado Fora de Combate / Morrido de um Combatente");
+                Console.WriteLine("  9. Encerrar Combate");
                 Console.Write("Escolha uma ação: ");
 
                 int action = ParsePositiveInt(GetCleanLine(), 0);
 
                 if (action == 1)
                 {
+                    List<QueuedActionEntry> executed = Tormenta20ActionRules.DrainPriorityQueueInOrder(session, currentId);
+                    if (executed.Count > 0)
+                    {
+                        Console.WriteLine("\n>> Executando Fila de Prioridades do turno (Livre -> Movimento -> Padrão):");
+                        for (int i = 0; i < executed.Count; i++)
+                        {
+                            var ex = executed[i];
+                            string rName = Tormenta20ActionRules.GetActionTypeName((T20ActionType)ex.RequiredType);
+                            Console.WriteLine($"   [{i + 1}º] ({rName}) {ex.Name} executada!");
+                        }
+                    }
+
                     try
                     {
                         session.NextTurn();
@@ -604,16 +649,33 @@ namespace OpenTTRPG.CLI
                 }
                 else if (action == 2)
                 {
-                    Console.Write("Modificador do ataque/perícia (ex: +6, 0): ");
-                    int mod = ParseSignedInt(GetCleanLine(), 0);
-                    string expr = mod >= 0 ? $"1d20+{mod}" : $"1d20{mod}";
-                    RollResult roll = session.Roll(expr);
-                    Console.WriteLine($"Resultado: {roll.Total} (Dado: {roll.DiceTotal}, Mod: {roll.Modifier})");
+                    var actRes = Tormenta20ActionRules.EnqueueTurnAction(
+                        session, currentId, T20ActionType.Standard, "Agredir (Ataque Padrão)");
+                    Console.WriteLine(actRes.Message);
+                    if (actRes.Success)
+                    {
+                        Console.Write("Modificador do ataque/perícia (ex: +6, 0): ");
+                        int mod = ParseSignedInt(GetCleanLine(), 0);
+                        string expr = mod >= 0 ? $"1d20+{mod}" : $"1d20{mod}";
+                        RollResult roll = session.Roll(expr);
+                        Console.WriteLine($"Resultado do Ataque: {roll.Total} (Dado: {roll.DiceTotal}, Mod: {roll.Modifier})");
+                    }
                 }
                 else if (action == 3)
                 {
+                    Console.Write("Descrição do Movimento (ex: Deslocar 9m, Sacar Arma, Levantar-se): ");
+                    string movDesc = GetCleanLine();
+                    if (string.IsNullOrEmpty(movDesc)) movDesc = "Movimentar-se";
+
+                    var actRes = Tormenta20ActionRules.EnqueueTurnAction(
+                        session, currentId, T20ActionType.Movement, movDesc);
+                    Console.WriteLine(actRes.Message);
+                }
+                else if (action == 4)
+                {
                     int pmCost;
                     string skName = "Poder/Magia";
+                    T20ActionType reqActionType = T20ActionType.Standard;
 
                     if (charIdx >= 0 && _characters[charIdx].Skills.Count > 0)
                     {
@@ -621,40 +683,67 @@ namespace OpenTTRPG.CLI
                         Console.WriteLine($"\nHabilidades de {currentName}:");
                         for (int i = 0; i < skills.Count; i++)
                         {
-                            Console.WriteLine($"  {i + 1}. {skills[i].Name} ({skills[i].PmCost} PM) - {skills[i].Description}");
+                            T20ActionType skT20Type = MapActionType(skills[i].Action);
+                            Console.WriteLine($"  {i + 1}. {skills[i].Name} [{Tormenta20ActionRules.GetActionTypeName(skT20Type)} | {skills[i].PmCost} PM] - {skills[i].Description}");
                         }
-                        Console.WriteLine($"  {skills.Count + 1}. Digitar custo de PM avulso");
+                        Console.WriteLine($"  {skills.Count + 1}. Digitar habilidade/magia avulsa");
                         Console.Write("Escolha a habilidade: ");
                         int skChoice = ParsePositiveInt(GetCleanLine(), 0);
 
                         if (skChoice >= 1 && skChoice <= skills.Count)
                         {
-                            pmCost = skills[skChoice - 1].PmCost;
-                            skName = skills[skChoice - 1].Name;
+                            CharacterSkill chosen = skills[skChoice - 1];
+                            pmCost = chosen.PmCost;
+                            skName = chosen.Name;
+                            reqActionType = MapActionType(chosen.Action);
                         }
                         else
                         {
+                            Console.Write("Tipo de Ação (1=Livre, 2=Movimento, 3=Padrão/Comum, 4=Completa): ");
+                            int tChoice = ParsePositiveInt(GetCleanLine(), 3);
+                            reqActionType = tChoice switch
+                            {
+                                1 => T20ActionType.Free,
+                                2 => T20ActionType.Movement,
+                                4 => T20ActionType.Full,
+                                _ => T20ActionType.Standard
+                            };
                             Console.Write("Custo em PM: ");
                             pmCost = Math.Max(0, ParseSignedInt(GetCleanLine(), 1));
                         }
                     }
                     else
                     {
+                        Console.Write("Tipo de Ação (1=Livre, 2=Movimento, 3=Padrão/Comum, 4=Completa): ");
+                        int tChoice = ParsePositiveInt(GetCleanLine(), 3);
+                        reqActionType = tChoice switch
+                        {
+                            1 => T20ActionType.Free,
+                            2 => T20ActionType.Movement,
+                            4 => T20ActionType.Full,
+                            _ => T20ActionType.Standard
+                        };
                         Console.Write("Custo em PM do poder/magia: ");
                         pmCost = Math.Max(0, ParseSignedInt(GetCleanLine(), 1));
                     }
 
-                    if (session.SpendResource(currentId, ManaResourceId, pmCost))
+                    var res = Tormenta20ActionRules.EnqueueTurnAction(session, currentId, reqActionType, skName, 0, pmCost);
+                    SyncBackToSheets();
+                    Console.WriteLine(res.Message);
+                }
+                else if (action == 5)
+                {
+                    if (session.PopNextAction(currentId, out QueuedActionEntry nextEntry))
                     {
-                        SyncBackToSheets();
-                        Console.WriteLine($"[OK] '{skName}' ativada! {pmCost} PM gastos.");
+                        string rName = Tormenta20ActionRules.GetActionTypeName((T20ActionType)nextEntry.RequiredType);
+                        Console.WriteLine($"[EXECUTADA] ({rName}) {nextEntry.Name} foi consumida da frente da Fila de Prioridades!");
                     }
                     else
                     {
-                        Console.WriteLine($"[AVISO] PM insuficiente para usar '{skName}' ({pmCost} PM necessários)!");
+                        Console.WriteLine("[AVISO] A Fila de Prioridades de ações deste turno está vazia.");
                     }
                 }
-                else if (action == 4)
+                else if (action == 6)
                 {
                     int targetId = SelectParticipantTarget("Selecione o ALVO que sofrerá o dano:");
                     if (targetId > 0)
@@ -668,7 +757,7 @@ namespace OpenTTRPG.CLI
                         Console.WriteLine($"[OK] {targetName} sofreu {res.FinalAmount} de dano!{fallenMsg}");
                     }
                 }
-                else if (action == 5)
+                else if (action == 7)
                 {
                     int targetId = SelectParticipantTarget("Selecione o ALVO que receberá a cura:");
                     if (targetId > 0)
@@ -681,7 +770,7 @@ namespace OpenTTRPG.CLI
                         Console.WriteLine($"[OK] {targetName} recuperou {healed} PV!");
                     }
                 }
-                else if (action == 6)
+                else if (action == 8)
                 {
                     int targetId = SelectParticipantTarget("Selecione o combatente para alternar Fora de Combate:");
                     if (targetId > 0)
@@ -693,7 +782,7 @@ namespace OpenTTRPG.CLI
                         Console.WriteLine($"[OK] {targetName} agora está {(nextForcedOut ? "FORA DE COMBATE" : "ATIVO NO COMBATE")}.");
                     }
                 }
-                else if (action == 7)
+                else if (action == 9)
                 {
                     SyncBackToSheets();
                     session.EndCombat();

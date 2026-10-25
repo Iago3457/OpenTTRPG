@@ -1,7 +1,7 @@
 - Melhorar Combate
     - [x] Fix: Pula turno ao executar alguma ação, como causar dano (Resolvido no Core: ações não avançam turno; `nextTurn` é explícito)
     - [x] Feat: Selecionar alvo de ataque e etc. (Resolvido no Core: `dealDamage(targetId, ...)` opera por ID de entidade)
-    - [x] Feat: Verificação de ações e custos (Resolvido no Core: `ResourcePool::spend` e `canSpend`)
+    - [x] Feat: Verificação de ações e custos (Resolvido no Core: `ResourcePool::spend`, `ActionEconomy` e `PriorityQueue` com ordem Livre -> Movimento -> Comum e conversão Padrão -> Movimento)
     - [x] Fix: Rolagem de iniciativa (todos participavam obrigatoriamente do combate) — Resolvido permitindo selecionar a lista de participantes: `Encounter::rollInitiativeForList` no Core C++, `ottrpg_initiative_roll_list` na C API, `EncounterSession.RollInitiativeForList` no C# e seleção de combatentes no `CLIController` (C++ e C#)
     - [x] Feat/Fix: Escolher habilidades e fazer o custo de PM de maneira dinâmica (`spendResource(target, resourceId, amount)`)
     - [x] FIX ERRO CRÍTICO: Sofre dano o próximo integrante da fila pela iniciativa (Resolvido no Core com alvo por ID)
@@ -13,9 +13,10 @@
     - [x] Pipeline de dano agnóstico (`Damage`) com resistências, fraquezas, imunidades e reduções de dano
     - [x] Rastreador de condições e status (`ConditionTracker`) com durações e ticks de início/fim de turno
     - [x] Fila de iniciativa ordenada dinâmica (`InitiativeTracker`) com desempates e suporte a atrasar ação
-    - [x] Fachada de encontro (`Encounter`) orquestrando combatentes, turnos e dados
+    - [x] Fila de Prioridades (`PriorityQueue`) e Economia de Ações de Turno (`ActionEconomy`) com ordem Livre -> Movimento -> Comum e downgrade unidirecional (Padrão pode ser usada como Movimento, nunca o inverso)
+    - [x] Fachada de encontro (`Encounter`) orquestrando combatentes, turnos, ações e dados
     - [x] C ABI estável (`openttrpg_api.h` / `src/api/openttrpg_api.cpp`) compilado para DLL / `.so` (`OTTRPG_BUILD_DLL`)
-    - [x] Bindings em C# com P/Invoke (`bindings/csharp/OpenTTRPG.cs`)
+    - [x] Bindings em C# com P/Invoke (`bindings/csharp/OpenTTRPG.cs`), Regras de Tormenta20 Jogo do Ano (`bindings/csharp/Tormenta20Rules.cs`) e CLI em C# (`bindings/csharp/CLIController.cs`)
     - [x] Bateria de testes unitários automatizados (`tests/test_generic_core.cpp`)
 
 - Interface gráfica do projeto

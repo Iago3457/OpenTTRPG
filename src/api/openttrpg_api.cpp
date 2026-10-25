@@ -1039,6 +1039,454 @@ OTTRPG_API int32_t ottrpg_combat_expired_get(OttrpgEncounter* encounter, int32_t
 }
 
 /* ------------------------------------------------------------------------- */
+/* Economia de Ações e Fila de Prioridades de Turno (Genérico)               */
+/* ------------------------------------------------------------------------- */
+
+OTTRPG_API int32_t ottrpg_action_define_type(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                             const char* name_utf8, int32_t priority, int32_t max_per_turn) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (name_utf8 == nullptr) {
+        set_last_error("Nome do tipo de ação nulo.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    try {
+        c->actions().defineActionType(action_type, name_utf8, priority, max_per_turn);
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_action_remove_type(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().removeActionType(action_type)) {
+        set_last_error("Tipo de ação não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_add_fallback(OttrpgEncounter* encounter, OttrpgId id,
+                                              int32_t required_type, int32_t provider_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().addFallback(required_type, provider_type)) {
+        set_last_error("Não foi possível registrar regra de conversão entre os tipos de ação informados.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_remove_fallback(OttrpgEncounter* encounter, OttrpgId id,
+                                                 int32_t required_type, int32_t provider_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().removeFallback(required_type, provider_type)) {
+        set_last_error("Regra de fallback não encontrada.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_clear_fallbacks(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().clearFallbacks(required_type)) {
+        set_last_error("Tipo de ação não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_get_slot(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                          OttrpgActionSlotInfo* out_info) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (out_info == nullptr) {
+        set_last_error("Ponteiro out_info nulo.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    const openttrpg::core::ActionTypeSlot* s = c->actions().slot(action_type);
+    if (s == nullptr) {
+        set_last_error("Tipo de ação não encontrado para este combatente.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    out_info->action_type = s->id;
+    out_info->priority = s->priority;
+    out_info->max_per_turn = s->maxPerTurn;
+    out_info->current = s->current;
+    out_info->fallback_count = static_cast<int32_t>(s->fallbackProviders.size());
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_set_max(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                         int32_t max_per_turn, int32_t refill_current) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().setMaxPerTurn(action_type, max_per_turn, refill_current != 0)) {
+        set_last_error("Tipo de ação não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_set_current(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                             int32_t current) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().setCurrent(action_type, current)) {
+        set_last_error("Tipo de ação não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_modify_current(OttrpgEncounter* encounter, OttrpgId id, int32_t action_type,
+                                                int32_t delta) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().modifyCurrent(action_type, delta)) {
+        set_last_error("Tipo de ação não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_reset_turn(OttrpgEncounter* encounter, OttrpgId id) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    c->actions().resetTurn();
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_can_use(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type,
+                                         int32_t* out_consumed_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    int consumed = openttrpg::core::kInvalidActionType;
+    const bool ok = c->actions().canUse(required_type, 1, &consumed);
+    if (out_consumed_type != nullptr) {
+        *out_consumed_type = consumed;
+    }
+    return ok ? 1 : 0;
+}
+
+OTTRPG_API int32_t ottrpg_action_spend(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type,
+                                       int32_t* out_consumed_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    int consumed = openttrpg::core::kInvalidActionType;
+    if (!c->actions().spend(required_type, 1, &consumed)) {
+        set_last_error("Ações insuficientes no turno para realizar esta ação.");
+        if (out_consumed_type != nullptr) {
+            *out_consumed_type = openttrpg::core::kInvalidActionType;
+        }
+        return OTTRPG_ERR_INSUFFICIENT_RESOURCE;
+    }
+    if (out_consumed_type != nullptr) {
+        *out_consumed_type = consumed;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_spend_compound(OttrpgEncounter* encounter, OttrpgId id,
+                                                const int32_t* required_types, int32_t count) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (count < 0 || (count > 0 && required_types == nullptr)) {
+        set_last_error("Lista de tipos de ação inválida.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().spendCompound(required_types, static_cast<std::size_t>(count))) {
+        set_last_error("Ações insuficientes no turno para realizar a ação composta.");
+        return OTTRPG_ERR_INSUFFICIENT_RESOURCE;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_enqueue(OttrpgEncounter* encounter, OttrpgId id, int32_t required_type,
+                                         const char* name_utf8, OttrpgId target_id,
+                                         int32_t* out_action_id, int32_t* out_consumed_type) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (name_utf8 == nullptr) {
+        set_last_error("Nome da ação nulo.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    try {
+        int consumed = openttrpg::core::kInvalidActionType;
+        const int actionId = c->actions().enqueueAction(required_type, name_utf8, target_id, &consumed);
+        if (actionId <= 0) {
+            set_last_error("Ações insuficientes no turno para enfileirar esta ação.");
+            if (out_action_id != nullptr) *out_action_id = 0;
+            if (out_consumed_type != nullptr) *out_consumed_type = openttrpg::core::kInvalidActionType;
+            return OTTRPG_ERR_INSUFFICIENT_RESOURCE;
+        }
+        if (out_action_id != nullptr) *out_action_id = actionId;
+        if (out_consumed_type != nullptr) *out_consumed_type = consumed;
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_action_enqueue_compound(OttrpgEncounter* encounter, OttrpgId id,
+                                                  const int32_t* required_types, int32_t count,
+                                                  int32_t execution_priority, const char* name_utf8,
+                                                  OttrpgId target_id, int32_t* out_action_id) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (name_utf8 == nullptr || count < 0 || (count > 0 && required_types == nullptr)) {
+        set_last_error("Argumentos inválidos para ação composta.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    try {
+        const int actionId = c->actions().enqueueCompoundAction(
+            required_types, static_cast<std::size_t>(count), execution_priority, name_utf8, target_id);
+        if (actionId <= 0) {
+            set_last_error("Ações insuficientes no turno para enfileirar a ação composta.");
+            if (out_action_id != nullptr) *out_action_id = 0;
+            return OTTRPG_ERR_INSUFFICIENT_RESOURCE;
+        }
+        if (out_action_id != nullptr) *out_action_id = actionId;
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_action_queue_count(OttrpgEncounter* encounter, OttrpgId id) {
+    if (encounter == nullptr) {
+        return 0;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        return 0;
+    }
+    return static_cast<int32_t>(c->actions().queueSize());
+}
+
+OTTRPG_API int32_t ottrpg_action_queue_get(OttrpgEncounter* encounter, OttrpgId id, int32_t index,
+                                           OttrpgQueuedActionInfo* out_info, char* name_buffer,
+                                           int32_t buffer_size, int32_t* out_required) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (index < 0 || static_cast<std::size_t>(index) >= c->actions().queueSize()) {
+        set_last_error("Índice da fila de prioridades fora dos limites.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    const openttrpg::core::QueuedAction& qa = c->actions().queue().get(static_cast<std::size_t>(index));
+    if (out_info != nullptr) {
+        out_info->action_id = qa.actionId;
+        out_info->required_type = qa.requiredType;
+        out_info->consumed_type = qa.consumedType;
+        out_info->cost = qa.cost;
+        out_info->target_id = qa.targetId;
+        out_info->priority = qa.priority;
+    }
+    if (name_buffer != nullptr || out_required != nullptr) {
+        return copy_string_to_buffer(qa.name, name_buffer, buffer_size, out_required);
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_queue_pop(OttrpgEncounter* encounter, OttrpgId id,
+                                           OttrpgQueuedActionInfo* out_info, char* name_buffer,
+                                           int32_t buffer_size, int32_t* out_required) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    openttrpg::core::QueuedAction qa;
+    if (!c->actions().popNextAction(qa)) {
+        set_last_error("Fila de prioridades de ações está vazia.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (out_info != nullptr) {
+        out_info->action_id = qa.actionId;
+        out_info->required_type = qa.requiredType;
+        out_info->consumed_type = qa.consumedType;
+        out_info->cost = qa.cost;
+        out_info->target_id = qa.targetId;
+        out_info->priority = qa.priority;
+    }
+    if (name_buffer != nullptr || out_required != nullptr) {
+        return copy_string_to_buffer(qa.name, name_buffer, buffer_size, out_required);
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_queue_cancel(OttrpgEncounter* encounter, OttrpgId id, int32_t action_id,
+                                              int32_t refund_slot) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->actions().cancelQueuedAction(action_id, refund_slot != 0)) {
+        set_last_error("Ação não encontrada na fila de prioridades.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_action_queue_clear(OttrpgEncounter* encounter, OttrpgId id, int32_t refund_slots) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    c->actions().clearQueue(refund_slots != 0);
+    return OTTRPG_OK;
+}
+
+/* ------------------------------------------------------------------------- */
 /* Dados                                                                     */
 /* ------------------------------------------------------------------------- */
 

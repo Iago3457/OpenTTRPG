@@ -482,6 +482,11 @@ void CLIController::handleInitiativeCombat() {
     }
 
     constexpr core::ResourceId kManaResource = 1;
+    // Tipos de ação específicos de Tormenta20 (definidos pelo sistema consumidor sobre o Core genérico)
+    constexpr core::ActionTypeId kT20FreeAction     = 0;
+    constexpr core::ActionTypeId kT20MovementAction = 1;
+    constexpr core::ActionTypeId kT20StandardAction = 2;
+
     core::Encounter encounter;
 
     // Mapa entre o EntityId do Encounter e o índice no vetor characters
@@ -501,6 +506,11 @@ void CLIController::handleInitiativeCombat() {
             if (auto* pm = combatant->resource(kManaResource)) {
                 pm->setCurrent(c.getSheet().getCurrentPm());
             }
+            // Registra as ações de Tormenta20 Jogo do Ano no Core genérico
+            combatant->actions().defineActionType(kT20FreeAction, "Ação Livre", 10, -1);
+            combatant->actions().defineActionType(kT20MovementAction, "Ação de Movimento", 20, 1);
+            combatant->actions().defineActionType(kT20StandardAction, "Ação Padrão", 30, 1);
+            combatant->actions().addFallback(kT20MovementAction, kT20StandardAction);
         }
         charEntityIds.push_back(eid);
 
@@ -625,6 +635,27 @@ void CLIController::handleInitiativeCombat() {
         int defense = (charIdx < characters.size()) ? characters[charIdx].getSheet().getDefense() : 10;
         int initVal = encounter.tracker().initiativeOf(currentId);
 
+        auto actionTypeName = [](core::ActionTypeId t) -> std::string {
+            if (t == kT20FreeAction) return "Ação Livre";
+            if (t == kT20MovementAction) return "Ação de Movimento";
+            if (t == kT20StandardAction) return "Ação Comum/Padrão";
+            return "Ação";
+        };
+
+        auto mapModelActionToCore = [](core::ActionType act) -> core::ActionTypeId {
+            switch (act) {
+                case core::ActionType::Free: return kT20FreeAction;
+                case core::ActionType::Movement: return kT20MovementAction;
+                case core::ActionType::Standard: return kT20StandardAction;
+                case core::ActionType::Full: return kT20StandardAction;
+                case core::ActionType::Reaction: return kT20FreeAction;
+            }
+            return kT20StandardAction;
+        };
+
+        const auto* stdSlot = current->actions().slot(kT20StandardAction);
+        const auto* movSlot = current->actions().slot(kT20MovementAction);
+
         std::cout << "\n======================================================================\n";
         std::cout << ">> [RODADA " << encounter.round() << "]\n";
         std::cout << ">> VEZ DE: " << current->name() << " (ID " << currentId << ")"
@@ -632,72 +663,152 @@ void CLIController::handleInitiativeCombat() {
                   << " | PM: " << (pm ? pm->current() : 0) << "/" << (pm ? pm->max() : 0)
                   << " | DEFESA: " << defense
                   << " | INICIATIVA: " << initVal << "\n";
+        std::cout << ">> AÇÕES NO TURNO: Comum/Padrão: " << (stdSlot ? stdSlot->current : 0) << "/" << (stdSlot ? stdSlot->maxPerTurn : 0)
+                  << " | Movimento: " << (movSlot ? movSlot->current : 0) << "/" << (movSlot ? movSlot->maxPerTurn : 0)
+                  << " | Livre: Ilimitadas\n";
+
+        if (!current->actions().isQueueEmpty()) {
+            std::cout << ">> FILA DE PRIORIDADES DO TURNO (Ordem: Livre -> Movimento -> Comum):\n";
+            current->actions().queue().for_each([&](const core::QueuedAction& qa, int, std::size_t idx) {
+                std::cout << "     " << (idx + 1) << "º. [" << actionTypeName(qa.requiredType) << "] " << qa.name;
+                if (qa.requiredType != qa.consumedType) {
+                    std::cout << " (Pagou usando " << actionTypeName(qa.consumedType) << ")";
+                }
+                std::cout << "\n";
+            });
+        }
         std::cout << "======================================================================\n";
 
         std::cout << "Ações de Tormenta20 no Turno:\n";
-        std::cout << "  1. Encerrar Turno (Passar para o próximo combatente ativo)\n";
-        std::cout << "  2. Rolar Ataque / Teste de Perícia (1d20 + Modificador)\n";
-        std::cout << "  3. Usar Poder / Habilidade / Magia (Custo dinâmico de PM)\n";
-        std::cout << "  4. Causar Dano a um Alvo (Selecionar por ID)\n";
-        std::cout << "  5. Curar um Alvo (Selecionar por ID)\n";
-        std::cout << "  6. Alternar Estado Fora de Combate / Morrido de um Combatente\n";
-        std::cout << "  7. Encerrar Combate\n";
+        std::cout << "  1. Encerrar Turno (Executa a Fila de Prioridades: Livre -> Movimento -> Comum e passa a vez)\n";
+        std::cout << "  2. Realizar Ataque Padrão (Consome Ação Comum/Padrão; bloqueia se só tiver Movimento)\n";
+        std::cout << "  3. Realizar Ação de Movimento (Consome Movimento, ou usa Ação Comum/Padrão se não tiver Movimento)\n";
+        std::cout << "  4. Usar Poder / Habilidade / Magia (Enfileira por Prioridade: Livre -> Movimento -> Comum)\n";
+        std::cout << "  5. Executar Próxima Ação da Fila de Prioridades Agora\n";
+        std::cout << "  6. Causar Dano a um Alvo (Selecionar por ID)\n";
+        std::cout << "  7. Curar um Alvo (Selecionar por ID)\n";
+        std::cout << "  8. Alternar Estado Fora de Combate / Morrido de um Combatente\n";
+        std::cout << "  9. Encerrar Combate\n";
         std::cout << "Escolha uma ação: ";
 
         std::string actionStr = getCleanLine();
         int action = parseMultiplier(actionStr);
 
         if (action == 1) {
+            if (!current->actions().isQueueEmpty()) {
+                std::cout << "\n>> Executando Fila de Prioridades do turno (Livre -> Movimento -> Comum):\n";
+                std::size_t step = 1;
+                core::QueuedAction qa;
+                while (current->actions().popNextAction(qa)) {
+                    std::cout << "   [" << step++ << "º] (" << actionTypeName(qa.requiredType) << ") " << qa.name << " executada!\n";
+                }
+            }
             core::EntityId nextId = encounter.nextTurn();
             if (nextId == core::kInvalidId) {
                 std::cout << "\n[FIM] Nenhum combatente ativo restante na iniciativa.\n";
                 inCombat = false;
             }
         } else if (action == 2) {
-            std::cout << "Modificador do ataque/perícia (ex: +6, 0): ";
-            int mod = parseBonus(getCleanLine());
-            auto roll = diceRoller.rollTest(mod);
-            std::cout << "Resultado: " << roll.format() << "\n";
+            core::ActionTypeId consumed = core::kInvalidActionType;
+            int actId = encounter.enqueueAction(currentId, kT20StandardAction, "Agredir (Ataque Padrão)", 0, &consumed);
+            if (actId <= 0) {
+                std::cout << "[BLOQUEADO] Sem Ação Comum/Padrão disponível neste turno (Ação de Movimento NÃO pode pagar Ação Padrão)!\n";
+            } else {
+                std::cout << "[FILA DE PRIORIDADES] 'Agredir' enfileirada como Ação Comum/Padrão.\n";
+                std::cout << "Modificador do ataque/perícia (ex: +6, 0): ";
+                int mod = parseBonus(getCleanLine());
+                auto roll = diceRoller.rollTest(mod);
+                std::cout << "Resultado: " << roll.format() << "\n";
+            }
         } else if (action == 3) {
+            std::cout << "Descrição do Movimento (ex: Deslocar 9m, Sacar Arma): ";
+            std::string movDesc = getCleanLine();
+            if (movDesc.empty()) movDesc = "Movimentar-se";
+
+            core::ActionTypeId consumed = core::kInvalidActionType;
+            int actId = encounter.enqueueAction(currentId, kT20MovementAction, movDesc, 0, &consumed);
+            if (actId <= 0) {
+                std::cout << "[BLOQUEADO] Sem Ação de Movimento nem Ação Comum/Padrão disponível neste turno!\n";
+            } else {
+                std::cout << "[FILA DE PRIORIDADES] '" << movDesc << "' enfileirada como Ação de Movimento";
+                if (consumed == kT20StandardAction) {
+                    std::cout << " (Conversão: utilizou a Ação Comum/Padrão como Ação de Movimento!)";
+                }
+                std::cout << ".\n";
+            }
+        } else if (action == 4) {
+            int pmCost = 0;
+            std::string skName = "Poder/Magia";
+            core::ActionTypeId reqType = kT20StandardAction;
+
             if (charIdx < characters.size() && !characters[charIdx].getSheet().getSkills().is_empty()) {
                 const auto& skills = characters[charIdx].getSheet().getSkills();
                 std::cout << "\nHabilidades de " << current->name() << ":\n";
-                skills.for_each([](const models::Skill& sk, std::size_t idx) {
+                skills.for_each([&](const models::Skill& sk, std::size_t idx) {
                     std::cout << "  " << (idx + 1) << ". " << sk.getName()
-                              << " (" << sk.getPmCost() << " PM) - " << sk.getDescription() << "\n";
+                              << " [" << actionTypeName(mapModelActionToCore(sk.getActionType()))
+                              << " | " << sk.getPmCost() << " PM] - " << sk.getDescription() << "\n";
                 });
-                std::cout << "  " << (skills.size() + 1) << ". Digitar custo de PM avulso\n";
+                std::cout << "  " << (skills.size() + 1) << ". Digitar poder/magia avulso\n";
                 std::cout << "Escolha a habilidade: ";
                 std::size_t skChoice = static_cast<std::size_t>(parseMultiplier(getCleanLine()));
 
-                int pmCost = 0;
-                std::string skName = "Poder/Magia";
                 if (skChoice >= 1 && skChoice <= skills.size()) {
                     const auto& chosenSkill = skills.get(skChoice - 1);
                     pmCost = chosenSkill.getPmCost();
                     skName = chosenSkill.getName();
+                    reqType = mapModelActionToCore(chosenSkill.getActionType());
                 } else {
+                    std::cout << "Tipo de Ação (1=Livre, 2=Movimento, 3=Comum/Padrão): ";
+                    int tChoice = parseMultiplier(getCleanLine());
+                    if (tChoice == 1) reqType = kT20FreeAction;
+                    else if (tChoice == 2) reqType = kT20MovementAction;
+                    else reqType = kT20StandardAction;
+
                     std::cout << "Custo em PM: ";
                     pmCost = parseMultiplier(getCleanLine());
                 }
-
-                if (encounter.spendResource(currentId, kManaResource, pmCost)) {
-                    syncBackToSheets();
-                    std::cout << "[OK] '" << skName << "' ativada! " << pmCost << " PM gastos.\n";
-                } else {
-                    std::cout << "[AVISO] PM insuficiente para usar '" << skName << "' (" << pmCost << " PM necessários)!\n";
-                }
             } else {
+                std::cout << "Tipo de Ação (1=Livre, 2=Movimento, 3=Comum/Padrão): ";
+                int tChoice = parseMultiplier(getCleanLine());
+                if (tChoice == 1) reqType = kT20FreeAction;
+                else if (tChoice == 2) reqType = kT20MovementAction;
+                else reqType = kT20StandardAction;
+
                 std::cout << "Custo em PM do poder/magia: ";
-                int pmCost = parseMultiplier(getCleanLine());
-                if (encounter.spendResource(currentId, kManaResource, pmCost)) {
-                    syncBackToSheets();
-                    std::cout << "[OK] " << pmCost << " PM gastos para ativar o poder!\n";
+                pmCost = parseMultiplier(getCleanLine());
+            }
+
+            if (pm && pm->current() < pmCost) {
+                std::cout << "[AVISO] PM insuficiente para usar '" << skName << "' (" << pmCost << " PM necessários)!\n";
+            } else {
+                core::ActionTypeId consumed = core::kInvalidActionType;
+                int actId = encounter.enqueueAction(currentId, reqType, skName, 0, &consumed);
+                if (actId <= 0) {
+                    std::cout << "[BLOQUEADO] Ações insuficientes no turno para realizar '" << skName
+                              << "' (" << actionTypeName(reqType) << ")!\n";
                 } else {
-                    std::cout << "[AVISO] PM insuficiente!\n";
+                    if (pmCost > 0) {
+                        encounter.spendResource(currentId, kManaResource, pmCost);
+                        syncBackToSheets();
+                    }
+                    std::cout << "[FILA DE PRIORIDADES] '" << skName << "' [" << actionTypeName(reqType)
+                              << "] enfileirada! (" << pmCost << " PM gastos)";
+                    if (reqType != consumed) {
+                        std::cout << " [Conversão: usou " << actionTypeName(consumed) << " como " << actionTypeName(reqType) << "]";
+                    }
+                    std::cout << "\n";
                 }
             }
-        } else if (action == 4) {
+        } else if (action == 5) {
+            core::QueuedAction nextAct;
+            if (encounter.popNextAction(currentId, nextAct)) {
+                std::cout << "[EXECUTADA] (" << actionTypeName(nextAct.requiredType) << ") " << nextAct.name
+                          << " foi consumida da frente da Fila de Prioridades!\n";
+            } else {
+                std::cout << "[AVISO] A Fila de Prioridades de ações deste turno está vazia.\n";
+            }
+        } else if (action == 6) {
             core::EntityId targetId = selectParticipantTarget("Selecione o ALVO que sofrerá o dano:");
             if (targetId != core::kInvalidId) {
                 std::cout << "Quantidade de dano: ";
@@ -709,7 +820,7 @@ void CLIController::handleInitiativeCombat() {
                           << " sofreu " << res.finalAmount << " de dano!"
                           << (res.depleted ? " >>> O ALVO CAIU (0 PV) E SERÁ PULADO NA INICIATIVA!" : "") << "\n";
             }
-        } else if (action == 5) {
+        } else if (action == 7) {
             core::EntityId targetId = selectParticipantTarget("Selecione o ALVO que receberá a cura:");
             if (targetId != core::kInvalidId) {
                 std::cout << "Quantidade de cura (PV): ";
@@ -720,7 +831,7 @@ void CLIController::handleInitiativeCombat() {
                 std::cout << "[OK] " << (targetComb ? targetComb->name() : "Alvo")
                           << " recuperou " << healed << " PV!\n";
             }
-        } else if (action == 6) {
+        } else if (action == 8) {
             core::EntityId targetId = selectParticipantTarget("Selecione o combatente para alternar Fora de Combate:");
             if (targetId != core::kInvalidId) {
                 if (auto* targetComb = encounter.find(targetId)) {
@@ -731,7 +842,7 @@ void CLIController::handleInitiativeCombat() {
                               << (targetComb->isDefeated() ? "FORA DE COMBATE" : "ATIVO NO COMBATE") << ".\n";
                 }
             }
-        } else if (action == 7) {
+        } else if (action == 9) {
             syncBackToSheets();
             encounter.endCombat();
             std::cout << "Combate de Tormenta20 encerrado.\n";
