@@ -843,6 +843,25 @@ OTTRPG_API int32_t ottrpg_initiative_roll(OttrpgEncounter* encounter, OttrpgId i
     }
 }
 
+OTTRPG_API int32_t ottrpg_initiative_roll_list(OttrpgEncounter* encounter, const OttrpgId* ids, int32_t count,
+                                                int32_t dice_count, int32_t dice_sides) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (count < 0 || (count > 0 && ids == nullptr)) {
+        set_last_error("Lista de IDs de combatentes inválida.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    try {
+        encounter->encounter.rollInitiativeForList(ids, static_cast<std::size_t>(count), dice_count, dice_sides);
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
 OTTRPG_API int32_t ottrpg_initiative_roll_all(OttrpgEncounter* encounter, int32_t dice_count, int32_t dice_sides) {
     clear_last_error();
     if (encounter == nullptr) {

@@ -99,6 +99,21 @@ int Encounter::rollInitiative(EntityId id, int diceCount, int diceSides) {
     return rollInitiativeFor(require(id), diceCount, diceSides);
 }
 
+void Encounter::rollInitiativeForList(const ds::LinkedList<EntityId>& ids, int diceCount, int diceSides) {
+    ids.for_each([&](const EntityId& id, std::size_t) {
+        rollInitiativeFor(require(id), diceCount, diceSides);
+    });
+}
+
+void Encounter::rollInitiativeForList(const EntityId* ids, std::size_t count, int diceCount, int diceSides) {
+    if (ids == nullptr && count > 0) {
+        throw std::invalid_argument("Lista de IDs de iniciativa nula.");
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        rollInitiativeFor(require(ids[i]), diceCount, diceSides);
+    }
+}
+
 void Encounter::rollInitiativeForAll(int diceCount, int diceSides) {
     combatants_.for_each_mut([&](Combatant& c, std::size_t) {
         rollInitiativeFor(c, diceCount, diceSides);

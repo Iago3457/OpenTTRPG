@@ -239,6 +239,8 @@ OTTRPG_API int32_t ottrpg_condition_get_key_at(OttrpgEncounter* encounter, Ottrp
 OTTRPG_API int32_t  ottrpg_initiative_set_order(OttrpgEncounter* encounter, int32_t lowest_first);
 OTTRPG_API int32_t  ottrpg_initiative_roll(OttrpgEncounter* encounter, OttrpgId id, int32_t dice_count,
                                            int32_t dice_sides, int32_t* out_total);
+OTTRPG_API int32_t  ottrpg_initiative_roll_list(OttrpgEncounter* encounter, const OttrpgId* ids, int32_t count,
+                                                int32_t dice_count, int32_t dice_sides);
 OTTRPG_API int32_t  ottrpg_initiative_roll_all(OttrpgEncounter* encounter, int32_t dice_count, int32_t dice_sides);
 OTTRPG_API int32_t  ottrpg_initiative_set(OttrpgEncounter* encounter, OttrpgId id, int32_t value);
 OTTRPG_API int32_t  ottrpg_initiative_remove(OttrpgEncounter* encounter, OttrpgId id);

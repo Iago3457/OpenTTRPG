@@ -475,90 +475,270 @@ void CLIController::handleDiceRoll() {
 }
 
 void CLIController::handleInitiativeCombat() {
-    std::cout << "\n--- COMBATE DE TORMENTA20 COM FILA DE INICIATIVA (AED1) ---\n";
+    std::cout << "\n--- COMBATE DE TORMENTA20 COM FILA DE INICIATIVA (CORE ENCOUNTER) ---\n";
     if (characters.empty()) {
         std::cout << "Cadastre personagens antes de iniciar um combate.\n";
         return;
     }
 
-    std::vector<systems::CombatParticipant> participants;
-    std::cout << "Rolando teste da perícia Iniciativa (1d20 + Destreza) no T20...\n";
+    constexpr core::ResourceId kManaResource = 1;
+    core::Encounter encounter;
 
-    for (auto& c : characters) {
+    // Mapa entre o EntityId do Encounter e o índice no vetor characters
+    std::vector<core::EntityId> charEntityIds;
+    charEntityIds.reserve(characters.size());
+
+    std::cout << "\nPersonagens cadastrados disponíveis:\n";
+    for (std::size_t i = 0; i < characters.size(); ++i) {
+        auto& c = characters[i];
         int dexMod = c.getSheet().getAttribute(core::AttributeType::Dexterity).getModifier();
-        auto rollRes = diceRoller.rollTest(dexMod);
-        c.setInitiativeRoll(rollRes.total);
+        core::EntityId eid = encounter.addCombatant(c.getName(), dexMod, c.getSheet().getMaxHp(), 1);
+        if (auto* combatant = encounter.find(eid)) {
+            if (auto* hp = combatant->resource(core::kHealthResource)) {
+                hp->setCurrent(c.getSheet().getCurrentHp());
+            }
+            combatant->addResource(kManaResource, "PM", c.getSheet().getMaxPm(), 0);
+            if (auto* pm = combatant->resource(kManaResource)) {
+                pm->setCurrent(c.getSheet().getCurrentPm());
+            }
+        }
+        charEntityIds.push_back(eid);
 
-        std::cout << "  - " << c.getName() << " rolou iniciativa: " << rollRes.format() << "\n";
-        participants.push_back({
-            c.getId(),
-            c.getName(),
-            rollRes.total,
-            c.getSheet().getCurrentHp(),
-            c.getSheet().getMaxHp(),
-            c.getSheet().getCurrentPm(),
-            c.getSheet().getMaxPm(),
-            c.getSheet().getDefense()
-        });
+        std::cout << "  [" << (i + 1) << "] " << c.getName()
+                  << " (PV: " << c.getSheet().getCurrentHp() << "/" << c.getSheet().getMaxHp()
+                  << " | PM: " << c.getSheet().getCurrentPm() << "/" << c.getSheet().getMaxPm()
+                  << " | DES: " << (dexMod >= 0 ? "+" : "") << dexMod << ")\n";
     }
 
-    initiativeSystem.setupInitiativeFromList(participants);
-    initiativeSystem.startCombat();
+    std::cout << "\nQuais personagens vão participar da lista de iniciativa?\n";
+    std::cout << "Digite os números separados por espaço/vírgula (ex: 1 2) ou Enter/T para Todos: ";
+    std::string selLine = getCleanLine();
 
-    std::cout << "\nCombate de Tormenta20 iniciado! A Fila de Iniciativa foi carregada.\n";
+    ds::LinkedList<core::EntityId> selectedIds;
+    std::vector<std::size_t> selectedCharIndices;
+
+    if (selLine.empty() || selLine == "t" || selLine == "T" || selLine == "todos" || selLine == "Todos") {
+        for (std::size_t i = 0; i < charEntityIds.size(); ++i) {
+            selectedIds.push_back(charEntityIds[i]);
+            selectedCharIndices.push_back(i);
+        }
+    } else {
+        std::regex numRgx(R"(\d+)");
+        auto begin = std::sregex_iterator(selLine.begin(), selLine.end(), numRgx);
+        auto end = std::sregex_iterator();
+        for (auto it = begin; it != end; ++it) {
+            std::size_t idx = static_cast<std::size_t>(std::stoul(it->str()));
+            if (idx >= 1 && idx <= charEntityIds.size()) {
+                core::EntityId eid = charEntityIds[idx - 1];
+                if (selectedIds.find_if([eid](core::EntityId id) { return id == eid; }) == nullptr) {
+                    selectedIds.push_back(eid);
+                    selectedCharIndices.push_back(idx - 1);
+                }
+            } else {
+                std::cout << "  [AVISO] Índice " << idx << " ignorado (fora do intervalo).\n";
+            }
+        }
+    }
+
+    if (selectedIds.is_empty()) {
+        std::cout << "[AVISO] Nenhum combatente selecionado para a iniciativa. Combate cancelado.\n";
+        return;
+    }
+
+    std::cout << "\nRolando Iniciativa (1d20 + Destreza) apenas para os " << selectedIds.size()
+              << " participantes selecionados...\n";
+
+    // Rola a iniciativa de uma vez para a lista selecionada no Core
+    encounter.rollInitiativeForList(selectedIds, 1, 20);
+
+    for (std::size_t charIdx : selectedCharIndices) {
+        core::EntityId eid = charEntityIds[charIdx];
+        int initVal = encounter.tracker().initiativeOf(eid);
+        characters[charIdx].setInitiativeRoll(initVal);
+        std::cout << "  - " << characters[charIdx].getName() << " entrou na iniciativa com total: " << initVal << "\n";
+    }
+
+    if (!encounter.startCombat()) {
+        std::cout << "[ERRO] Não há combatentes ativos(as) com PV > 0 para iniciar o combate.\n";
+        return;
+    }
+
+    auto findCharIndexByEntity = [&](core::EntityId eid) -> std::size_t {
+        for (std::size_t i = 0; i < charEntityIds.size(); ++i) {
+            if (charEntityIds[i] == eid) return i;
+        }
+        return characters.size();
+    };
+
+    auto syncBackToSheets = [&]() {
+        for (std::size_t i = 0; i < charEntityIds.size(); ++i) {
+            if (const auto* c = encounter.find(charEntityIds[i])) {
+                if (const auto* hp = c->resource(core::kHealthResource)) {
+                    int diff = hp->current() - characters[i].getSheet().getCurrentHp();
+                    if (diff < 0) characters[i].getSheet().takeDamage(-diff);
+                    else if (diff > 0) characters[i].getSheet().healHp(diff);
+                }
+                if (const auto* pm = c->resource(kManaResource)) {
+                    int diff = pm->current() - characters[i].getSheet().getCurrentPm();
+                    if (diff < 0) characters[i].getSheet().spendPm(-diff);
+                    else if (diff > 0) characters[i].getSheet().recoverPm(diff);
+                }
+            }
+        }
+    };
+
+    auto selectParticipantTarget = [&](const std::string& prompt) -> core::EntityId {
+        std::cout << "\n" << prompt << "\n";
+        const auto& entries = encounter.tracker().entries();
+        std::vector<core::EntityId> orderIds;
+        entries.for_each([&](const core::InitiativeEntry& e, std::size_t idx) {
+            const auto* comb = encounter.find(e.id);
+            if (!comb) return;
+            const auto* hp = comb->resource(core::kHealthResource);
+            orderIds.push_back(e.id);
+            std::cout << "  " << (idx + 1) << ". [ID " << e.id << "] " << comb->name()
+                      << " (PV: " << (hp ? hp->current() : 0) << "/" << (hp ? hp->max() : 0)
+                      << (comb->isDefeated() ? " - FORA DE COMBATE/CAÍDO" : "") << ")\n";
+        });
+        std::cout << "Escolha o número na lista (1 a " << orderIds.size() << "): ";
+        std::size_t choice = static_cast<std::size_t>(parseMultiplier(getCleanLine()));
+        if (choice < 1 || choice > orderIds.size()) {
+            std::cout << "[ERRO] Alvo inválido.\n";
+            return core::kInvalidId;
+        }
+        return orderIds[choice - 1];
+    };
+
+    std::cout << "\nCombate iniciado! Ações durante o turno NÃO avançam a vez automaticamente.\n";
 
     bool inCombat = true;
-    while (inCombat && initiativeSystem.isCombatActive()) {
-        systems::CombatParticipant current;
-        if (initiativeSystem.nextTurn(current)) {
-            std::cout << "\n======================================================================\n";
-            std::cout << ">> [RODADA " << initiativeSystem.getCurrentRound()
-                      << " | TURNO " << initiativeSystem.getCurrentTurnNumber() << "]\n";
-            std::cout << ">> VEZ DE: " << current.name
-                      << " | PV: " << current.currentHp << "/" << current.maxHp
-                      << " | PM: " << current.currentPm << "/" << current.maxPm
-                      << " | DEFESA: " << current.defense
-                      << " | INICIATIVA: " << current.initiative << "\n";
-            std::cout << "======================================================================\n";
+    while (inCombat && encounter.isCombatActive()) {
+        core::EntityId currentId = encounter.currentTurn();
+        core::Combatant* current = encounter.find(currentId);
+        if (current == nullptr) {
+            break;
+        }
 
-            std::cout << "Ações de Tormenta20 no Turno:\n";
-            std::cout << "  1. Passar Turno (Próximo combatente na Fila)\n";
-            std::cout << "  2. Rolar Ataque / Teste de Perícia (1d20 + Modificador)\n";
-            std::cout << "  3. Usar Poder / Magia (Gastar PM)\n";
-            std::cout << "  4. Sofrer Dano neste Turno\n";
-            std::cout << "  5. Encerrar Combate\n";
-            std::cout << "Escolha uma ação: ";
+        std::size_t charIdx = findCharIndexByEntity(currentId);
+        const auto* hp = current->resource(core::kHealthResource);
+        const auto* pm = current->resource(kManaResource);
+        int defense = (charIdx < characters.size()) ? characters[charIdx].getSheet().getDefense() : 10;
+        int initVal = encounter.tracker().initiativeOf(currentId);
 
-            std::string actionStr = getCleanLine();
-            int action = parseMultiplier(actionStr);
+        std::cout << "\n======================================================================\n";
+        std::cout << ">> [RODADA " << encounter.round() << "]\n";
+        std::cout << ">> VEZ DE: " << current->name() << " (ID " << currentId << ")"
+                  << " | PV: " << (hp ? hp->current() : 0) << "/" << (hp ? hp->max() : 0)
+                  << " | PM: " << (pm ? pm->current() : 0) << "/" << (pm ? pm->max() : 0)
+                  << " | DEFESA: " << defense
+                  << " | INICIATIVA: " << initVal << "\n";
+        std::cout << "======================================================================\n";
 
-            if (action == 2) {
-                std::cout << "Modificador do ataque/perícia (ex: +6, 0): ";
-                int mod = parseBonus(getCleanLine());
-                auto roll = diceRoller.rollTest(mod);
-                std::cout << "Resultado: " << roll.format() << "\n";
-            } else if (action == 3) {
-                std::cout << "Custo em PM do poder/magia: ";
-                int pm = parseMultiplier(getCleanLine());
-                if (initiativeSystem.spendPmCurrent(pm)) {
-                    std::cout << "[OK] " << pm << " PM gastos para ativar o poder!\n";
-                } else {
-                    std::cout << "[AVISO] PM insuficiente no turno!\n";
-                }
-            } else if (action == 4) {
-                std::cout << "Dano sofrido: ";
-                int dmg = parseMultiplier(getCleanLine());
-                initiativeSystem.applyDamageToCurrent(dmg);
-                std::cout << "[OK] Dano aplicado.\n";
-            } else if (action == 5) {
-                initiativeSystem.endCombat();
-                std::cout << "Combate de Tormenta20 encerrado.\n";
+        std::cout << "Ações de Tormenta20 no Turno:\n";
+        std::cout << "  1. Encerrar Turno (Passar para o próximo combatente ativo)\n";
+        std::cout << "  2. Rolar Ataque / Teste de Perícia (1d20 + Modificador)\n";
+        std::cout << "  3. Usar Poder / Habilidade / Magia (Custo dinâmico de PM)\n";
+        std::cout << "  4. Causar Dano a um Alvo (Selecionar por ID)\n";
+        std::cout << "  5. Curar um Alvo (Selecionar por ID)\n";
+        std::cout << "  6. Alternar Estado Fora de Combate / Morrido de um Combatente\n";
+        std::cout << "  7. Encerrar Combate\n";
+        std::cout << "Escolha uma ação: ";
+
+        std::string actionStr = getCleanLine();
+        int action = parseMultiplier(actionStr);
+
+        if (action == 1) {
+            core::EntityId nextId = encounter.nextTurn();
+            if (nextId == core::kInvalidId) {
+                std::cout << "\n[FIM] Nenhum combatente ativo restante na iniciativa.\n";
                 inCombat = false;
             }
-        } else {
+        } else if (action == 2) {
+            std::cout << "Modificador do ataque/perícia (ex: +6, 0): ";
+            int mod = parseBonus(getCleanLine());
+            auto roll = diceRoller.rollTest(mod);
+            std::cout << "Resultado: " << roll.format() << "\n";
+        } else if (action == 3) {
+            if (charIdx < characters.size() && !characters[charIdx].getSheet().getSkills().is_empty()) {
+                const auto& skills = characters[charIdx].getSheet().getSkills();
+                std::cout << "\nHabilidades de " << current->name() << ":\n";
+                skills.for_each([](const models::Skill& sk, std::size_t idx) {
+                    std::cout << "  " << (idx + 1) << ". " << sk.getName()
+                              << " (" << sk.getPmCost() << " PM) - " << sk.getDescription() << "\n";
+                });
+                std::cout << "  " << (skills.size() + 1) << ". Digitar custo de PM avulso\n";
+                std::cout << "Escolha a habilidade: ";
+                std::size_t skChoice = static_cast<std::size_t>(parseMultiplier(getCleanLine()));
+
+                int pmCost = 0;
+                std::string skName = "Poder/Magia";
+                if (skChoice >= 1 && skChoice <= skills.size()) {
+                    const auto& chosenSkill = skills.get(skChoice - 1);
+                    pmCost = chosenSkill.getPmCost();
+                    skName = chosenSkill.getName();
+                } else {
+                    std::cout << "Custo em PM: ";
+                    pmCost = parseMultiplier(getCleanLine());
+                }
+
+                if (encounter.spendResource(currentId, kManaResource, pmCost)) {
+                    syncBackToSheets();
+                    std::cout << "[OK] '" << skName << "' ativada! " << pmCost << " PM gastos.\n";
+                } else {
+                    std::cout << "[AVISO] PM insuficiente para usar '" << skName << "' (" << pmCost << " PM necessários)!\n";
+                }
+            } else {
+                std::cout << "Custo em PM do poder/magia: ";
+                int pmCost = parseMultiplier(getCleanLine());
+                if (encounter.spendResource(currentId, kManaResource, pmCost)) {
+                    syncBackToSheets();
+                    std::cout << "[OK] " << pmCost << " PM gastos para ativar o poder!\n";
+                } else {
+                    std::cout << "[AVISO] PM insuficiente!\n";
+                }
+            }
+        } else if (action == 4) {
+            core::EntityId targetId = selectParticipantTarget("Selecione o ALVO que sofrerá o dano:");
+            if (targetId != core::kInvalidId) {
+                std::cout << "Quantidade de dano: ";
+                int dmgAmt = parseMultiplier(getCleanLine());
+                auto res = encounter.dealDamage(targetId, dmgAmt);
+                syncBackToSheets();
+                const auto* targetComb = encounter.find(targetId);
+                std::cout << "[OK] " << (targetComb ? targetComb->name() : "Alvo")
+                          << " sofreu " << res.finalAmount << " de dano!"
+                          << (res.depleted ? " >>> O ALVO CAIU (0 PV) E SERÁ PULADO NA INICIATIVA!" : "") << "\n";
+            }
+        } else if (action == 5) {
+            core::EntityId targetId = selectParticipantTarget("Selecione o ALVO que receberá a cura:");
+            if (targetId != core::kInvalidId) {
+                std::cout << "Quantidade de cura (PV): ";
+                int healAmt = parseMultiplier(getCleanLine());
+                int healed = encounter.heal(targetId, healAmt);
+                syncBackToSheets();
+                const auto* targetComb = encounter.find(targetId);
+                std::cout << "[OK] " << (targetComb ? targetComb->name() : "Alvo")
+                          << " recuperou " << healed << " PV!\n";
+            }
+        } else if (action == 6) {
+            core::EntityId targetId = selectParticipantTarget("Selecione o combatente para alternar Fora de Combate:");
+            if (targetId != core::kInvalidId) {
+                if (auto* targetComb = encounter.find(targetId)) {
+                    bool newState = !targetComb->isForcedOut();
+                    targetComb->setForcedOut(newState);
+                    encounter.tracker().setActive(targetId, !targetComb->isDefeated());
+                    std::cout << "[OK] " << targetComb->name() << " agora está "
+                              << (targetComb->isDefeated() ? "FORA DE COMBATE" : "ATIVO NO COMBATE") << ".\n";
+                }
+            }
+        } else if (action == 7) {
+            syncBackToSheets();
+            encounter.endCombat();
+            std::cout << "Combate de Tormenta20 encerrado.\n";
             inCombat = false;
         }
     }
+    syncBackToSheets();
 }
 
 void CLIController::run() {

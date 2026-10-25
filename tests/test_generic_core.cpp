@@ -240,9 +240,20 @@ void testEncounterFaçade() {
 
     auto hero = enc.addCombatant("Guerreiro", 2, 30, 1);
     auto orc = enc.addCombatant("Orc", 1, 20, 2);
+    auto npcReserve = enc.addCombatant("Mercador (Fora do Combate)", 0, 10, 1);
 
-    assert(enc.combatantCount() == 2);
+    assert(enc.combatantCount() == 3);
     assert(enc.find(hero) != nullptr);
+
+    // Testa rollInitiativeForList: apenas hero e orc participam da iniciativa; npcReserve fica de fora
+    ds::LinkedList<core::EntityId> selectedList;
+    selectedList.push_back(hero);
+    selectedList.push_back(orc);
+    enc.rollInitiativeForList(selectedList, 1, 20);
+    assert(enc.tracker().size() == 2);
+    assert(enc.tracker().contains(hero));
+    assert(enc.tracker().contains(orc));
+    assert(!enc.tracker().contains(npcReserve));
 
     enc.setInitiative(hero, 18);
     enc.setInitiative(orc, 12);
@@ -279,11 +290,23 @@ void testC_ApiDll() {
     OttrpgEncounter* enc = ottrpg_encounter_create(999);
     assert(enc != nullptr);
 
-    // Adiciona dois combatentes
+    // Adiciona três combatentes, mas apenas p1 e p2 entram na lista de iniciativa
     OttrpgId p1 = ottrpg_combatant_add(enc, "Mago", 3, 20, 1);
     OttrpgId p2 = ottrpg_combatant_add(enc, "Goblin", 2, 10, 2);
-    assert(p1 > 0 && p2 > 0);
-    assert(ottrpg_combatant_count(enc) == 2);
+    OttrpgId p3 = ottrpg_combatant_add(enc, "Aldeao", 0, 8, 0);
+    assert(p1 > 0 && p2 > 0 && p3 > 0);
+    assert(ottrpg_combatant_count(enc) == 3);
+
+    OttrpgId selectedIds[2] = { p1, p2 };
+    assert(ottrpg_initiative_roll_list(enc, selectedIds, 2, 1, 20) == OTTRPG_OK);
+
+    int32_t orderCount = 0;
+    assert(ottrpg_initiative_get_order(enc, nullptr, 0, &orderCount) == OTTRPG_OK);
+    assert(orderCount == 2);
+
+    OttrpgCombatantInfo p3Info;
+    assert(ottrpg_combatant_get_info(enc, p3, &p3Info) == OTTRPG_OK);
+    assert(p3Info.in_initiative == 0);
 
     // Recurso extra (Mana: ID 1)
     assert(ottrpg_resource_add(enc, p1, 1, "Mana", 15, 0) == OTTRPG_OK);

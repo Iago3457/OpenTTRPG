@@ -253,6 +253,9 @@ namespace OpenTTRPG.Native
         public static extern int ottrpg_initiative_roll(IntPtr encounter, int id, int diceCount, int diceSides, out int outTotal);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_initiative_roll_list(IntPtr encounter, [In] int[] ids, int count, int diceCount, int diceSides);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_initiative_roll_all(IntPtr encounter, int diceCount, int diceSides);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -343,10 +346,170 @@ namespace OpenTTRPG.Native
             }
         }
 
+        public int RollInitiative(int combatantId, int diceCount = 1, int diceSides = 20)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_initiative_roll(_handle, combatantId, diceCount, diceSides, out int total);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao rolar iniciativa: {GetLastError()}");
+            }
+            return total;
+        }
+
+        /// <summary>
+        /// Rola iniciativa apenas para os combatentes selecionados na lista (permite escolher quem participa do combate).
+        /// </summary>
+        public void RollInitiativeForList(int[] combatantIds, int diceCount = 1, int diceSides = 20)
+        {
+            EnsureNotDisposed();
+            if (combatantIds == null)
+            {
+                throw new ArgumentNullException(nameof(combatantIds));
+            }
+            if (combatantIds.Length == 0)
+            {
+                return;
+            }
+            int res = NativeMethods.ottrpg_initiative_roll_list(_handle, combatantIds, combatantIds.Length, diceCount, diceSides);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao rolar iniciativa para a lista selecionada: {GetLastError()}");
+            }
+        }
+
         public void RollInitiativeForAll(int diceCount = 1, int diceSides = 20)
         {
             EnsureNotDisposed();
-            NativeMethods.ottrpg_initiative_roll_all(_handle, diceCount, diceSides);
+            int res = NativeMethods.ottrpg_initiative_roll_all(_handle, diceCount, diceSides);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao rolar iniciativa para todos: {GetLastError()}");
+            }
+        }
+
+        public void RemoveFromInitiative(int combatantId)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_initiative_remove(_handle, combatantId);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao remover da iniciativa: {GetLastError()}");
+            }
+        }
+
+        public int[] GetInitiativeOrder()
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_initiative_get_order(_handle, null, 0, out int count);
+            if (count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+            int[] ids = new int[count];
+            NativeMethods.ottrpg_initiative_get_order(_handle, ids, count, out _);
+            return ids;
+        }
+
+        public CombatantInfo GetCombatantInfo(int combatantId)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_get_info(_handle, combatantId, out CombatantInfo info);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao consultar combatente: {GetLastError()}");
+            }
+            return info;
+        }
+
+        public string GetCombatantName(int combatantId)
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_combatant_get_name(_handle, combatantId, null, 0, out int required);
+            if (required <= 0)
+            {
+                return string.Empty;
+            }
+            byte[] buffer = new byte[required];
+            int res = NativeMethods.ottrpg_combatant_get_name(_handle, combatantId, buffer, required, out _);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao obter nome do combatente: {GetLastError()}");
+            }
+            return Encoding.UTF8.GetString(buffer, 0, required - 1);
+        }
+
+        public void AddResource(int combatantId, int resourceId, string name, int max, int minimum = 0)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_resource_add(_handle, combatantId, resourceId, name, max, minimum);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao adicionar recurso: {GetLastError()}");
+            }
+        }
+
+        public ResourceInfo GetResource(int combatantId, int resourceId)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_resource_get(_handle, combatantId, resourceId, out ResourceInfo info);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao obter recurso: {GetLastError()}");
+            }
+            return info;
+        }
+
+        public void SetResourceCurrent(int combatantId, int resourceId, int value)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_resource_set_current(_handle, combatantId, resourceId, value);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao atualizar recurso: {GetLastError()}");
+            }
+        }
+
+        public bool SpendResource(int combatantId, int resourceId, int amount)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_resource_spend(_handle, combatantId, resourceId, amount);
+            if (res == (int)OttrpgStatus.ErrInsufficientResource)
+            {
+                return false;
+            }
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao gastar recurso: {GetLastError()}");
+            }
+            return true;
+        }
+
+        public int RestoreResource(int combatantId, int resourceId, int amount)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_resource_restore(_handle, combatantId, resourceId, amount, out int restored);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao restaurar recurso: {GetLastError()}");
+            }
+            return restored;
+        }
+
+        public void SetForcedOut(int combatantId, bool forcedOut)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_set_forced_out(_handle, combatantId, forcedOut ? 1 : 0);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao alterar estado fora de combate: {GetLastError()}");
+            }
+        }
+
+        public void EndCombat()
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_combat_end(_handle);
         }
 
         public void StartCombat()
