@@ -89,6 +89,18 @@ enum OttrpgKeepMode {
     OTTRPG_KEEP_LOWEST  = 2
 };
 
+enum OttrpgRequirementKind {
+    OTTRPG_REQ_ALL_OF              = 0,  /* Nó lógico E (todos os filhos da subárvore) */
+    OTTRPG_REQ_ANY_OF              = 1,  /* Nó lógico OU (pelo menos 1 filho da subárvore) */
+    OTTRPG_REQ_NOT                 = 2,  /* Nó lógico NÃO (inverte resultado dos filhos) */
+    OTTRPG_REQ_AT_LEAST_N          = 3,  /* Nó lógico: pelo menos `threshold` filhos verdadeiros */
+    OTTRPG_REQ_ABILITY_UNLOCKED    = 10, /* Folha: possui a habilidade/talento `target_key` */
+    OTTRPG_REQ_STAT_AT_LEAST       = 11, /* Folha: possui atributo/estatística `target_key` >= `threshold` */
+    OTTRPG_REQ_CONDITION_ACTIVE    = 12, /* Folha: possui condição `target_key` ativa (intensidade >= `threshold`) */
+    OTTRPG_REQ_ACTION_USED_IN_TURN = 13, /* Folha: já executou a ação `target_key` antes neste turno */
+    OTTRPG_REQ_RESOURCE_AT_LEAST   = 14  /* Folha: possui recurso `resource_id` >= `threshold` */
+};
+
 #define OTTRPG_HEALTH_RESOURCE 0
 #define OTTRPG_PERMANENT_DURATION (-1)
 
@@ -332,6 +344,43 @@ OTTRPG_API int32_t ottrpg_action_queue_pop(OttrpgEncounter* encounter, OttrpgId 
 OTTRPG_API int32_t ottrpg_action_queue_cancel(OttrpgEncounter* encounter, OttrpgId id, int32_t action_id,
                                               int32_t refund_slot);
 OTTRPG_API int32_t ottrpg_action_queue_clear(OttrpgEncounter* encounter, OttrpgId id, int32_t refund_slots);
+
+/* ------------------------------------------------------------------------- */
+/* Árvore de Habilidades e Pré-requisitos (Concessão e Uso)                  */
+/* ------------------------------------------------------------------------- */
+
+/* Estatísticas genéricas, habilidades desbloqueadas e histórico de ações no turno */
+OTTRPG_API int32_t ottrpg_combatant_set_stat(OttrpgEncounter* encounter, OttrpgId id,
+                                             const char* key_utf8, int32_t value);
+OTTRPG_API int32_t ottrpg_combatant_get_stat(OttrpgEncounter* encounter, OttrpgId id,
+                                             const char* key_utf8, int32_t default_value, int32_t* out_value);
+OTTRPG_API int32_t ottrpg_combatant_unlock_ability(OttrpgEncounter* encounter, OttrpgId id,
+                                                   const char* ability_key_utf8);
+OTTRPG_API int32_t ottrpg_combatant_revoke_ability(OttrpgEncounter* encounter, OttrpgId id,
+                                                   const char* ability_key_utf8);
+OTTRPG_API int32_t ottrpg_combatant_has_ability(OttrpgEncounter* encounter, OttrpgId id,
+                                                const char* ability_key_utf8);
+OTTRPG_API int32_t ottrpg_combatant_record_action_in_turn(OttrpgEncounter* encounter, OttrpgId id,
+                                                          const char* action_key_utf8);
+OTTRPG_API int32_t ottrpg_combatant_has_used_action_in_turn(OttrpgEncounter* encounter, OttrpgId id,
+                                                            const char* action_key_utf8);
+
+/* Construção da Árvore de Habilidades (`parent_key_utf8` pode ser NULL/"" para raiz) */
+OTTRPG_API int32_t ottrpg_ability_register(OttrpgEncounter* encounter, const char* key_utf8,
+                                           const char* name_utf8, const char* parent_key_utf8);
+/* `is_usage_req`: 0 = árvore de pré-requisitos para aprender (grant), 1 = árvore para usar em combate (usage) */
+OTTRPG_API int32_t ottrpg_ability_set_req_root(OttrpgEncounter* encounter, const char* ability_key_utf8,
+                                               int32_t is_usage_req, int32_t root_kind, int32_t threshold);
+/* `parent_node_id`: 1 é a raiz da árvore de requisitos. Retorna o novo `node_id` em `out_node_id`. */
+OTTRPG_API int32_t ottrpg_ability_add_req_node(OttrpgEncounter* encounter, const char* ability_key_utf8,
+                                               int32_t is_usage_req, int32_t parent_node_id,
+                                               int32_t req_kind, const char* target_key_utf8,
+                                               int32_t threshold, int32_t resource_id, int32_t* out_node_id);
+
+/* Avaliação da Árvore: retornam 1 se permitido, 0 se negado (motivos em ottrpg_last_error()), ou < 0 em erro */
+OTTRPG_API int32_t ottrpg_ability_can_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
+OTTRPG_API int32_t ottrpg_ability_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
+OTTRPG_API int32_t ottrpg_ability_can_use(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
 
 /* ------------------------------------------------------------------------- */
 /* Dados (usam o gerador do encontro: mesma semente => mesma sequência)      */

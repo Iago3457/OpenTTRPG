@@ -27,6 +27,14 @@ struct NamedResource {
 };
 
 /**
+ * @brief Estatística/atributo genérico nomeado pertencente a uma entidade (ex.: "FOR", "DES", "Nivel").
+ */
+struct NamedStat {
+    std::string key;
+    int value = 0;
+};
+
+/**
  * @brief Entidade de combate genérica, sem nenhuma regra de sistema embutida.
  *
  * Possui:
@@ -84,6 +92,24 @@ public:
     ActionEconomy& actions();
     [[nodiscard]] const ActionEconomy& actions() const;
 
+    // ----- Estatísticas / Atributos Genéricos (para Árvore de Pré-requisitos) -----
+    void setStat(const std::string& key, int value);
+    [[nodiscard]] int stat(const std::string& key, int defaultValue = 0) const;
+    [[nodiscard]] bool hasStat(const std::string& key) const;
+    [[nodiscard]] const ds::LinkedList<NamedStat>& stats() const;
+
+    // ----- Habilidades / Poderes Concedidos -----
+    bool unlockAbility(const std::string& key);
+    bool revokeAbility(const std::string& key);
+    [[nodiscard]] bool hasAbility(const std::string& key) const;
+    [[nodiscard]] const ds::LinkedList<std::string>& unlockedAbilities() const;
+
+    // ----- Histórico de Ações Executadas no Turno Atual -----
+    void recordActionInTurn(const std::string& actionKey);
+    [[nodiscard]] bool hasUsedActionInTurn(const std::string& actionKey) const;
+    void clearTurnActionHistory();
+    [[nodiscard]] const ds::LinkedList<std::string>& turnActionHistory() const;
+
 private:
     EntityId id_;
     std::string name_;
@@ -96,6 +122,9 @@ private:
     DamageProfile damageProfile_;
     ConditionTracker conditions_;
     ActionEconomy actions_;
+    ds::LinkedList<NamedStat> stats_;
+    ds::LinkedList<std::string> unlockedAbilities_;
+    ds::LinkedList<std::string> turnActionHistory_;
 };
 
 } // namespace openttrpg::core

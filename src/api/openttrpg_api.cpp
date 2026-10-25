@@ -1438,6 +1438,7 @@ OTTRPG_API int32_t ottrpg_action_queue_pop(OttrpgEncounter* encounter, OttrpgId 
         set_last_error("Fila de prioridades de ações está vazia.");
         return OTTRPG_ERR_NOT_FOUND;
     }
+    c->recordActionInTurn(qa.name);
     if (out_info != nullptr) {
         out_info->action_id = qa.actionId;
         out_info->required_type = qa.requiredType;
@@ -1484,6 +1485,320 @@ OTTRPG_API int32_t ottrpg_action_queue_clear(OttrpgEncounter* encounter, OttrpgI
     }
     c->actions().clearQueue(refund_slots != 0);
     return OTTRPG_OK;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Árvore de Habilidades e Pré-requisitos (Concessão e Uso)                  */
+/* ------------------------------------------------------------------------- */
+
+namespace {
+
+std::string join_reasons(const openttrpg::ds::LinkedList<std::string>& reasons) {
+    std::string combined;
+    reasons.for_each([&](const std::string& r, std::size_t idx) {
+        if (idx > 0) {
+            combined += "; ";
+        }
+        combined += r;
+    });
+    return combined;
+}
+
+} // namespace
+
+OTTRPG_API int32_t ottrpg_combatant_set_stat(OttrpgEncounter* encounter, OttrpgId id,
+                                             const char* key_utf8, int32_t value) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (key_utf8 == nullptr || key_utf8[0] == '\0') {
+        set_last_error("Chave de estatística inválida.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    c->setStat(key_utf8, value);
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_combatant_get_stat(OttrpgEncounter* encounter, OttrpgId id,
+                                             const char* key_utf8, int32_t default_value, int32_t* out_value) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (key_utf8 == nullptr || out_value == nullptr) {
+        set_last_error("Argumentos nulos em ottrpg_combatant_get_stat.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    *out_value = c->stat(key_utf8, default_value);
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_combatant_unlock_ability(OttrpgEncounter* encounter, OttrpgId id,
+                                                   const char* ability_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr || ability_key_utf8[0] == '\0') {
+        set_last_error("Chave de habilidade inválida.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    c->unlockAbility(ability_key_utf8);
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_combatant_revoke_ability(OttrpgEncounter* encounter, OttrpgId id,
+                                                   const char* ability_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    if (!c->revokeAbility(ability_key_utf8)) {
+        set_last_error("Habilidade não estava desbloqueada.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_combatant_has_ability(OttrpgEncounter* encounter, OttrpgId id,
+                                                const char* ability_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return c->hasAbility(ability_key_utf8) ? 1 : 0;
+}
+
+OTTRPG_API int32_t ottrpg_combatant_record_action_in_turn(OttrpgEncounter* encounter, OttrpgId id,
+                                                          const char* action_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (action_key_utf8 == nullptr || action_key_utf8[0] == '\0') {
+        set_last_error("Chave de ação inválida.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    c->recordActionInTurn(action_key_utf8);
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_combatant_has_used_action_in_turn(OttrpgEncounter* encounter, OttrpgId id,
+                                                            const char* action_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (action_key_utf8 == nullptr) {
+        set_last_error("Chave de ação nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const openttrpg::core::Combatant* c = encounter->encounter.find(id);
+    if (c == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return c->hasUsedActionInTurn(action_key_utf8) ? 1 : 0;
+}
+
+OTTRPG_API int32_t ottrpg_ability_register(OttrpgEncounter* encounter, const char* key_utf8,
+                                           const char* name_utf8, const char* parent_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (key_utf8 == nullptr || key_utf8[0] == '\0' || name_utf8 == nullptr) {
+        set_last_error("Chave ou nome da habilidade inválidos.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const std::string parentKey = (parent_key_utf8 != nullptr) ? parent_key_utf8 : "";
+    try {
+        if (encounter->encounter.abilityTree().registerAbility(key_utf8, name_utf8, parentKey) == nullptr) {
+            set_last_error("Não foi possível registrar habilidade (verifique se a habilidade-pai existe na árvore).");
+            return OTTRPG_ERR_NOT_FOUND;
+        }
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_ability_set_req_root(OttrpgEncounter* encounter, const char* ability_key_utf8,
+                                               int32_t is_usage_req, int32_t root_kind, int32_t threshold) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::AbilityNode* ability = encounter->encounter.abilityTree().findAbility(ability_key_utf8);
+    if (ability == nullptr) {
+        set_last_error("Habilidade não encontrada na árvore.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    auto& reqTree = is_usage_req ? ability->usageRequirements : ability->grantRequirements;
+    if (!reqTree.setRootKind(static_cast<openttrpg::core::RequirementKind>(root_kind), threshold)) {
+        set_last_error("Tipo de nó raiz inválido (deve ser um operador lógico).");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_ability_add_req_node(OttrpgEncounter* encounter, const char* ability_key_utf8,
+                                               int32_t is_usage_req, int32_t parent_node_id,
+                                               int32_t req_kind, const char* target_key_utf8,
+                                               int32_t threshold, int32_t resource_id, int32_t* out_node_id) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    openttrpg::core::AbilityNode* ability = encounter->encounter.abilityTree().findAbility(ability_key_utf8);
+    if (ability == nullptr) {
+        set_last_error("Habilidade não encontrada na árvore.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    auto& reqTree = is_usage_req ? ability->usageRequirements : ability->grantRequirements;
+    const std::string targetKey = (target_key_utf8 != nullptr) ? target_key_utf8 : "";
+    try {
+        const int nodeId = reqTree.addNode(
+            parent_node_id,
+            static_cast<openttrpg::core::RequirementKind>(req_kind),
+            targetKey,
+            threshold,
+            resource_id
+        );
+        if (nodeId <= 0) {
+            set_last_error("Não foi possível adicionar nó de pré-requisito (verifique parent_node_id).");
+            return OTTRPG_ERR_INVALID_ARGUMENT;
+        }
+        if (out_node_id != nullptr) {
+            *out_node_id = nodeId;
+        }
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_ability_can_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    if (encounter->encounter.find(id) == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    openttrpg::ds::LinkedList<std::string> reasons;
+    const bool ok = encounter->encounter.canLearnAbility(id, ability_key_utf8, &reasons);
+    if (!ok) {
+        set_last_error(join_reasons(reasons));
+    }
+    return ok ? 1 : 0;
+}
+
+OTTRPG_API int32_t ottrpg_ability_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    if (encounter->encounter.find(id) == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    openttrpg::ds::LinkedList<std::string> reasons;
+    if (!encounter->encounter.learnAbility(id, ability_key_utf8, &reasons)) {
+        set_last_error(join_reasons(reasons));
+        return OTTRPG_ERR_INVALID_STATE;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_ability_can_use(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (ability_key_utf8 == nullptr) {
+        set_last_error("Chave de habilidade nula.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    if (encounter->encounter.find(id) == nullptr) {
+        set_last_error("Combatente não encontrado.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    openttrpg::ds::LinkedList<std::string> reasons;
+    const bool ok = encounter->encounter.canUseAbility(id, ability_key_utf8, &reasons);
+    if (!ok) {
+        set_last_error(join_reasons(reasons));
+    }
+    return ok ? 1 : 0;
 }
 
 /* ------------------------------------------------------------------------- */

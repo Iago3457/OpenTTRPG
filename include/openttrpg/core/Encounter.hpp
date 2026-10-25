@@ -3,6 +3,7 @@
 #include "openttrpg/core/Combatant.hpp"
 #include "openttrpg/core/Dice.hpp"
 #include "openttrpg/core/InitiativeTracker.hpp"
+#include "openttrpg/core/RequirementTree.hpp"
 #include "openttrpg/data_structures/LinkedList.hpp"
 #include <cstdint>
 #include <string>
@@ -82,6 +83,16 @@ public:
                       ActionTypeId* outConsumedType = nullptr);
     bool popNextAction(EntityId actor, QueuedAction& outAction);
 
+    // ----- Árvore de Habilidades e Pré-requisitos (Concessão e Uso) -----
+    AbilityTree& abilityTree();
+    [[nodiscard]] const AbilityTree& abilityTree() const;
+    [[nodiscard]] bool canLearnAbility(EntityId actor, const std::string& abilityKey,
+                                       ds::LinkedList<std::string>* outUnmetReasons = nullptr) const;
+    bool learnAbility(EntityId actor, const std::string& abilityKey,
+                      ds::LinkedList<std::string>* outUnmetReasons = nullptr);
+    [[nodiscard]] bool canUseAbility(EntityId actor, const std::string& abilityKey,
+                                     ds::LinkedList<std::string>* outUnmetReasons = nullptr) const;
+
     // ----- Estado geral -----
     [[nodiscard]] bool isTeamDefeated(int team) const; // true se o time existe e todos estão fora
     [[nodiscard]] int standingTeamCount() const;       // Quantos times ainda têm alguém de pé
@@ -98,6 +109,7 @@ private:
     ds::LinkedList<Combatant> combatants_;
     InitiativeTracker tracker_;
     DiceEngine dice_;
+    AbilityTree abilityTree_;
     EntityId nextId_ = 1;
     bool autoSkipDefeated_ = true;
     bool autoTickConditions_ = true;

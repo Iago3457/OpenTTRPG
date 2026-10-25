@@ -147,6 +147,7 @@ bool Encounter::startCombat() {
     }
     if (Combatant* first = find(tracker_.current())) {
         first->actions().resetTurn();
+        first->clearTurnActionHistory();
         tickConditions(*first, TickTiming::TurnStart);
     }
     return true;
@@ -161,6 +162,7 @@ EntityId Encounter::nextTurn() {
     // Fim do turno de quem estava agindo
     if (Combatant* previous = find(tracker_.current())) {
         previous->actions().clearQueue(false);
+        previous->clearTurnActionHistory();
         tickConditions(*previous, TickTiming::TurnEnd);
     }
 
@@ -177,6 +179,7 @@ EntityId Encounter::nextTurn() {
 
     if (Combatant* current = find(nextId)) {
         current->actions().resetTurn();
+        current->clearTurnActionHistory();
         tickConditions(*current, TickTiming::TurnStart);
     }
     return nextId;
@@ -259,11 +262,53 @@ bool Encounter::spendAction(EntityId actor, ActionTypeId requiredType, ActionTyp
 
 int Encounter::enqueueAction(EntityId actor, ActionTypeId requiredType, const std::string& name, int targetId,
                              ActionTypeId* outConsumedType) {
-    return require(actor).actions().enqueueAction(requiredType, name, targetId, outConsumedType);
+    Combatant& c = require(actor);
+    const int actId = c.actions().enqueueAction(requiredType, name, targetId, outConsumedType);
+    if (actId > 0) {
+        c.recordActionInTurn(name);
+    }
+    return actId;
 }
 
 bool Encounter::popNextAction(EntityId actor, QueuedAction& outAction) {
-    return require(actor).actions().popNextAction(outAction);
+    Combatant& c = require(actor);
+    if (!c.actions().popNextAction(outAction)) {
+        return false;
+    }
+    c.recordActionInTurn(outAction.name);
+    return true;
+}
+
+AbilityTree& Encounter::abilityTree() {
+    return abilityTree_;
+}
+
+const AbilityTree& Encounter::abilityTree() const {
+    return abilityTree_;
+}
+
+bool Encounter::canLearnAbility(EntityId actor, const std::string& abilityKey,
+                                ds::LinkedList<std::string>* outUnmetReasons) const {
+    const Combatant* c = find(actor);
+    if (c == nullptr) {
+        return false;
+    }
+    return abilityTree_.canLearn(*c, abilityKey, outUnmetReasons);
+}
+
+bool Encounter::learnAbility(EntityId actor, const std::string& abilityKey,
+                             ds::LinkedList<std::string>* outUnmetReasons) {
+    Combatant& c = require(actor);
+    return abilityTree_.learn(c, abilityKey, outUnmetReasons);
+}
+
+bool Encounter::canUseAbility(EntityId actor, const std::string& abilityKey,
+                              ds::LinkedList<std::string>* outUnmetReasons) const {
+    const Combatant* c = find(actor);
+    if (c == nullptr) {
+        return false;
+    }
+    return abilityTree_.canUse(*c, abilityKey, outUnmetReasons);
 }
 
 // ---------------------------------------------------------------------------
