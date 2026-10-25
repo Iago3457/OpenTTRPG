@@ -43,7 +43,10 @@ public:
     // ----- Iniciativa -----
     // Rola [count]d[sides] + modificador de iniciativa e insere/atualiza na ordem. Retorna o total.
     int rollInitiative(EntityId id, int diceCount = 1, int diceSides = 20);
-    // Rola para TODOS os combatentes do encontro
+    // Rola iniciativa apenas para a lista de combatentes selecionados para participar do combate
+    void rollInitiativeForList(const ds::LinkedList<EntityId>& ids, int diceCount = 1, int diceSides = 20);
+    void rollInitiativeForList(const EntityId* ids, std::size_t count, int diceCount = 1, int diceSides = 20);
+    // Rola para TODOS os combatentes cadastrados no encontro
     void rollInitiativeForAll(int diceCount = 1, int diceSides = 20);
     // Valor informado manualmente (ex: jogador rolou dado físico). Insere ou reposiciona.
     bool setInitiative(EntityId id, int value);

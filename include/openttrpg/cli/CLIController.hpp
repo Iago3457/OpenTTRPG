@@ -1,5 +1,6 @@
 #pragma once
 
+#include "openttrpg/core/Encounter.hpp"
 #include "openttrpg/models/Character.hpp"
 #include "openttrpg/systems/DiceRoller.hpp"
 #include "openttrpg/systems/InitiativeSystem.hpp"

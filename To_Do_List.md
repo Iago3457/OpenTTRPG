@@ -2,7 +2,7 @@
     - [x] Fix: Pula turno ao executar alguma ação, como causar dano (Resolvido no Core: ações não avançam turno; `nextTurn` é explícito)
     - [x] Feat: Selecionar alvo de ataque e etc. (Resolvido no Core: `dealDamage(targetId, ...)` opera por ID de entidade)
     - [x] Feat: Verificação de ações e custos (Resolvido no Core: `ResourcePool::spend` e `canSpend`)
-    - [x] Fix: Rolagem de iniciativa (todos participam do combate) (Resolvido no Core: `rollInitiativeForAll` no `Encounter`)
+    - [x] Fix: Rolagem de iniciativa (todos participavam obrigatoriamente do combate) — Resolvido permitindo selecionar a lista de participantes: `Encounter::rollInitiativeForList` no Core C++, `ottrpg_initiative_roll_list` na C API, `EncounterSession.RollInitiativeForList` no C# e seleção de combatentes no `CLIController` (C++ e C#)
     - [x] Feat/Fix: Escolher habilidades e fazer o custo de PM de maneira dinâmica (`spendResource(target, resourceId, amount)`)
     - [x] FIX ERRO CRÍTICO: Sofre dano o próximo integrante da fila pela iniciativa (Resolvido no Core com alvo por ID)
     - [x] Feat: Estado de MORRIDO / Fora de combate (Resolvido: `isDefeated`, `setForcedOut` e `autoSkipDefeated`)
