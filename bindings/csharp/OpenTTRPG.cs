@@ -55,6 +55,19 @@ namespace OpenTTRPG.Native
         Lowest = 2
     }
 
+    public enum RequirementKind : int
+    {
+        AllOf = 0,            // Nó lógico E (AND)
+        AnyOf = 1,            // Nó lógico OU (OR)
+        Not = 2,              // Nó lógico NÃO (NOT)
+        AtLeastN = 3,         // Nó lógico: pelo menos N filhos
+        AbilityUnlocked = 10, // Folha: possui habilidade/talento prévio
+        StatAtLeast = 11,     // Folha: possui estatística/atributo >= threshold
+        ConditionActive = 12, // Folha: possui condição ativa (intensidade >= threshold)
+        ActionUsedInTurn = 13,// Folha: já executou ação neste turno
+        ResourceAtLeast = 14  // Folha: possui recurso >= threshold
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct DamageResult
     {
@@ -420,6 +433,55 @@ namespace OpenTTRPG.Native
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_action_queue_clear(IntPtr encounter, int id, int refundSlots);
+
+        // Árvore de Habilidades e Pré-requisitos (Genérico)
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_set_stat(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string keyUtf8, int value);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_get_stat(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string keyUtf8, int defaultValue, out int outValue);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_unlock_ability(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_revoke_ability(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_has_ability(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_record_action_in_turn(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string actionKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_has_used_action_in_turn(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string actionKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_register(IntPtr encounter,
+                                                         [MarshalAs(UnmanagedType.LPUTF8Str)] string keyUtf8,
+                                                         [MarshalAs(UnmanagedType.LPUTF8Str)] string nameUtf8,
+                                                         [MarshalAs(UnmanagedType.LPUTF8Str)] string parentKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_set_req_root(IntPtr encounter,
+                                                             [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8,
+                                                             int isUsageReq, int rootKind, int threshold);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_add_req_node(IntPtr encounter,
+                                                             [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8,
+                                                             int isUsageReq, int parentNodeId, int reqKind,
+                                                             [MarshalAs(UnmanagedType.LPUTF8Str)] string targetKeyUtf8,
+                                                             int threshold, int resourceId, out int outNodeId);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_can_learn(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_learn(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_can_use(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
     }
 
     /// <summary>
@@ -441,7 +503,7 @@ namespace OpenTTRPG.Native
         public static string GetLastError()
         {
             IntPtr ptr = NativeMethods.ottrpg_last_error();
-            return ptr == IntPtr.Zero ? string.Empty : Marshal.PtrToStringUTF8(ptr);
+            return ptr == IntPtr.Zero ? string.Empty : (Marshal.PtrToStringUTF8(ptr) ?? string.Empty);
         }
 
         public int AddCombatant(string name, int initiativeModifier, int maxHealth, int team = 0)
@@ -520,7 +582,7 @@ namespace OpenTTRPG.Native
         public int[] GetInitiativeOrder()
         {
             EnsureNotDisposed();
-            NativeMethods.ottrpg_initiative_get_order(_handle, null, 0, out int count);
+            NativeMethods.ottrpg_initiative_get_order(_handle, null!, 0, out int count);
             if (count <= 0)
             {
                 return Array.Empty<int>();
@@ -544,7 +606,7 @@ namespace OpenTTRPG.Native
         public string GetCombatantName(int combatantId)
         {
             EnsureNotDisposed();
-            NativeMethods.ottrpg_combatant_get_name(_handle, combatantId, null, 0, out int required);
+            NativeMethods.ottrpg_combatant_get_name(_handle, combatantId, null!, 0, out int required);
             if (required <= 0)
             {
                 return string.Empty;
@@ -885,7 +947,7 @@ namespace OpenTTRPG.Native
             var list = new QueuedActionEntry[count];
             for (int i = 0; i < count; i++)
             {
-                NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out QueuedActionInfo info, null, 0, out int req);
+                NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out QueuedActionInfo info, null!, 0, out int req);
                 byte[] buf = new byte[Math.Max(1, req)];
                 NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out info, buf, buf.Length, out _);
                 string name = req > 1 ? Encoding.UTF8.GetString(buf, 0, req - 1) : string.Empty;
@@ -900,15 +962,15 @@ namespace OpenTTRPG.Native
             int count = NativeMethods.ottrpg_action_queue_count(_handle, combatantId);
             if (count <= 0)
             {
-                entry = null;
+                entry = null!;
                 return false;
             }
-            NativeMethods.ottrpg_action_queue_get(_handle, combatantId, 0, out _, null, 0, out int req);
+            NativeMethods.ottrpg_action_queue_get(_handle, combatantId, 0, out _, null!, 0, out int req);
             byte[] buf = new byte[Math.Max(1, req)];
             int res = NativeMethods.ottrpg_action_queue_pop(_handle, combatantId, out QueuedActionInfo info, buf, buf.Length, out _);
             if (res != (int)OttrpgStatus.Ok)
             {
-                entry = null;
+                entry = null!;
                 return false;
             }
             string name = req > 1 ? Encoding.UTF8.GetString(buf, 0, req - 1) : string.Empty;
@@ -927,6 +989,128 @@ namespace OpenTTRPG.Native
         {
             EnsureNotDisposed();
             NativeMethods.ottrpg_action_queue_clear(_handle, combatantId, refundSlots ? 1 : 0);
+        }
+
+        // ----- Árvore de Habilidades, Estatísticas e Pré-requisitos (Genérico) -----
+
+        public void SetStat(int combatantId, string key, int value)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_set_stat(_handle, combatantId, key, value);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao definir estatística '{key}': {GetLastError()}");
+            }
+        }
+
+        public int GetStat(int combatantId, string key, int defaultValue = 0)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_get_stat(_handle, combatantId, key, defaultValue, out int val);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao consultar estatística '{key}': {GetLastError()}");
+            }
+            return val;
+        }
+
+        public void GrantAbilityUnchecked(int combatantId, string abilityKey)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_unlock_ability(_handle, combatantId, abilityKey);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao conceder habilidade '{abilityKey}': {GetLastError()}");
+            }
+        }
+
+        public bool HasAbility(int combatantId, string abilityKey)
+        {
+            EnsureNotDisposed();
+            return NativeMethods.ottrpg_combatant_has_ability(_handle, combatantId, abilityKey) == 1;
+        }
+
+        public void RecordActionInTurn(int combatantId, string actionKey)
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_combatant_record_action_in_turn(_handle, combatantId, actionKey);
+        }
+
+        public bool HasUsedActionInTurn(int combatantId, string actionKey)
+        {
+            EnsureNotDisposed();
+            return NativeMethods.ottrpg_combatant_has_used_action_in_turn(_handle, combatantId, actionKey) == 1;
+        }
+
+        public void RegisterAbilityInTree(string key, string name, string parentKey = "")
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_register(_handle, key, name, parentKey ?? string.Empty);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao registrar habilidade '{key}' na árvore: {GetLastError()}");
+            }
+        }
+
+        public void SetAbilityRequirementRoot(string abilityKey, bool isUsageRequirement, RequirementKind logicalKind, int threshold = 1)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_set_req_root(_handle, abilityKey, isUsageRequirement ? 1 : 0, (int)logicalKind, threshold);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao configurar raiz de pré-requisitos de '{abilityKey}': {GetLastError()}");
+            }
+        }
+
+        public int AddAbilityRequirementNode(string abilityKey, bool isUsageRequirement, int parentNodeId,
+                                             RequirementKind kind, string targetKey = "", int threshold = 1, int resourceId = 0)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_add_req_node(
+                _handle, abilityKey, isUsageRequirement ? 1 : 0, parentNodeId,
+                (int)kind, targetKey ?? string.Empty, threshold, resourceId, out int nodeId);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao adicionar nó de pré-requisito em '{abilityKey}': {GetLastError()}");
+            }
+            return nodeId;
+        }
+
+        public bool CanLearnAbility(int combatantId, string abilityKey, out string unmetReasons)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_can_learn(_handle, combatantId, abilityKey);
+            if (res < 0)
+            {
+                throw new InvalidOperationException($"Erro ao avaliar concessão de '{abilityKey}': {GetLastError()}");
+            }
+            unmetReasons = res == 1 ? string.Empty : GetLastError();
+            return res == 1;
+        }
+
+        public bool TryLearnAbility(int combatantId, string abilityKey, out string unmetReasons)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_learn(_handle, combatantId, abilityKey);
+            if (res == (int)OttrpgStatus.Ok)
+            {
+                unmetReasons = string.Empty;
+                return true;
+            }
+            unmetReasons = GetLastError();
+            return false;
+        }
+
+        public bool CanUseAbility(int combatantId, string abilityKey, out string unmetReasons)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_can_use(_handle, combatantId, abilityKey);
+            if (res < 0)
+            {
+                throw new InvalidOperationException($"Erro ao avaliar uso de '{abilityKey}': {GetLastError()}");
+            }
+            unmetReasons = res == 1 ? string.Empty : GetLastError();
+            return res == 1;
         }
 
         public int CurrentTurn => NativeMethods.ottrpg_combat_current(_handle);

@@ -122,4 +122,73 @@ const ConditionTracker& Combatant::conditions() const { return conditions_; }
 ActionEconomy& Combatant::actions() { return actions_; }
 const ActionEconomy& Combatant::actions() const { return actions_; }
 
+// ----- Estatísticas / Atributos Genéricos -----
+
+void Combatant::setStat(const std::string& key, int value) {
+    if (key.empty()) {
+        return;
+    }
+    if (NamedStat* existing = stats_.find_if([&key](const NamedStat& s) { return s.key == key; })) {
+        existing->value = value;
+        return;
+    }
+    stats_.push_back(NamedStat{key, value});
+}
+
+int Combatant::stat(const std::string& key, int defaultValue) const {
+    const NamedStat* existing = stats_.find_if([&key](const NamedStat& s) { return s.key == key; });
+    return existing != nullptr ? existing->value : defaultValue;
+}
+
+bool Combatant::hasStat(const std::string& key) const {
+    return stats_.find_if([&key](const NamedStat& s) { return s.key == key; }) != nullptr;
+}
+
+const ds::LinkedList<NamedStat>& Combatant::stats() const {
+    return stats_;
+}
+
+// ----- Habilidades / Poderes Concedidos -----
+
+bool Combatant::unlockAbility(const std::string& key) {
+    if (key.empty() || hasAbility(key)) {
+        return false;
+    }
+    unlockedAbilities_.push_back(key);
+    return true;
+}
+
+bool Combatant::revokeAbility(const std::string& key) {
+    const std::size_t idx = unlockedAbilities_.find_index([&key](const std::string& k) { return k == key; });
+    return idx != ds::LinkedList<std::string>::npos && unlockedAbilities_.remove_at(idx);
+}
+
+bool Combatant::hasAbility(const std::string& key) const {
+    return unlockedAbilities_.find_if([&key](const std::string& k) { return k == key; }) != nullptr;
+}
+
+const ds::LinkedList<std::string>& Combatant::unlockedAbilities() const {
+    return unlockedAbilities_;
+}
+
+// ----- Histórico de Ações Executadas no Turno Atual -----
+
+void Combatant::recordActionInTurn(const std::string& actionKey) {
+    if (!actionKey.empty()) {
+        turnActionHistory_.push_back(actionKey);
+    }
+}
+
+bool Combatant::hasUsedActionInTurn(const std::string& actionKey) const {
+    return turnActionHistory_.find_if([&actionKey](const std::string& k) { return k == actionKey; }) != nullptr;
+}
+
+void Combatant::clearTurnActionHistory() {
+    turnActionHistory_.clear();
+}
+
+const ds::LinkedList<std::string>& Combatant::turnActionHistory() const {
+    return turnActionHistory_;
+}
+
 } // namespace openttrpg::core

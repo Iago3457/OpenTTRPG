@@ -375,6 +375,87 @@ void testActionPriorityQueueAndEconomy() {
     std::cout << "SUCESSO!\n";
 }
 
+void testAbilityAndPrerequisiteTrees() {
+    std::cout << "[TEST] Árvore N-ária (Tree), Árvore de Habilidades e Pré-requisitos (Concessão e Uso)... ";
+
+    core::Encounter enc(123);
+    auto hero = enc.addCombatant("Paladino", 1, 30, 1);
+    auto* comb = enc.find(hero);
+    assert(comb != nullptr);
+
+    // 1. Constrói uma Árvore de Habilidades com 3 níveis de profundidade:
+    //    encouracado (Raiz: CON >= 1)
+    //       └── inexpugnavel (Filho: requer 'encouracado' + Nivel >= 6)
+    //              └── fanatico (Neto: requer 'inexpugnavel' -> 'encouracado' + Nivel >= 12)
+    auto& abTree = enc.abilityTree();
+    auto* nEnc = abTree.registerAbility("encouracado", "Encouraçado", "");
+    auto* nInex = abTree.registerAbility("inexpugnavel", "Inexpugnável", "encouracado");
+    auto* nFan = abTree.registerAbility("fanatico", "Fanático", "inexpugnavel");
+    assert(nEnc != nullptr && nInex != nullptr && nFan != nullptr);
+    assert(abTree.abilityCount() == 3);
+
+    nEnc->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "CON", 1);
+    nInex->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "Nivel", 6);
+    nFan->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "Nivel", 12);
+
+    // Sem atributos ainda (CON = 0, Nivel = 1): não pode aprender nada
+    comb->setStat("CON", 0);
+    comb->setStat("Nivel", 1);
+    assert(!enc.canLearnAbility(hero, "encouracado"));
+    assert(!enc.canLearnAbility(hero, "inexpugnavel"));
+
+    // Sobe CON para 2: pode aprender a habilidade-raiz 'encouracado', mas ainda não a filha 'inexpugnavel'
+    comb->setStat("CON", 2);
+    assert(enc.canLearnAbility(hero, "encouracado"));
+    assert(!enc.canLearnAbility(hero, "inexpugnavel")); // falta ter aprendido 'encouracado' e Nivel >= 6
+
+    // Tenta pular o nó pai na árvore mesmo tendo Nivel 12: deve bloquear porque falta 'encouracado' e 'inexpugnavel'!
+    comb->setStat("Nivel", 12);
+    ds::LinkedList<std::string> reasons;
+    assert(!enc.learnAbility(hero, "fanatico", &reasons));
+    assert(!reasons.is_empty());
+
+    // Desbloqueia na ordem da árvore: encouracado -> inexpugnavel -> fanatico
+    assert(enc.learnAbility(hero, "encouracado"));
+    assert(enc.learnAbility(hero, "inexpugnavel"));
+    assert(enc.learnAbility(hero, "fanatico"));
+    assert(comb->hasAbility("fanatico"));
+
+    // 2. Testa Árvore de Pré-requisitos de USO no turno (Ações usadas antes no turno + Condição Ativa):
+    //    Habilidade "golpe_finalizador" exige:
+    //    - Ter executado a ação "Agredir" antes neste mesmo turno E
+    //    - Estar sob a condição "Inspirado" (intensidade >= 1)
+    auto* nCombo = abTree.registerAbility("golpe_finalizador", "Golpe Finalizador", "");
+    assert(nCombo != nullptr);
+    nCombo->usageRequirements.addNode(1, core::RequirementKind::ActionUsedInTurn, "Agredir", 1);
+    nCombo->usageRequirements.addNode(1, core::RequirementKind::ConditionActive, "Inspirado", 1);
+
+    assert(enc.learnAbility(hero, "golpe_finalizador"));
+
+    // Antes de usar "Agredir" e sem a condição "Inspirado": não pode usar!
+    assert(!enc.canUseAbility(hero, "golpe_finalizador"));
+
+    // Aplica condição "Inspirado", mas ainda não executou "Agredir" no turno: continua bloqueado!
+    core::Condition inspired;
+    inspired.key = "Inspirado";
+    inspired.duration = 2;
+    inspired.intensity = 1;
+    enc.addCondition(hero, inspired);
+    assert(!enc.canUseAbility(hero, "golpe_finalizador"));
+
+    // Enfileira e executa "Agredir" no turno: o histórico do turno registra automaticamente!
+    comb->actions().defineActionType(2, "Padrao", 30, 1);
+    assert(enc.enqueueAction(hero, 2, "Agredir") > 0);
+    core::QueuedAction executed;
+    assert(enc.popNextAction(hero, executed));
+    assert(comb->hasUsedActionInTurn("Agredir"));
+
+    // Agora todos os pré-requisitos da árvore de uso estão satisfeitos!
+    assert(enc.canUseAbility(hero, "golpe_finalizador"));
+
+    std::cout << "SUCESSO!\n";
+}
+
 void testC_ApiDll() {
     std::cout << "[TEST] C API / DLL ABI (ottrpg_api.h P/Invoke compatível)... ";
     assert(ottrpg_api_version() == 1);
@@ -467,6 +548,25 @@ void testC_ApiDll() {
     // Como p2 já gastou a Ação Padrão e só tem Movimento, tentar outra Padrão deve falhar
     assert(ottrpg_action_can_use(enc, p2, kActStd, &consumedType) == 0);
 
+    // Árvore de Habilidades e Pré-requisitos via C API
+    assert(ottrpg_ability_register(enc, "ataque_poderoso", "Ataque Poderoso", "") == OTTRPG_OK);
+    assert(ottrpg_ability_register(enc, "trespassar", "Trespassar", "ataque_poderoso") == OTTRPG_OK);
+    int32_t reqNodeId = 0;
+    assert(ottrpg_ability_add_req_node(enc, "ataque_poderoso", 0, 1, OTTRPG_REQ_STAT_AT_LEAST, "FOR", 1, 0, &reqNodeId) == OTTRPG_OK);
+    assert(ottrpg_ability_add_req_node(enc, "trespassar", 1, 1, OTTRPG_REQ_ACTION_USED_IN_TURN, "Mordida", 1, 0, &reqNodeId) == OTTRPG_OK);
+
+    // p2 sem FOR >= 1 não pode aprender ataque_poderoso nem trespassar
+    assert(ottrpg_ability_can_learn(enc, p2, "ataque_poderoso") == 0);
+    assert(ottrpg_combatant_set_stat(enc, p2, "FOR", 2) == OTTRPG_OK);
+    assert(ottrpg_ability_can_learn(enc, p2, "ataque_poderoso") == 1);
+    assert(ottrpg_ability_can_learn(enc, p2, "trespassar") == 0); // ainda não aprendeu o nó pai!
+
+    assert(ottrpg_ability_learn(enc, p2, "ataque_poderoso") == OTTRPG_OK);
+    assert(ottrpg_ability_learn(enc, p2, "trespassar") == OTTRPG_OK);
+
+    // Como p2 já executou "Mordida" no pop acima, pode usar "trespassar" neste turno!
+    assert(ottrpg_ability_can_use(enc, p2, "trespassar") == 1);
+
     ottrpg_encounter_destroy(enc);
     std::cout << "SUCESSO!\n";
 }
@@ -481,6 +581,7 @@ int main() {
     testInitiativeTracker();
     testEncounterFaçade();
     testActionPriorityQueueAndEconomy();
+    testAbilityAndPrerequisiteTrees();
     testC_ApiDll();
     std::cout << "\n>>> TODOS OS TESTES DO CORE GENÉRICO PASSARAM COM ÊXITO! <<<\n";
     return 0;

@@ -13,8 +13,9 @@
     - [x] Pipeline de dano agnóstico (`Damage`) com resistências, fraquezas, imunidades e reduções de dano
     - [x] Rastreador de condições e status (`ConditionTracker`) com durações e ticks de início/fim de turno
     - [x] Fila de iniciativa ordenada dinâmica (`InitiativeTracker`) com desempates e suporte a atrasar ação
-    - [x] Fila de Prioridades (`PriorityQueue`) e Economia de Ações de Turno (`ActionEconomy`) com ordem Livre -> Movimento -> Comum e downgrade unidirecional (Padrão pode ser usada como Movimento, nunca o inverso)
-    - [x] Fachada de encontro (`Encounter`) orquestrando combatentes, turnos, ações e dados
+    - [x] Fila de Prioridades (`PriorityQueue`) e Economia de Ações de Turno Genérica (`ActionEconomy`) com prioridades e regras de conversão (`addFallback`) desacopladas
+    - [x] Árvore N-ária Genérica (`Tree<T>`) e Sistema de Árvores de Habilidades e Pré-requisitos (`AbilityTree` / `RequirementTree`) para concessão e uso de habilidades (ancestrais na árvore, atributos, condições ativas, ações usadas antes no turno e recursos)
+    - [x] Fachada de encontro (`Encounter`) orquestrando combatentes, turnos, ações, árvore de habilidades e dados
     - [x] C ABI estável (`openttrpg_api.h` / `src/api/openttrpg_api.cpp`) compilado para DLL / `.so` (`OTTRPG_BUILD_DLL`)
     - [x] Bindings em C# com P/Invoke (`bindings/csharp/OpenTTRPG.cs`), Regras de Tormenta20 Jogo do Ano (`bindings/csharp/Tormenta20Rules.cs`) e CLI em C# (`bindings/csharp/CLIController.cs`)
     - [x] Bateria de testes unitários automatizados (`tests/test_generic_core.cpp`)

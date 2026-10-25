@@ -79,6 +79,93 @@ int parseBonus(const std::string& input) {
     return 0;
 }
 
+struct T20PowerTreeEntry {
+    std::string key;
+    std::string name;
+    std::string parentKey;
+    std::string description;
+    int pmCost;
+    core::ActionType actionType;
+};
+
+const std::vector<T20PowerTreeEntry>& getCanonicalT20Powers() {
+    static const std::vector<T20PowerTreeEntry> powers = {
+        {"ataque_poderoso", "Ataque Poderoso", "", "Requer FOR >= 1. Sofre -2 no ataque para +5 no dano.", 0, core::ActionType::Free},
+        {"trespassar", "Trespassar", "ataque_poderoso", "Filho de Ataque Poderoso na Árvore: ataque extra ao derrubar inimigo (1 PM).", 1, core::ActionType::Free},
+        {"golpe_demolidor", "Golpe Demolidor", "ataque_poderoso", "Filho de Ataque Poderoso (Requer FOR >= 2 e Nv >= 4): ignora RD.", 2, core::ActionType::Standard},
+        {"estilo_duas_armas", "Estilo de Duas Armas", "", "Requer DES >= 2. Faz dois ataques com duas armas.", 0, core::ActionType::Standard},
+        {"chuva_de_laminas", "Chuva de Lâminas", "estilo_duas_armas", "Filho de Estilo de Duas Armas (Requer DES >= 4 e Nv >= 12): ataque adicional.", 2, core::ActionType::Standard},
+        {"esquiva", "Esquiva", "", "Requer DES >= 1. Recebe +2 na Defesa e Reflexos.", 0, core::ActionType::Free},
+        {"mobilidade", "Mobilidade", "esquiva", "Filho de Esquiva (Requer Nv >= 2 e usado Movimento no turno): +2 na Defesa.", 1, core::ActionType::Free},
+        {"investida", "Investida", "", "Ação de combate básica: avança e ataca com +2 no ataque.", 0, core::ActionType::Standard},
+        {"carga_de_cavalaria", "Carga de Cavalaria", "investida", "Filho de Investida (Requer ter executado 'Investida' no turno): +2d8 de dano.", 1, core::ActionType::Free}
+    };
+    return powers;
+}
+
+void registerT20PowerTrees(core::Encounter& enc) {
+    auto& tree = enc.abilityTree();
+    for (const auto& p : getCanonicalT20Powers()) {
+        tree.registerAbility(p.key, p.name, p.parentKey);
+    }
+
+    // Regras de aprendizado e uso na Árvore (Tree<RequirementNode>)
+    if (auto* node = tree.findAbility("ataque_poderoso")) {
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "FOR", 1);
+    }
+    if (auto* node = tree.findAbility("golpe_demolidor")) {
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "FOR", 2);
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "LEVEL", 4);
+    }
+    if (auto* node = tree.findAbility("estilo_duas_armas")) {
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "DES", 2);
+    }
+    if (auto* node = tree.findAbility("chuva_de_laminas")) {
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "DES", 4);
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "LEVEL", 12);
+    }
+    if (auto* node = tree.findAbility("esquiva")) {
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "DES", 1);
+    }
+    if (auto* node = tree.findAbility("mobilidade")) {
+        node->grantRequirements.addNode(1, core::RequirementKind::StatAtLeast, "LEVEL", 2);
+        node->usageRequirements.addNode(1, core::RequirementKind::ActionUsedInTurn, "Movimentar-se", 1);
+        int notBranch = node->usageRequirements.addNode(1, core::RequirementKind::Not);
+        node->usageRequirements.addNode(notBranch, core::RequirementKind::ConditionActive, "Imovel", 1);
+    }
+    if (auto* node = tree.findAbility("carga_de_cavalaria")) {
+        node->usageRequirements.addNode(1, core::RequirementKind::ActionUsedInTurn, "Investida", 1);
+    }
+}
+
+void syncSheetToCombatantTree(const models::CharacterSheet& sheet, core::Combatant& comb) {
+    comb.setStat("LEVEL", sheet.getLevel());
+    comb.setStat("FOR", sheet.getAttribute(core::AttributeType::Strength).getModifier());
+    comb.setStat("DES", sheet.getAttribute(core::AttributeType::Dexterity).getModifier());
+    comb.setStat("CON", sheet.getAttribute(core::AttributeType::Constitution).getModifier());
+    comb.setStat("INT", sheet.getAttribute(core::AttributeType::Intelligence).getModifier());
+    comb.setStat("SAB", sheet.getAttribute(core::AttributeType::Wisdom).getModifier());
+    comb.setStat("CAR", sheet.getAttribute(core::AttributeType::Charisma).getModifier());
+
+    const auto& powers = getCanonicalT20Powers();
+    sheet.getSkills().for_each([&](const models::Skill& sk, std::size_t) {
+        for (const auto& p : powers) {
+            if (sk.getName() == p.name) {
+                comb.unlockAbility(p.key);
+            }
+        }
+    });
+}
+
+std::string formatUnmetList(const ds::LinkedList<std::string>& reasons) {
+    std::string out;
+    reasons.for_each([&](const std::string& r, std::size_t idx) {
+        if (idx > 0) out += "; ";
+        out += r;
+    });
+    return out;
+}
+
 } // namespace anônimo
 
 CLIController::CLIController() : nextCharacterId(1) {
@@ -221,6 +308,7 @@ void CLIController::handleManageCharacter() {
     std::cout << "  7. Recuperar Pontos de Mana (PM)\n";
     std::cout << "  8. Sofrer Dano em Pontos de Vida (PV)\n";
     std::cout << "  9. Curar Pontos de Vida (PV)\n";
+    std::cout << "  10. Desbloquear Poder na Árvore de Pré-requisitos (AED1 Tree)\n";
     std::cout << "Opção: ";
     std::string subOptStr = getCleanLine();
     int subOpt = parseMultiplier(subOptStr);
@@ -333,6 +421,51 @@ void CLIController::handleManageCharacter() {
         int heal = parseMultiplier(getCleanLine());
         selected.getSheet().healHp(heal);
         std::cout << "[OK] Cura aplicada. PV Atual: " << selected.getSheet().getCurrentHp() << "/" << selected.getSheet().getMaxHp() << "\n";
+    } else if (subOpt == 10) {
+        core::Encounter tempEnc;
+        registerT20PowerTrees(tempEnc);
+        core::EntityId eid = tempEnc.addCombatant(selected.getName(), 0, selected.getSheet().getMaxHp(), 1);
+        if (auto* comb = tempEnc.find(eid)) {
+            syncSheetToCombatantTree(selected.getSheet(), *comb);
+        }
+
+        std::cout << "\n--- ÁRVORE DE PODERES DE TORMENTA20 (" << selected.getName()
+                  << " Nv." << selected.getSheet().getLevel() << ") ---\n";
+        const auto& powers = getCanonicalT20Powers();
+        for (std::size_t i = 0; i < powers.size(); ++i) {
+            const auto& p = powers[i];
+            const auto* comb = tempEnc.find(eid);
+            bool alreadyHas = comb && comb->hasAbility(p.key);
+            ds::LinkedList<std::string> unmet;
+            bool canLearn = tempEnc.canLearnAbility(eid, p.key, &unmet);
+            std::string status = alreadyHas
+                ? "[JÁ APRENDIDO]"
+                : (canLearn ? "[DISPONÍVEL]" : ("[BLOQUEADO: " + formatUnmetList(unmet) + "]"));
+            std::string indent = p.parentKey.empty() ? "  " : "    -> ";
+            std::cout << indent << (i + 1) << ". " << p.name << " " << status << " — " << p.description << "\n";
+        }
+
+        std::cout << "\nEscolha o número do poder para tentar aprender (ou 0 para cancelar): ";
+        int pChoiceRaw = parseBonus(getCleanLine());
+        std::size_t pChoice = pChoiceRaw > 0 ? static_cast<std::size_t>(pChoiceRaw) : 0;
+        if (pChoice >= 1 && pChoice <= powers.size()) {
+            const auto& chosenPower = powers[pChoice - 1];
+            const auto* comb = tempEnc.find(eid);
+            if (comb && comb->hasAbility(chosenPower.key)) {
+                std::cout << "[AVISO] " << selected.getName() << " já possui '" << chosenPower.name << "'.\n";
+            } else {
+                ds::LinkedList<std::string> unmet;
+                if (tempEnc.learnAbility(eid, chosenPower.key, &unmet)) {
+                    selected.getSheet().addSkill(models::Skill(
+                        chosenPower.name, chosenPower.description, chosenPower.pmCost, chosenPower.actionType, 0));
+                    std::cout << "[SUCESSO] '" << chosenPower.name
+                              << "' desbloqueado na Árvore de Poderes e adicionado à ficha!\n";
+                } else {
+                    std::cout << "[PRÉ-REQUISITOS NÃO ATENDIDOS NA ÁRVORE] Não foi possível aprender '"
+                              << chosenPower.name << "': " << formatUnmetList(unmet) << "\n";
+                }
+            }
+        }
     }
 }
 
@@ -488,6 +621,7 @@ void CLIController::handleInitiativeCombat() {
     constexpr core::ActionTypeId kT20StandardAction = 2;
 
     core::Encounter encounter;
+    registerT20PowerTrees(encounter);
 
     // Mapa entre o EntityId do Encounter e o índice no vetor characters
     std::vector<core::EntityId> charEntityIds;
@@ -511,6 +645,7 @@ void CLIController::handleInitiativeCombat() {
             combatant->actions().defineActionType(kT20MovementAction, "Ação de Movimento", 20, 1);
             combatant->actions().defineActionType(kT20StandardAction, "Ação Padrão", 30, 1);
             combatant->actions().addFallback(kT20MovementAction, kT20StandardAction);
+            syncSheetToCombatantTree(c.getSheet(), *combatant);
         }
         charEntityIds.push_back(eid);
 
@@ -755,6 +890,21 @@ void CLIController::handleInitiativeCombat() {
 
                 if (skChoice >= 1 && skChoice <= skills.size()) {
                     const auto& chosenSkill = skills.get(skChoice - 1);
+                    std::string treeKey;
+                    for (const auto& p : getCanonicalT20Powers()) {
+                        if (p.name == chosenSkill.getName()) {
+                            treeKey = p.key;
+                            break;
+                        }
+                    }
+                    if (!treeKey.empty()) {
+                        ds::LinkedList<std::string> unmetUsage;
+                        if (!encounter.canUseAbility(currentId, treeKey, &unmetUsage)) {
+                            std::cout << "[BLOQUEADO PELA ÁRVORE DE PRÉ-REQUISITOS] Não é possível usar '"
+                                      << chosenSkill.getName() << "' agora: " << formatUnmetList(unmetUsage) << "\n";
+                            continue;
+                        }
+                    }
                     pmCost = chosenSkill.getPmCost();
                     skName = chosenSkill.getName();
                     reqType = mapModelActionToCore(chosenSkill.getActionType());

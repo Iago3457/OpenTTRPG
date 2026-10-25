@@ -60,14 +60,16 @@ namespace OpenTTRPG.CLI
         public int PmCost { get; set; }
         public ActionType Action { get; set; }
         public int Modifier { get; set; }
+        public string TreeKey { get; set; }
 
-        public CharacterSkill(string name, string description, int pmCost, ActionType action, int modifier = 0)
+        public CharacterSkill(string name, string description, int pmCost, ActionType action, int modifier = 0, string treeKey = "")
         {
             Name = name;
             Description = description;
             PmCost = Math.Max(0, pmCost);
             Action = action;
             Modifier = modifier;
+            TreeKey = treeKey ?? string.Empty;
         }
     }
 
@@ -97,6 +99,7 @@ namespace OpenTTRPG.CLI
 
         public List<CharacterItem> Inventory { get; } = new List<CharacterItem>();
         public List<CharacterSkill> Skills { get; } = new List<CharacterSkill>();
+        public List<string> UnlockedTreeKeys { get; } = new List<string>();
 
         public CharacterSheetData(int id, string name, string charClass, string race, string origin, string deity,
                                   int level, int maxHp, int maxPm)
@@ -218,7 +221,7 @@ namespace OpenTTRPG.CLI
             Match m = Regex.Match(input, @"[xX\*]?\s*(\d+)");
             if (m.Success && int.TryParse(m.Groups[1].Value, out int val))
             {
-                return Math.Max(1, val);
+                return Math.Max(Math.Min(1, defaultValue), val);
             }
             return defaultValue;
         }
@@ -335,6 +338,7 @@ namespace OpenTTRPG.CLI
             Console.WriteLine("  4. Recuperar Pontos de Mana (PM)");
             Console.WriteLine("  5. Sofrer Dano em Pontos de Vida (PV)");
             Console.WriteLine("  6. Curar Pontos de Vida (PV)");
+            Console.WriteLine("  7. Desbloquear Poder na Árvore de Pré-requisitos (Tormenta20)");
             Console.Write("Opção: ");
             int subOpt = ParsePositiveInt(GetCleanLine(), 0);
 
@@ -426,6 +430,59 @@ namespace OpenTTRPG.CLI
                 selected.CurrentHp = Math.Min(selected.MaxHp, selected.CurrentHp + heal);
                 Console.WriteLine($"[OK] PV Atual: {selected.CurrentHp}/{selected.MaxHp}");
             }
+            else if (subOpt == 7)
+            {
+                using var session = new EncounterSession();
+                Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
+                int eid = session.AddCombatant(selected.Name, selected.Dexterity, selected.MaxHp, 1);
+                Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
+                    session, eid, selected.Level,
+                    selected.Strength, selected.Dexterity, selected.Constitution,
+                    selected.Intelligence, selected.Wisdom, selected.Charisma,
+                    selected.UnlockedTreeKeys);
+
+                Console.WriteLine($"\n--- ÁRVORE DE PODERES DE TORMENTA20 ({selected.Name} Nv.{selected.Level}) ---");
+                var powers = Tormenta20AbilityTreeRules.CanonicalPowers;
+                for (int i = 0; i < powers.Count; i++)
+                {
+                    var p = powers[i];
+                    bool alreadyHas = session.HasAbility(eid, p.Key);
+                    bool canLearn = session.CanLearnAbility(eid, p.Key, out string unmet);
+                    string status = alreadyHas
+                        ? "[JÁ APRENDIDO]"
+                        : (canLearn ? "[DISPONÍVEL]" : $"[BLOQUEADO: {unmet}]");
+                    string indent = string.IsNullOrEmpty(p.ParentKey) ? "  " : "    -> ";
+                    Console.WriteLine($"{indent}{i + 1}. {p.Name} {status} — {p.Description}");
+                }
+
+                Console.Write("\nEscolha o número do poder para tentar aprender (ou 0 para cancelar): ");
+                int pChoice = ParsePositiveInt(GetCleanLine(), 0);
+                if (pChoice >= 1 && pChoice <= powers.Count)
+                {
+                    var chosenPower = powers[pChoice - 1];
+                    if (session.HasAbility(eid, chosenPower.Key))
+                    {
+                        Console.WriteLine($"[AVISO] {selected.Name} já possui '{chosenPower.Name}'.");
+                    }
+                    else if (session.TryLearnAbility(eid, chosenPower.Key, out string unmet))
+                    {
+                        selected.UnlockedTreeKeys.Add(chosenPower.Key);
+                        ActionType mappedAction = chosenPower.ActionType switch
+                        {
+                            T20ActionType.Free => ActionType.Free,
+                            T20ActionType.Movement => ActionType.Movement,
+                            _ => ActionType.Standard
+                        };
+                        selected.Skills.Add(new CharacterSkill(
+                            chosenPower.Name, chosenPower.Description, chosenPower.PmCost, mappedAction, 0, chosenPower.Key));
+                        Console.WriteLine($"[SUCESSO] '{chosenPower.Name}' desbloqueado na Árvore de Poderes e adicionado à ficha!");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[PRÉ-REQUISITOS NÃO ATENDIDOS NA ÁRVORE] Não foi possível aprender '{chosenPower.Name}': {unmet}");
+                    }
+                }
+            }
         }
 
         public void HandleDiceRoll()
@@ -457,6 +514,7 @@ namespace OpenTTRPG.CLI
             }
 
             using var session = new EncounterSession();
+            Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
             var charEntityIds = new List<int>(_characters.Count);
 
             Console.WriteLine("\nPersonagens cadastrados disponíveis:");
@@ -468,6 +526,11 @@ namespace OpenTTRPG.CLI
                 session.AddResource(eid, ManaResourceId, "PM", c.MaxPm, 0);
                 session.SetResourceCurrent(eid, ManaResourceId, c.CurrentPm);
                 Tormenta20ActionRules.ConfigureTurnActions(session, eid, standardActions: 1, movementActions: 1, freeActions: -1);
+                Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
+                    session, eid, c.Level,
+                    c.Strength, c.Dexterity, c.Constitution,
+                    c.Intelligence, c.Wisdom, c.Charisma,
+                    c.UnlockedTreeKeys);
                 charEntityIds.Add(eid);
 
                 string dexStr = c.Dexterity >= 0 ? $"+{c.Dexterity}" : c.Dexterity.ToString();
@@ -693,6 +756,12 @@ namespace OpenTTRPG.CLI
                         if (skChoice >= 1 && skChoice <= skills.Count)
                         {
                             CharacterSkill chosen = skills[skChoice - 1];
+                            if (!string.IsNullOrEmpty(chosen.TreeKey) &&
+                                !session.CanUseAbility(currentId, chosen.TreeKey, out string unmetUsage))
+                            {
+                                Console.WriteLine($"[BLOQUEADO PELA ÁRVORE DE PRÉ-REQUISITOS] Não é possível usar '{chosen.Name}' agora: {unmetUsage}");
+                                continue;
+                            }
                             pmCost = chosen.PmCost;
                             skName = chosen.Name;
                             reqActionType = MapActionType(chosen.Action);
