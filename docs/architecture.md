@@ -1,20 +1,31 @@
 # Arquitetura e Representação Visual do Sistema — OpenTTRPG
 
-Este documento apresenta a engenharia de software e a **representação visual detalhada** de cada subsistema do **Core Genérico em C++17**, das **Estruturas de Dados Manuais de AED1** e do **Pacote de Regras de Tormenta20 (Jogo do Ano) em C#**.
+Este documento apresenta a engenharia de software e a **representação visual detalhada** de cada subsistema do **Core Genérico em C++17**, das **Estruturas de Dados Manuais de AED1**, da **Fronteira C ABI** e do **Pacote Modular de Regras de Tormenta20 (Jogo do Ano) em C#**.
 
 ---
 
 ## 1. Visão Macro: Arquitetura em 4 Camadas e Fronteira Nativa (P/Invoke)
 
-O **OpenTTRPG** separa estritamente **mecanismos universais de RPG** (em C++17) de **regras específicas de um sistema** (em C#):
+O **OpenTTRPG** separa estritamente **mecanismos universais de RPG** (em C++17) de **regras específicas de um sistema** (em C#). Nenhum arquivo C++ conhece o que é "Tormenta20", "Pontos de Mana", "Luta" ou "Ataque Poderoso" — tudo no C++ opera sobre identificadores genéricos (`EntityId`, `ResourceId`, `DamageTypeId`, `ActionTypeId`) e árvores/filas abstratas:
 
 ```mermaid
 flowchart TD
-    subgraph Camada4 ["4. Camada de Aplicação e Regras do Sistema (C# / .NET 10)"]
-        UI["Interface Gráfica (Godot Engine 4) / CLIController.cs"]
-        T20Act["Tormenta20ActionRules (Ações e Prioridades T20)"]
-        T20Tree["Tormenta20AbilityTreeRules (Árvore de Poderes T20)"]
-        Session["EncounterSession (Wrapper Gerenciado IDisposable)"]
+    subgraph Camada4 ["4. Camada de Aplicação e Regras do Sistema (C# / .NET Modular)"]
+        UI["Interface Gráfica (Godot Engine 4)\nou CLI (bindings/csharp/CLI/)"]
+
+        subgraph T20Package ["Pacote Modular Tormenta20 (bindings/csharp/Tormenta20/)"]
+            T20Mod["Tormenta20Models & Tormenta20Enums\n(Ficha, Atributos, Espaços, Armas, Magias)"]
+            T20Act["Tormenta20ActionRules\n(Ações, Prioridades e Conversões)"]
+            T20Tree["Tormenta20AbilityTreeRules\n(Árvore de Poderes e Pré-requisitos)"]
+            T20Skill["Tormenta20SkillRules\n(30 Perícias, Treino e Pen. Armadura)"]
+            T20Cond["Tormenta20ConditionRules\n(13 Condições, Escalonamento e Sangramento)"]
+            T20Comb["Tormenta20CombatRules\n(Ataque vs. Defesa, Crítico Base e RD)"]
+            T20Mag["Tormenta20MagicRules & Tormenta20RestRules\n(Aprimoramentos, Limite PM e Descanso)"]
+        end
+
+        subgraph NativePkg ["Pacote P/Invoke (bindings/csharp/Native/)"]
+            Session["EncounterSession + RequirementBuilder\n(NativeTypes.cs / NativeMethods.cs)"]
+        end
     end
 
     subgraph Camada3 ["3. Fronteira C ABI (include/openttrpg/api/openttrpg_api.h)"]
@@ -32,17 +43,15 @@ flowchart TD
     end
 
     subgraph Camada1 ["1. Estruturas de Dados Manuais de AED1 (C++17 Puro)"]
-        LL["LinkedList&lt;T&gt; (Lista Duplamente/Simplesmente Encadeada)"]
-        Q["Queue&lt;T&gt; (Fila FIFO)"]
+        LL["LinkedList&lt;T&gt; (Lista Encadeada Cadastral)"]
+        Q["Queue&lt;T&gt; (Fila FIFO Dinâmica)"]
         PQ["PriorityQueue&lt;T&gt; (Fila de Prioridades Estável)"]
         TR["Tree&lt;T&gt; (Árvore N-ária Genérica)"]
     end
 
-    UI --> T20Act
-    UI --> T20Tree
+    UI --> T20Package
     UI --> Session
-    T20Act --> Session
-    T20Tree --> Session
+    T20Package --> Session
     Session -- "P/Invoke (DllImport libopenttrpg_core)" --> CABI
     CABI --> Enc
 
@@ -66,7 +75,7 @@ flowchart TD
 
 ## 2. Representação Visual das Estruturas de Dados de AED1 (`include/openttrpg/data_structures/`)
 
-Todas as 4 estruturas foram implementadas manualmente do zero com ponteiros (`new` / `delete`) e obedecem à **Regra dos Cinco (*Rule of Five*)**.
+Todas as 4 estruturas foram implementadas manualmente do zero com ponteiros (`new` / `delete`), obedecem à **Regra dos Cinco (*Rule of Five*)** (destrutor virtual/explícito, construtor de cópia, operador de atribuição por cópia, construtor de movimento e atribuição por movimento) e são verificadas contra vazamentos de memória via `make test_asan` (`-fsanitize=address,leak`).
 
 ### 2.1. `LinkedList<T>` e `Queue<T>`
 ```mermaid
@@ -91,14 +100,14 @@ Elementos com **menor valor numérico de `priority`** saem primeiro na frente da
 
 ```mermaid
 flowchart LR
-    HEAD["head_ (pop / front)"] --> P1["[Prio 10 | 1º Livre]\nAtaque Especial"]
+    HEAD["head_ (dequeue / peek)"] --> P1["[Prio 10 | 1º Livre]\nAtaque Especial"]
     P1 --> P2["[Prio 10 | 2º Livre]\nGrito de Guerra"]
     P2 --> P3["[Prio 20 | Movimento]\nDeslocar 9m"]
     P3 --> P4["[Prio 30 | Padrão]\nAgredir"]
     P4 --> NULL["nullptr"]
 ```
-* **Inserção (`push(value, priority)`)**: Percorre a lista enquanto `curr->priority <= priority` e insere o novo nó logo após o último elemento de mesma prioridade ($O(N)$), garantindo estabilidade sem reordenar elementos antigos.
-* **Remoção seletiva (`remove_if`)**: Permite cancelar uma ação específica no meio da fila (usado quando o jogador desfaz uma ação agendada no turno).
+* **Inserção (`enqueue(value, priority)`)**: Percorre a lista enquanto `curr->priority <= priority` e insere o novo nó logo após o último elemento de mesma prioridade ($O(N)$), garantindo estabilidade sem reordenar elementos antigos.
+* **Remoção seletiva (`remove_if`)**: Permite cancelar uma ação específica no meio da fila (usado quando o jogador desfaz uma ação agendada no turno e recebe o slot de volta).
 
 ### 2.3. `Tree<T>` (Árvore N-ária Genérica)
 Cada `TreeNode<T>` possui um ponteiro para seu `parent` (permitindo subir até a raiz em $O(h)$ para validar ancestralidade) e uma `LinkedList<TreeNode<T>*> children` (permitindo um número ilimitado de filhos por nó):
@@ -115,7 +124,7 @@ flowchart TD
 
 ---
 
-## 3. Como Cada Parte do Core C++ Funciona (Representação Visual Detalhada)
+## 3. Como Cada Subsistema do Core C++ Funciona
 
 ### 3.1. `InitiativeTracker` & `Encounter` — Seleção de Participantes e Ciclo de Turnos
 No Core, **cadastrar um combatente não o força a entrar na lista de iniciativa**. O método `rollInitiativeForList` recebe apenas os IDs escolhidos para participar daquele combate, rola a iniciativa e insere cada um na posição ordenada correta:
@@ -136,8 +145,8 @@ flowchart TD
 
 ---
 
-### 3.2. `ActionEconomy` — Slots de Ação, Conversão Direcional (`Fallback`) e Fila de Prioridades
-O `ActionEconomy` é **100% agnóstico de sistema**: ele não sabe o que é "Ação Padrão" ou "Ação de Movimento". Ele gerencia uma lista de `ActionSlot`s, uma lista de regras direcionais `ActionFallbackRule` (`requestedType -> fallbackType`) e uma `PriorityQueue<QueuedAction>`:
+### 3.2. `ActionEconomy` — Slots de Ação, Conversão Direcional (`Fallback`), Custos Compostos e Fila de Prioridades
+O `ActionEconomy` é **100% agnóstico de sistema**: ele gerencia uma lista de `ActionSlot`s, uma lista de regras direcionais `ActionFallbackRule` (`requestedType -> fallbackType`) e uma `PriorityQueue<QueuedAction>`:
 
 ```mermaid
 flowchart TD
@@ -159,12 +168,12 @@ flowchart TD
     Options -- "cancelQueuedAction(actionId, refund=true)" --> Cancel["Remove da PriorityQueue e\ndevolve +1 ao Slot[consumedType]"]
 ```
 
-> **Detalhe Importante (Reembolso Exato):** Como cada `QueuedAction` guarda tanto o `requiredType` (que define a prioridade na fila) quanto o `consumedType` (qual slot realmente pagou a conta), se o jogador cancelar uma ação que usou *fallback*, o Core devolve o ponto exatamente para o slot que foi gasto!
+* **Ações Compostas (`enqueueCompoundAction`)**: Usadas para ações que exigem múltiplos slots simultaneamente (como a **Ação Completa** em Tormenta20, que consome `1 Ação Padrão + 1 Ação de Movimento`). Se o jogador cancelar a ação composta na fila, todos os slots consumidos são reembolsados atomicamente.
 
 ---
 
 ### 3.3. `AbilityTree` & `RequirementTree` — Árvore de Habilidades + Árvore Lógica de Pré-requisitos
-Este subsistema combina **duas árvores (`Tree<T>`) trabalhando em conjunto** para validar qualquer regra de concessão ou uso de habilidade:
+Este subsistema combina **duas árvores (`Tree<T>`) trabalhando em conjunto**:
 
 1. **`AbilityTree` (`Tree<AbilityNode>`)**: Modela a hierarquia entre habilidades (qual poder é filho de qual poder).
 2. **`RequirementTree` (`Tree<RequirementNode>`)**: Dentro de cada `AbilityNode`, existem **duas** árvores de expressão lógica avaliadas em **pós-ordem** (filhos avaliados antes do pai):
@@ -214,179 +223,71 @@ flowchart LR
     Absorb --> Out["Retorna DamageResult\n{ finalAmount, absorbedByTemp, depleted }"]
 ```
 
-#### Ciclo de Vida e Empilhamento de Condições (`ConditionTracker`)
-```mermaid
-stateDiagram-v2
-    [*] --> RecebeCondicao: add(condition, StackPolicy)
-    RecebeCondicao --> RefreshDuration: Policy = RefreshDuration\n(Mantém maior duração e maior intensidade)
-    RecebeCondicao --> StackIntensity: Policy = StackIntensity\n(Soma intensidades e renova duração)
-    RecebeCondicao --> KeepHighest: Policy = KeepHighest\n(Substitui só se intensidade for maior)
-    RecebeCondicao --> Independent: Policy = Independent\n(Adiciona instância separada na LinkedList)
-
-    RefreshDuration --> AtivaNoCombatente
-    StackIntensity --> AtivaNoCombatente
-    KeepHighest --> AtivaNoCombatente
-    Independent --> AtivaNoCombatente
-
-    AtivaNoCombatente --> TickTurno: tick(StartOfTurn / EndOfTurn / RoundStart)
-    TickTurno --> AtivaNoCombatente: durationTurns > 0 (--durationTurns)
-    TickTurno --> Removida: durationTurns chega a 0 (remove_if)
-    Removida --> [*]
-```
-
 ---
 
-### 3.5. `DiceEngine` — Parser e Avaliador de Expressões de Dados
-O `DiceEngine` processa fórmulas complexas sem depender de regras fixas de um único RPG:
+## 4. Como os Módulos de Tormenta20 em C# Funcionam (`bindings/csharp/Tormenta20/`)
 
-```mermaid
-flowchart LR
-    Expr["Expressão String\nEx: '2d20kh1+5' ou '4d6!dl1-1'"] --> Parser["Regex / Tokenizador\n• Quantidade (N)\n• Faces (dS)\n• Explosivo (!)\n• Seletor (kh / kl / dh / dl)\n• Modificador (+/- M)"]
-    Parser --> Roll["Rola N dados no std::mt19937_64\n(Repete rolagem se '!' e cair no valor máximo)"]
-    Roll --> Filter["Ordena cópia e marca 'kept = false'\nnos dados descartados por kh/kl/dh/dl"]
-    Filter --> Sum["Soma dados mantidos + Modificador\nConta NaturalMax (críticos) e NaturalOne (falhas)"]
-    Sum --> Res["DiceRollResult"]
-```
+Toda a lógica específica de **Tormenta20 — Edição Jogo do Ano** está dividida em 9 arquivos modulares dentro de `bindings/csharp/Tormenta20/` (`namespace OpenTTRPG.Tormenta20`):
 
----
+### 4.1. `Tormenta20ActionRules.cs` — Economia de Ações e Fila de Prioridades
+* Registra os slots de ação no Core:
+  - `Free` (`ID 0`, Prioridade `10`, Ilimitada `-1`)
+  - `Movement` (`ID 1`, Prioridade `20`, `1` por turno)
+  - `Standard` (`ID 2`, Prioridade `30`, `1` por turno)
+  - `Full` (`ID 3`, Prioridade `40`, consome `Standard + Movement` via `EnqueueCompoundAction`)
+  - `Reaction` (`ID 4`, Prioridade `5`, Ilimitada `-1`)
+* Registra a regra oficial `AddActionFallback(Movement, Standard)`: permite gastar a **Ação Padrão** para realizar uma **Ação de Movimento** adicional, mas bloqueia o inverso.
+* Antes de enfileirar qualquer ação, consulta `Tormenta20ConditionRules.CanExecuteActionType(...)` para verificar se o combatente está sob condições restritivas (ex.: *Imóvel* ou *Lento* bloqueiam Ações Completas; *Enjoado* permite apenas 1 Ação Padrão **ou** 1 de Movimento por turno).
 
-## 4. Representação Visual do Pacote de Regras de Tormenta20 em C# (`bindings/csharp/Tormenta20Rules.cs`)
+### 4.2. `Tormenta20AbilityTreeRules.cs` — Árvore de Poderes Canônicos
+Constrói os 4 ramos na `AbilityTree` do Core:
+1. **Estilo de Uma Arma** (`DES >= 1`) $\rightarrow$ **Ataque Preciso**
+2. **Ataque Poderoso** (`FOR >= 1`) $\rightarrow$ **Trespassar** (exige ter executado `"Agredir (Ataque Padrão)"` no turno atual)
+3. **Encouraçado** (`CON >= 1`) $\rightarrow$ **Inexpugnável** (`Nivel >= 6`) $\rightarrow$ **Fanático** (`Nivel >= 12`)
+4. **Magia Ilimitada** (`INT >= 1 OU CAR >= 1`) $\rightarrow$ **Surto Arcano** (exige condição `Foco_Arcano` ativa **ou** ter lançado `"Mísseis Mágicos"` no turno)
 
-Toda a lógica específica de **Tormenta20 — Edição Jogo do Ano** está isolada em C# dentro do namespace `OpenTTRPG.Tormenta20`, configurando o Core C++ via P/Invoke.
+### 4.3. `Tormenta20SkillRules.cs` — Sistema Completo de Perícias
+Implementa a tabela oficial de 30 perícias de Tormenta20 Jogo do Ano:
+$$\text{Total da Perícia} = \left\lfloor \frac{\text{Nível}}{2} \right\rfloor + \text{AtributoEfetivo} + \text{BônusDeTreino} + \text{PenalidadeDeArmadura} + \text{PenalidadeDeCondição} + \text{Outros}$$
+* **Bônus de Treinamento por Patamar:** `+2` (Níveis 1 a 6), `+4` (Níveis 7 a 14) e `+6` (Níveis 15 a 20).
+* **Somente Treinada (`TrainedOnly`):** Bloqueia testes de perícias como *Ladinagem*, *Misticismo*, *Cura* e *Ofício* se o personagem não for treinado.
+* **Penalidade de Armadura (`ArmorPenaltyApplies`):** Aplica automaticamente a penalidade de armaduras/escudos equipados (e `–5` adicional se estiver **Sobrecarregado**) em *Acrobacia*, *Furtividade* e *Ladinagem*.
 
-### 4.1. `Tormenta20ActionRules` — Fila de Prioridades e Conversão Unidirecional de Ações
-Em Tormenta20 Jogo do Ano:
-1. As ações agendadas no turno são executadas na ordem de prioridade: **1º Ação Livre $\rightarrow$ 2º Ação de Movimento $\rightarrow$ 3º Ação Padrão/Comum**.
-2. Um personagem pode **gastar sua Ação Padrão para realizar uma Ação de Movimento adicional**, mas **NUNCA pode gastar uma Ação de Movimento para pagar uma Ação Padrão**.
-
-Veja como `Tormenta20ActionRules.ConfigureTurnActions` configura isso no Core:
-
+### 4.4. `Tormenta20CombatRules.cs` — Resolução de Ataques vs. Defesa e Multiplicação Crítica
 ```mermaid
 flowchart TD
-    subgraph SlotsT20 ["Slots Configurados por Turno em Tormenta20 (C# -> Core)"]
-        Reac["T20ActionType.Reaction (ID 4)\nPrioridade = 5 | Máx = Ilimitada (-1)"]
-        Free["T20ActionType.Free (ID 0)\nPrioridade = 10 | Máx = Ilimitada (-1)"]
-        Move["T20ActionType.Movement (ID 1)\nPrioridade = 20 | Máx = 1 por turno"]
-        Std["T20ActionType.Standard (ID 2)\nPrioridade = 30 | Máx = 1 por turno"]
-        Full["T20ActionType.Full (ID 3)\nPrioridade = 40 | Máx = 0 (Consome Padrão + Movimento)"]
-    end
+    Atk["ResolveWeaponAttack(session, attackerId, targetId, weapon)"] --> Roll20["Rola 1d20 + Modificador de Luta/Pontaria\n(+2 na margem de ameaça se tiver Ataque Preciso)"]
+    Roll20 --> CheckNat{"Dado Natural d20"}
+    CheckNat -- "1 Natural" --> Miss["Falha Crítica Automática!"]
+    CheckNat -- "20 Natural ou Total >= Defesa do Alvo" --> CritCheck{"Dado Natural >= Margem de Ameaça?\n(Ex: >= 19 ou >= 17 com Ataque Preciso)"}
+    CheckNat -- "Total < Defesa" --> Miss
 
-    subgraph RegraConversao ["Regras de Conversão (AddActionFallback)"]
-        Move -- "1º Se Movimento == 0, pode consumir Padrão!\nAddActionFallback(Movement, Standard)" --> Std
-        Std -. "BLOQUEADO! Movimento NÃO paga Padrão" .-> Move
-    end
+    CritCheck -- "NÃO (Acerto Normal)" --> NormalDmg["Rola Dados Base da Arma (ex: 1d8)\n+ FOR/DES + Bônus Fixos (ex: Ataque Poderoso +5)"]
+    CritCheck -- "SIM (Acerto Crítico!)" --> CritDmg["Multiplica APENAS os Dados Base da Arma!\n(Ex: 1d8 com x2 vira 2d8; com Ataque Preciso vira 3d8)\nSoma FOR/DES e Bônus Fixos UMA única vez"]
 
-    subgraph OrdemFila ["Ordem de Execução na PriorityQueue do Turno"]
-        Q1["1º Ações Livres\n(Prioridade 10)"] --> Q2["2º Ações de Movimento\n(Prioridade 20 — mesmo se pagas com Padrão!)"]
-        Q2 --> Q3["3º Ações Padrão / Comuns\n(Prioridade 30)"]
-    end
+    NormalDmg --> Pipeline["Envia ao Core: session.DealDamage(targetId, total, damageType)\nAplica RD, Vulnerabilidade, Resistência e PV Temporário"]
+    CritDmg --> Pipeline
 ```
 
----
+### 4.5. `Tormenta20ConditionRules.cs` — Catálogo de 13 Condições Canônicas
+Gerencia os efeitos mecânicos automáticos de condições no combate:
+* **Escalonamento de Medo:** Aplicar **Abalado** em quem já está **Abalado** converte automaticamente a condição para **Apavorado**.
+* **Modificadores de Defesa e Atributos:** *Caído* (`–5` Defesa e ataque corpo a corpo), *Desprevenido* (`–5` Defesa e Reflexos), *Vulnerável* (`–2` Defesa), *Cego* (`–5` Defesa e `–2` em FOR/DES), *Fraco* (`–2` em FOR/DES/CON).
+* **Sangramento:** No início do turno (`ProcessStartOfTurnBleeding`), rola um teste de Constituição (`1d20 + CON >= CD 15`). Se passar, estanca o sangramento; se falhar, perde `1d6` PV.
 
-### 4.2. `Tormenta20AbilityTreeRules` — Topologia Completa da Árvore de Poderes de Tormenta20
-O método `Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session)` constrói no Core C++ os **4 ramos canônicos de poderes de Tormenta20**, combinando hierarquia de árvore (`parentKey`), requisitos de aprendizado (`grantRequirements`) e requisitos de ativação no turno (`usageRequirements`):
-
-```mermaid
-flowchart TD
-    Root(("Raiz da AbilityTree\n(__root__)"))
-
-    %% Ramo 1: Estilo de Uma Arma
-    P1["Estilo de Uma Arma\n[key: estilo_uma_arma]\n• Aprender (AllOf): DES >= 1"]
-    P2["Ataque Preciso\n[key: ataque_preciso]\n• Pai na Árvore: Estilo de Uma Arma\n• Aprender: Ter aprendido o nó pai"]
-
-    %% Ramo 2: Ataque Poderoso -> Trespassar
-    P3["Ataque Poderoso\n[key: ataque_poderoso]\n• Aprender (AllOf): FOR >= 1"]
-    P4["Trespassar\n[key: trespassar]\n• Pai na Árvore: Ataque Poderoso\n• Usar no Turno (AllOf):\n  ActionUsedInTurn('Agredir (Ataque Padrão)')"]
-
-    %% Ramo 3: Encouraçado -> Inexpugnável -> Fanático
-    P5["Encouraçado\n[key: encouracado]\n• Aprender (AllOf): CON >= 1"]
-    P6["Inexpugnável\n[key: inexpugnavel]\n• Pai na Árvore: Encouraçado\n• Aprender (AllOf): Nivel >= 6"]
-    P7["Fanático\n[key: fanatico]\n• Pai na Árvore: Inexpugnável\n  (Exige cadeia Encouraçado -> Inexpugnável)\n• Aprender (AllOf): Nivel >= 12"]
-
-    %% Ramo 4: Magia Ilimitada -> Surto Arcano
-    P8["Magia Ilimitada\n[key: magia_ilimitada]\n• Aprender (AnyOf / OU):\n  INT >= 1 OU CAR >= 1"]
-    P9["Surto Arcano\n[key: surto_arcano]\n• Pai na Árvore: Magia Ilimitada\n• Usar no Turno (AnyOf / OU):\n  ConditionActive('Foco_Arcano') OU\n  ActionUsedInTurn('Mísseis Mágicos')"]
-
-    Root --> P1
-    P1 --> P2
-
-    Root --> P3
-    P3 --> P4
-
-    Root --> P5
-    P5 --> P6
-    P6 --> P7
-
-    Root --> P8
-    P8 --> P9
-```
-
-#### Exemplo Visual da Árvore de Requisitos (`RequirementTree`) de **Surto Arcano** e **Magia Ilimitada**
-Para ilustrar como o `Tormenta20AbilityTreeRules` monta as `RequirementTree`s internas de um poder com lógica `OR` (`AnyOf`):
-
-```mermaid
-flowchart TD
-    subgraph GrantMagia ["grantRequirements de 'magia_ilimitada'"]
-        G_Root["Nó Raiz (id=1)\nKind = AnyOf (OR)"]
-        G_Leaf1["Nó Folha (id=2)\nKind = StatAtLeast\nkey = 'INT' | threshold = 1"]
-        G_Leaf2["Nó Folha (id=3)\nKind = StatAtLeast\nkey = 'CAR' | threshold = 1"]
-        G_Root --> G_Leaf1
-        G_Root --> G_Leaf2
-    end
-
-    subgraph UseSurto ["usageRequirements de 'surto_arcano'"]
-        U_Root["Nó Raiz (id=1)\nKind = AnyOf (OR)"]
-        U_Leaf1["Nó Folha (id=2)\nKind = ConditionActive\nkey = 'Foco_Arcano' | threshold = 1"]
-        U_Leaf2["Nó Folha (id=3)\nKind = ActionUsedInTurn\nkey = 'Mísseis Mágicos'"]
-        U_Root --> U_Leaf1
-        U_Root --> U_Leaf2
-    end
-```
-
----
-
-### 4.3. Diagrama de Sequência: Um Turno Completo de Combate (C# $\leftrightarrow$ C ABI $\leftrightarrow$ Core C++)
-
-O diagrama abaixo mostra o que acontece nos bastidores durante um turno em que **Valeros** tenta usar *Trespassar* antes de atacar (sendo bloqueado pela árvore), realiza um *Ataque Padrão* (desbloqueando *Trespassar*), usa *Ataque Especial* (Ação Livre) e encerra o turno executando a Fila de Prioridades na ordem correta:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Jogador
-    participant Rules as Tormenta20Rules (C#)
-    participant Session as EncounterSession (C#)
-    participant Core as Encounter + ActionEconomy + AbilityTree (C++)
-
-    Jogador->>Session: CanUseAbility(Valeros, "trespassar")
-    Session->>Core: ottrpg_ability_can_use("trespassar")
-    Core-->>Session: false ("Exige ter executado 'Agredir (Ataque Padrão)' neste turno")
-    Session-->>Jogador: [BLOQUEADO PELA ÁRVORE DE PRÉ-REQUISITOS]
-
-    Jogador->>Rules: EnqueueTurnAction(Valeros, Standard, "Agredir (Ataque Padrão)")
-    Rules->>Session: EnqueueAction(Valeros, requiredType=2, "Agredir (Ataque Padrão)")
-    Session->>Core: Consome Slot[Standard] (1->0), insere na PriorityQueue (prio=30) e grava no turnActionHistory_
-    Core-->>Jogador: [FILA] 'Agredir (Ataque Padrão)' enfileirada!
-
-    Jogador->>Session: CanUseAbility(Valeros, "trespassar")
-    Session->>Core: ottrpg_ability_can_use("trespassar")
-    Core-->>Session: true ('Agredir (Ataque Padrão)' consta no histórico do turno!)
-
-    Jogador->>Rules: EnqueueTurnAction(Valeros, Free, "Ataque Especial", pmCost=1)
-    Rules->>Session: SpendResource(PM, 1) + EnqueueAction(Valeros, requiredType=0, "Ataque Especial")
-    Session->>Core: Desconta 1 PM e insere na PriorityQueue (prio=10 -> vai para a FRENTE da fila!)
-
-    Jogador->>Rules: Encerrar Turno -> DrainPriorityQueueInOrder(Valeros)
-    Rules->>Core: PopNextAction() -> 1º Sai "Ataque Especial" [Prio 10 - Livre]
-    Rules->>Core: PopNextAction() -> 2º Sai "Agredir (Ataque Padrão)" [Prio 30 - Padrão]
-    Jogador->>Session: NextTurn()
-    Session->>Core: Avança para o próximo da iniciativa e reseta slots e histórico do turno
-```
+### 4.6. `Tormenta20MagicRules.cs` & `Tormenta20RestRules.cs` — Magias e Descanso
+* **Limite de PM (`Tormenta20MagicRules`):** Em Tormenta20, o máximo de PM que um personagem pode gastar em uma única magia ou habilidade com aprimoramentos é igual ao seu **Nível**. Se o personagem possuir o poder **Magia Ilimitada**, esse limite passa a ser $\text{Nível} + \text{Atributo-Chave}$.
+* **Recuperação de Descanso (`Tormenta20RestRules`):** Calcula e aplica a recuperação de PV e PM por noite de descanso:
+  - *Ruim*: $\max(1, \lfloor \text{Nível} / 2 \rfloor)$
+  - *Normal*: $1 \times \text{Nível}$
+  - *Confortável*: $2 \times \text{Nível}$
+  - *Luxuoso*: $3 \times \text{Nível}$
 
 ---
 
 ## 5. Documentos Relacionados
 
-* **[Guia de Integração com a Interface Gráfica (`docs/ui_integration_guide.md`)](ui_integration_guide.md):** Mostra exatamente quais métodos de `EncounterSession` e `Tormenta20Rules` chamar em cada botão e tela do Godot Engine + C#.
+* **[Guia de Implementação da Persistência de Dados JSON (`docs/data_persistence_guide.md`)](data_persistence_guide.md):** Instruções detalhadas e código de referência para salvar/carregar fichas e snapshots de combate em JSON.
+* **[Guia de Integração com a Interface Gráfica (`docs/ui_integration_guide.md`)](ui_integration_guide.md):** Mostra exatamente quais métodos de `EncounterSession` e dos módulos `Tormenta20*Rules` chamar em cada botão e tela do Godot Engine 4 + C#.
 * **[Regras de Tormenta20 (`docs/tormenta20_rules.md`)](tormenta20_rules.md):** Referência das fórmulas e tabelas oficiais de Tormenta20 Jogo do Ano.
 * **[To-Do List (`To_Do_List.md`)](../To_Do_List.md):** Roadmap atualizado do projeto.

@@ -1329,7 +1329,7 @@ OTTRPG_API int32_t ottrpg_action_enqueue(OttrpgEncounter* encounter, OttrpgId id
     }
     try {
         int consumed = openttrpg::core::kInvalidActionType;
-        const int actionId = c->actions().enqueueAction(required_type, name_utf8, target_id, &consumed);
+        const int actionId = encounter->encounter.enqueueAction(id, required_type, name_utf8, target_id, &consumed);
         if (actionId <= 0) {
             set_last_error("Ações insuficientes no turno para enfileirar esta ação.");
             if (out_action_id != nullptr) *out_action_id = 0;
@@ -1370,6 +1370,7 @@ OTTRPG_API int32_t ottrpg_action_enqueue_compound(OttrpgEncounter* encounter, Ot
             if (out_action_id != nullptr) *out_action_id = 0;
             return OTTRPG_ERR_INSUFFICIENT_RESOURCE;
         }
+        c->recordActionInTurn(name_utf8);
         if (out_action_id != nullptr) *out_action_id = actionId;
         return OTTRPG_OK;
     } catch (...) {

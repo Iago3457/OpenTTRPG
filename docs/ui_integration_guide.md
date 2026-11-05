@@ -6,22 +6,27 @@ Aqui está mapeado exatamente **qual classe e qual função chamar em cada tela,
 
 ---
 
-## 1. Arquitetura para a Equipe de Interface
+## 1. Arquitetura Modular para a Equipe de Interface
 
-Toda a comunicação entre a interface gráfica e o motor em C++ já está pronta e encapsulada em dois arquivos C# dentro de [`bindings/csharp/`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp):
+Toda a comunicação entre a interface gráfica e o motor em C++ já está pronta e organizada em duas pastas modulares dentro de [`bindings/csharp/`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp) (basta copiar essas duas pastas e a biblioteca `bin/libopenttrpg_core.so` / `openttrpg_core.dll` para dentro do projeto Godot 4 .NET):
 
-1. **[`OpenTTRPG.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/OpenTTRPG.cs)** (`namespace OpenTTRPG.Native`):
-   Contém a classe principal **`EncounterSession`**, que gerencia a memória da biblioteca nativa (`libopenttrpg_core.so` no Linux / `openttrpg_core.dll` no Windows) de forma automática (`IDisposable`) e expõe métodos C# tipados.
-2. **[`Tormenta20Rules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20Rules.cs)** (`namespace OpenTTRPG.Tormenta20`):
-   Contém os utilitários prontos das regras de **Tormenta20 Jogo do Ano** construídos sobre o Core:
-   - **`Tormenta20ActionRules`**: Configura e gerencia a Fila de Prioridades de Ações do turno (`Livre -> Movimento -> Padrão`) e a regra de converter Ação Padrão em Movimento.
-   - **`Tormenta20AbilityTreeRules`**: Configura a Árvore de Poderes e Pré-requisitos de Tormenta20 e sincroniza os atributos da ficha com o Core.
+1. **[`bindings/csharp/Native/`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Native)** (`namespace OpenTTRPG.Native`):
+   - [`NativeTypes.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Native/NativeTypes.cs), [`NativeMethods.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Native/NativeMethods.cs) e [`EncounterSession.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Native/EncounterSession.cs): Gerencia a memória da biblioteca nativa de forma automática (`IDisposable`) e expõe métodos C# tipados.
+2. **[`bindings/csharp/Tormenta20/`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20)** (`namespace OpenTTRPG.Tormenta20`):
+   Contém os modelos e motores de regras de **Tormenta20 Jogo do Ano** divididos por responsabilidade:
+   - [`Tormenta20Enums.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20Enums.cs) & [`Tormenta20Models.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20Models.cs): Ficha (`CharacterSheetData`), atributos, itens por espaços e magias.
+   - [`Tormenta20ActionRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20ActionRules.cs): Fila de Prioridades de Ações (`Livre -> Movimento -> Padrão -> Completa`) e conversão `Padrão -> Movimento`.
+   - [`Tormenta20AbilityTreeRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20AbilityTreeRules.cs): Árvore de Poderes e Pré-requisitos de Tormenta20.
+   - [`Tormenta20SkillRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20SkillRules.cs): Cálculo e rolagem das 30 perícias oficiais de T20 JdA.
+   - [`Tormenta20ConditionRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20ConditionRules.cs): Catálogo de 13 condições canônicas, escalonamento (`Abalado -> Apavorado`) e teste de sangramento.
+   - [`Tormenta20CombatRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20CombatRules.cs): Resolução automática de Ataque vs. Defesa, crítico de dados base e RD.
+   - [`Tormenta20MagicRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20MagicRules.cs) & [`Tormenta20RestRules.cs`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Tormenta20/Tormenta20RestRules.cs): Aprimoramentos de magias, limite de gasto de PM e recuperação por descanso.
 
 ---
 
 ## 2. Mapa Rápido: "Qual função eu chamo em cada parte da tela?"
 
-| Parte da Interface (Tela / Componente no Godot) | Método C# Recomendado (`EncounterSession` / `Tormenta20Rules`) | Função C ABI Acionada (Interna) |
+| Parte da Interface (Tela / Componente no Godot) | Método C# Recomendado (`EncounterSession` / `Tormenta20*Rules`) | Função C ABI Acionada (Interna) |
 | :--- | :--- | :--- |
 | **Inicializar Gerenciador de Jogo / Combate** | `new EncounterSession(seed)` | `ottrpg_encounter_create` |
 | **Bandeja de Dados: Rolar expressão livre (`"2d6+3"`, `"1d20+5"`)** | `session.Roll(string expression)` | `ottrpg_dice_roll_expression` |
@@ -36,13 +41,15 @@ Toda a comunicação entre a interface gráfica e o motor em C++ já está pront
 | **Barra Superior de Iniciativa: Obter ordem dos cards** | `session.GetInitiativeOrder()` | `ottrpg_initiative_get_order` |
 | **Destacar de quem é a vez e qual a Rodada** | `session.CurrentTurn` e `session.Round` | `ottrpg_combat_current_turn` / `round` |
 | **Botão "Atrasar Turno"** | `session.DelayTurn(combatantId, afterTargetId)` | `ottrpg_initiative_delay_turn` |
-| **Barra de Ações: Enfileirar Ataque / Movimento / Poder** | `Tormenta20ActionRules.EnqueueTurnAction(...)` | `ottrpg_action_enqueue` |
+| **Barra de Ações: Enfileirar Ataque / Movimento / Poder / Completa** | `Tormenta20ActionRules.EnqueueTurnAction(...)` | `ottrpg_action_enqueue` / `compound` |
 | **Painel da Fila de Prioridades: Listar ações agendadas** | `session.GetActionQueue(combatantId)` | `ottrpg_action_queue_get` |
 | **Botão "Desfazer / Cancelar Ação da Fila"** | `session.CancelQueuedAction(combatantId, actionId, true)` | `ottrpg_action_queue_cancel` |
 | **Botão "Encerrar Turno" (Executa a fila e passa a vez)** | `Tormenta20ActionRules.DrainPriorityQueueInOrder(...)` + `session.NextTurn()` | `ottrpg_action_queue_pop` + `next_turn` |
-| **Clicar em Alvo para Causar Dano (com RD/Resistência)** | `session.DealDamage(targetId, amount, damageType)` | `ottrpg_combat_deal_damage` |
-| **Clicar em Alvo para Curar PV** | `session.Heal(targetId, amount)` | `ottrpg_combat_heal` |
-| **Ícones de Buff/Debuff: Adicionar / Consultar / Remover Condição** | `session.AddCondition` / `HasCondition` / `RemoveCondition` | `ottrpg_condition_add` / `has` / `remove` |
+| **Resolver Ataque com Arma vs. Defesa do Alvo (Crítico + RD)** | `Tormenta20CombatRules.ResolveWeaponAttack(...)` | `ottrpg_dice_roll_expression` + `deal_damage` |
+| **Rolar Teste de Perícia Oficial de T20 (ex.: `"Luta"`, `"Furtividade"`)** | `Tormenta20SkillRules.RollSkillCheck(...)` | `ottrpg_dice_roll_d20` |
+| **Conjurar Magia com Aprimoramentos e Limite de PM** | `Tormenta20MagicRules.CastSpellWithEnhancements(...)` | `ottrpg_resource_spend` + `action_enqueue` |
+| **Aplicar Condição Canônica de T20 (ex.: `"Abalado"`, `"Sangrando"`)** | `Tormenta20ConditionRules.ApplyCanonicalCondition(...)` | `ottrpg_condition_add` |
+| **Realizar Descanso Entre Encontros (Ruim / Normal / Confortável / Luxuoso)** | `Tormenta20RestRules.ApplyRest(...)` | `ottrpg_combat_heal` + `resource_restore` |
 | **Tela de Árvore de Poderes: Checar se poder está disponível** | `session.CanLearnAbility(id, key, out string unmetReasons)` | `ottrpg_ability_can_learn` |
 | **Tela de Árvore de Poderes: Botão "Desbloquear Poder"** | `session.TryLearnAbility(id, key, out string unmetReasons)` | `ottrpg_ability_learn` |
 | **Barra de Habilidades: Checar se poder pode ser usado no turno** | `session.CanUseAbility(id, key, out string unmetUsage)` | `ottrpg_ability_can_use` |
@@ -53,7 +60,7 @@ Toda a comunicação entre a interface gráfica e o motor em C++ já está pront
 
 ### 3.1. Gerenciador Global da Sessão (Autoload / Singleton no Godot)
 
-No Godot, crie um Node Autoload (ex.: `CombatManager.cs`) que mantém a instância de [`EncounterSession`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/OpenTTRPG.cs#L487-L494):
+No Godot, crie um Node Autoload (ex.: `CombatManager.cs`) que mantém a instância de [`EncounterSession`](file:///home/iago3457/%C3%81rea%20de%20trabalho/AED/OpenTTRPG/bindings/csharp/Native/EncounterSession.cs):
 
 ```csharp
 using OpenTTRPG.Native;
