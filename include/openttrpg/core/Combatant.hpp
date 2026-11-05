@@ -4,18 +4,11 @@
 #include "openttrpg/core/Condition.hpp"
 #include "openttrpg/core/Damage.hpp"
 #include "openttrpg/core/Resource.hpp"
+#include "openttrpg/core/Types.hpp"
 #include "openttrpg/data_structures/LinkedList.hpp"
 #include <string>
 
 namespace openttrpg::core {
-
-// Identificador de entidade. IDs válidos são > 0.
-using EntityId = int;
-constexpr EntityId kInvalidId = 0;
-
-// Identificador de recurso. O significado é definido pelo sistema (0 = Vida por convenção).
-using ResourceId = int;
-constexpr ResourceId kHealthResource = 0;
 
 /**
  * @brief Recurso nomeado pertencente a uma entidade.

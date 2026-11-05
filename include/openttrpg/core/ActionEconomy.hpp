@@ -1,15 +1,12 @@
 #pragma once
 
+#include "openttrpg/core/Types.hpp"
 #include "openttrpg/data_structures/LinkedList.hpp"
 #include "openttrpg/data_structures/PriorityQueue.hpp"
 #include <cstddef>
 #include <string>
 
 namespace openttrpg::core {
-
-// Identificador agnóstico de categoria/tipo de ação (definido livremente por cada sistema de RPG).
-using ActionTypeId = int;
-constexpr ActionTypeId kInvalidActionType = -1;
 
 /**
  * @brief Categoria genérica de ação pertencente a uma entidade.

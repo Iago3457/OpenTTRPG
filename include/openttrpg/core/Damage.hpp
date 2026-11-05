@@ -1,18 +1,10 @@
 #pragma once
 
 #include "openttrpg/core/Resource.hpp"
+#include "openttrpg/core/Types.hpp"
 #include "openttrpg/data_structures/LinkedList.hpp"
 
 namespace openttrpg::core {
-
-/**
- * @brief Identificador numérico de tipo de dano.
- *
- * O Core não conhece "fogo", "corte" ou "psíquico": cada sistema/UI define sua
- * própria tabela (ex: 1 = Corte, 2 = Fogo...). 0 é reservado para dano sem tipo.
- */
-using DamageTypeId = int;
-constexpr DamageTypeId kUntypedDamage = 0;
 
 /**
  * @brief Como uma criatura responde a um tipo de dano (multiplicador).
