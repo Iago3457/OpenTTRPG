@@ -127,6 +127,8 @@ namespace OpenTTRPG.CLI
             Console.WriteLine("  3. Gerenciar Ficha (Itens, Árvore de Poderes, Perícias, Descanso)");
             Console.WriteLine("  4. Rolar Dados ou Testar Perícia (via Core Nativo C++)");
             Console.WriteLine("  5. Combate Completo (Iniciativa, Ataque vs Defesa, Condições, Fila de Ações)");
+            Console.WriteLine("  6. Salvar Fichas em JSON");
+            Console.WriteLine("  7. Carregar Fichas de JSON");
             Console.WriteLine("  0. Sair");
             Console.Write("Escolha uma opção: ");
         }
@@ -165,6 +167,12 @@ namespace OpenTTRPG.CLI
                         break;
                     case 5:
                         HandleInitiativeCombat();
+                        break;
+                    case 6:
+                        HandleSaveCharacters();
+                        break;
+                    case 7:
+                        HandleLoadCharacters();
                         break;
                     case 0:
                         Console.WriteLine("\nEncerrando a sessão de Tormenta20 no OpenTTRPG. Glória a Arton!");

@@ -46,9 +46,9 @@
 ---
 
 ## 4. Passos Restantes para um Programa Funcional Completo (Regras, Persistência e Qualidade)
-- [ ] **Persistência de Dados (Salvar e Carregar em JSON no C#)** *(Ver guia detalhado em [`docs/data_persistence_guide.md`](docs/data_persistence_guide.md))*:
-  - [ ] Serializar e desserializar Fichas de Personagens (atributos, inventário, poderes desbloqueados na árvore) em arquivos `.json` (`System.Text.Json`).
-  - [ ] Salvar e restaurar o estado de um combate em andamento (`Encounter` snapshot: rodada, turno atual, PV/PM e condições ativas).
+- [x] **Persistência de Dados (Salvar e Carregar em JSON no C#)** *(Ver guia detalhado em [`docs/data_persistence_guide.md`](docs/data_persistence_guide.md))*:
+  - [x] Serializar e desserializar Fichas de Personagens (atributos, inventário, poderes desbloqueados na árvore) em arquivos `.json` (`System.Text.Json`).
+  - [x] Salvar e restaurar o estado de um combate em andamento (`Encounter` snapshot: rodada, turno atual, PV/PM e condições ativas).
 - [x] **Sistema Completo de Perícias e Testes de Tormenta20 (C#)**:
   - [x] Implementar a tabela de perícias de T20 JdA (`Tormenta20SkillRules`) com cálculo automático ($\text{Metade do Nível} + \text{Atributo} + \text{Bônus de Treinamento} + \text{Outros}$).
   - [x] Aplicar automaticamente a Penalidade de Armadura em perícias baseadas em Força/Destreza (Acrobacia, Furtividade, Ladinagem) e exigir treinamento em perícias *Somente Treinadas*.

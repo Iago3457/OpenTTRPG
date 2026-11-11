@@ -364,6 +364,50 @@ namespace OpenTTRPG.CLI
                 Console.WriteLine($"[ERRO] {ex.Message}");
             }
         }
+        public void HandleSaveCharacters()
+        {
+            Console.WriteLine("\n--- SALVAR FICHAS EM JSON ---");
+            if (_characters.Count == 0)
+            {
+                Console.WriteLine("[AVISO] Nenhuma ficha cadastrada para salvar.");
+                return;
+            }
+
+            string path = "saves/characters.json";
+            Tormenta20Persistence.SaveCharactersToFile(_characters, path);
+            Console.WriteLine($"[SUCESSO] {_characters.Count} ficha(s) salva(s) com sucesso em '{path}'!");
+        }
+
+        public void HandleLoadCharacters()
+        {
+            Console.WriteLine("\n--- CARREGAR FICHAS DE JSON ---");
+            string path = "saves/characters.json";
+            if (!System.IO.File.Exists(path))
+            {
+                Console.WriteLine($"[AVISO] Arquivo '{path}' não encontrado.");
+                return;
+            }
+
+            var loaded = Tormenta20Persistence.LoadCharactersFromFile(path);
+            if (loaded.Count == 0)
+            {
+                Console.WriteLine("[AVISO] O arquivo JSON não possui fichas.");
+                return;
+            }
+
+            _characters.Clear();
+            _characters.AddRange(loaded);
+
+            // Recalcula o próximo ID para evitar IDs repetidos ao criar novos personagens
+            int maxId = 0;
+            foreach (var c in _characters)
+            {
+                if (c.Id > maxId) maxId = c.Id;
+            }
+            _nextCharacterId = maxId + 1;
+
+            Console.WriteLine($"[SUCESSO] {loaded.Count} ficha(s) carregada(s) com sucesso de '{path}'!");
+        }
     }
 }
 
