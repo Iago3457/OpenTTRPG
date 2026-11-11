@@ -33,6 +33,7 @@ namespace OpenTTRPG.Tests
             TestCanonicalConditionsCatalog();
             TestSpellEnhancementsAndPmSpendLimit();
             TestRestAndRecoveryMechanics();
+            TestCharacterPersistence();
             Console.WriteLine("\n>>> TODOS OS TESTES AUTOMATIZADOS DE C# (TORMENTA20) PASSARAM COM ÊXITO! <<<");
         }
 
@@ -337,6 +338,46 @@ namespace OpenTTRPG.Tests
             var rLux = Tormenta20RestRules.ApplyRest(hero, RestQuality.Luxurious);
             AssertEqual(18, rLux.HpRestored, "Descanso Luxuoso Nv.6 recupera 18 PV");
             AssertEqual(49, hero.CurrentHp, "PV total = 19 + 12 + 18 = 49");
+
+            Console.WriteLine("SUCESSO!");
+        }
+        
+        private static void TestCharacterPersistence()
+        {
+            Console.Write("[TEST C#] Persistência JSON de Fichas (Salvar e Carregar)... ");
+
+            // 1. Criar ficha de teste com itens e poderes
+            var hero = new CharacterSheetData(1, "Lothar", "Guerreiro", "Humano", "Soldado", "Valkaria", 3, 30, 10)
+            {
+                Strength = 4
+            };
+            hero.TrainedSkills.Add("Luta");
+            hero.UnlockedTreeKeys.Add("ataque_poderoso");
+            hero.Inventory.Add(new CharacterItem("Espada Longa", "Lâmina afiada", ItemType.Weapon, 1, "1d8", "19/x2", price: 15, equipped: true));
+
+            string testPath = "saves/test_character_sheet.json";
+
+            // 2. Salvar em arquivo
+            Tormenta20Persistence.SaveCharactersToFile(new[] { hero }, testPath);
+            AssertTrue(System.IO.File.Exists(testPath), "Arquivo JSON de teste deve ser criado");
+
+            // 3. Carregar de volta do arquivo
+            var loadedList = Tormenta20Persistence.LoadCharactersFromFile(testPath);
+            AssertEqual(1, loadedList.Count, "Deve carregar exatamente 1 ficha");
+
+            var loadedHero = loadedList[0];
+            AssertEqual("Lothar", loadedHero.Name, "Nome da ficha restaurado");
+            AssertEqual(4, loadedHero.Strength, "Atributo de Força (+4) restaurado");
+            AssertEqual(1, loadedHero.Inventory.Count, "Quantidade de itens no inventário");
+            AssertEqual("Espada Longa", loadedHero.Inventory[0].Name, "Nome do item no inventário");
+            AssertTrue(loadedHero.TrainedSkills.Contains("Luta"), "Perícia treinada restaurada");
+            AssertTrue(loadedHero.UnlockedTreeKeys.Contains("ataque_poderoso"), "Poder da árvore restaurado");
+
+            // 4. Limpar o arquivo de teste temporário
+            if (System.IO.File.Exists(testPath))
+            {
+                System.IO.File.Delete(testPath);
+            }
 
             Console.WriteLine("SUCESSO!");
         }
