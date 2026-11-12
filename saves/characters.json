@@ -1,0 +1,276 @@
+[
+  {
+    "Id": 1,
+    "Name": "Valeros de Valkaria",
+    "CharacterClass": "Guerreiro",
+    "Race": "Humano",
+    "Origin": "Soldado",
+    "Deity": "Valkaria",
+    "Level": 1,
+    "MaxHp": 24,
+    "CurrentHp": 24,
+    "TempHp": 0,
+    "MaxPm": 4,
+    "CurrentPm": 4,
+    "Strength": 3,
+    "Dexterity": 1,
+    "Constitution": 2,
+    "Intelligence": 0,
+    "Wisdom": 1,
+    "Charisma": 0,
+    "DefenseBonusMisc": 0,
+    "Tibares": 50,
+    "SpellKeyAttribute": "Intelligence",
+    "Inventory": [
+      {
+        "Name": "Espada Longa",
+        "Description": "Espada vers\u00E1til de a\u00E7o",
+        "Type": "Weapon",
+        "Slots": 1,
+        "Damage": "1d8",
+        "Critical": "19/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 15,
+        "Equipped": true
+      },
+      {
+        "Name": "Cota de Malha",
+        "Description": "Armadura pesada de metal",
+        "Type": "Armor",
+        "Slots": 2,
+        "Damage": "",
+        "Critical": "20/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 5,
+        "ArmorPenalty": -2,
+        "Price": 150,
+        "Equipped": true
+      },
+      {
+        "Name": "Escudo Leve",
+        "Description": "Escudo de madeira refor\u00E7ada",
+        "Type": "Shield",
+        "Slots": 1,
+        "Damage": "",
+        "Critical": "20/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 1,
+        "ArmorPenalty": -1,
+        "Price": 5,
+        "Equipped": true
+      },
+      {
+        "Name": "B\u00E1lsamo Restaurador",
+        "Description": "Cura 2d4 PV",
+        "Type": "Consumable",
+        "Slots": 1,
+        "Damage": "",
+        "Critical": "20/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 10,
+        "Equipped": false
+      }
+    ],
+    "Skills": [
+      {
+        "Name": "Ataque Especial",
+        "Description": "Gasta 1 PM (\u002Baprimoramentos) para receber \u002B4 no ataque ou dano",
+        "PmCost": 1,
+        "Action": "Free",
+        "Modifier": 4,
+        "TreeKey": "",
+        "IsSpell": false,
+        "BaseFormula": "",
+        "Enhancements": []
+      },
+      {
+        "Name": "Avan\u00E7o T\u00E1tico",
+        "Description": "Desloca-se pelo campo de batalha buscando flanco",
+        "PmCost": 0,
+        "Action": "Movement",
+        "Modifier": 0,
+        "TreeKey": "",
+        "IsSpell": false,
+        "BaseFormula": "",
+        "Enhancements": []
+      },
+      {
+        "Name": "Golpe Pessoal",
+        "Description": "Ataque devastador personalizado de classe",
+        "PmCost": 2,
+        "Action": "Standard",
+        "Modifier": 0,
+        "TreeKey": "",
+        "IsSpell": false,
+        "BaseFormula": "",
+        "Enhancements": []
+      }
+    ],
+    "UnlockedTreeKeys": [],
+    "TrainedSkills": [
+      "Luta",
+      "Fortitude",
+      "Atletismo",
+      "Iniciativa"
+    ],
+    "SkillMiscBonuses": {}
+  },
+  {
+    "Id": 2,
+    "Name": "Sillith",
+    "CharacterClass": "Arcanista",
+    "Race": "Qareen",
+    "Origin": "Mago Aprendiz",
+    "Deity": "Wynna",
+    "Level": 1,
+    "MaxHp": 11,
+    "CurrentHp": 11,
+    "TempHp": 0,
+    "MaxPm": 10,
+    "CurrentPm": 10,
+    "Strength": -1,
+    "Dexterity": 2,
+    "Constitution": 1,
+    "Intelligence": 4,
+    "Wisdom": 1,
+    "Charisma": 3,
+    "DefenseBonusMisc": 0,
+    "Tibares": 50,
+    "SpellKeyAttribute": "Intelligence",
+    "Inventory": [
+      {
+        "Name": "Varinha Arcana",
+        "Description": "Foco arcano para canaliza\u00E7\u00E3o",
+        "Type": "Weapon",
+        "Slots": 1,
+        "Damage": "1d4",
+        "Critical": "20/x2",
+        "DamageType": "Bludgeoning",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 20,
+        "Equipped": true
+      },
+      {
+        "Name": "Po\u00E7\u00E3o de Mana",
+        "Description": "Recupera 2d4 PM",
+        "Type": "Consumable",
+        "Slots": 1,
+        "Damage": "",
+        "Critical": "20/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 30,
+        "Equipped": false
+      }
+    ],
+    "Skills": [
+      {
+        "Name": "Passo Et\u00E9reo",
+        "Description": "Reposicionamento r\u00E1pido arcano (Movimento)",
+        "PmCost": 1,
+        "Action": "Movement",
+        "Modifier": 0,
+        "TreeKey": "",
+        "IsSpell": true,
+        "BaseFormula": "",
+        "Enhancements": []
+      },
+      {
+        "Name": "M\u00EDsseis M\u00E1gicos",
+        "Description": "Proj\u00E9teis de ess\u00EAncia: 2d4\u002B2 de dano sem teste de resist\u00EAncia",
+        "PmCost": 1,
+        "Action": "Standard",
+        "Modifier": 0,
+        "TreeKey": "",
+        "IsSpell": true,
+        "BaseFormula": "2d4\u002B2",
+        "Enhancements": [
+          {
+            "ExtraPmCost": 1,
+            "Description": "\u002B1 seta de ess\u00EAncia (\u002B1d4\u002B1)",
+            "ExtraDice": "1d4\u002B1"
+          },
+          {
+            "ExtraPmCost": 2,
+            "Description": "\u002B2 setas de ess\u00EAncia (\u002B2d4\u002B2)",
+            "ExtraDice": "2d4\u002B2"
+          }
+        ]
+      },
+      {
+        "Name": "Curar Ferimentos",
+        "Description": "Recupera 2d8\u002B2 PV de um aliado tocado",
+        "PmCost": 1,
+        "Action": "Standard",
+        "Modifier": 0,
+        "TreeKey": "",
+        "IsSpell": true,
+        "BaseFormula": "2d8\u002B2",
+        "Enhancements": []
+      }
+    ],
+    "UnlockedTreeKeys": [],
+    "TrainedSkills": [
+      "Misticismo",
+      "Vontade",
+      "Iniciativa",
+      "Conhecimento"
+    ],
+    "SkillMiscBonuses": {}
+  },
+  {
+    "Id": 3,
+    "Name": "Ferrari",
+    "CharacterClass": "Guerreiro",
+    "Race": "Deus",
+    "Origin": "UFSCariano",
+    "Deity": "Alan Turing",
+    "Level": 1,
+    "MaxHp": 100,
+    "CurrentHp": 100,
+    "TempHp": 0,
+    "MaxPm": 100,
+    "CurrentPm": 100,
+    "Strength": 0,
+    "Dexterity": 0,
+    "Constitution": 0,
+    "Intelligence": 0,
+    "Wisdom": 0,
+    "Charisma": 0,
+    "DefenseBonusMisc": 0,
+    "Tibares": 50,
+    "SpellKeyAttribute": "Intelligence",
+    "Inventory": [
+      {
+        "Name": "Espada Gigante do Melhor",
+        "Description": "Arrega\u00E7a qualquer um",
+        "Type": "Weapon",
+        "Slots": 1,
+        "Damage": "2d6",
+        "Critical": "20/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 1000000000,
+        "Equipped": true
+      }
+    ],
+    "Skills": [],
+    "UnlockedTreeKeys": [],
+    "TrainedSkills": [],
+    "SkillMiscBonuses": {}
+  }
+]
