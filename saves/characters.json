@@ -8,7 +8,7 @@
     "Deity": "Valkaria",
     "Level": 1,
     "MaxHp": 24,
-    "CurrentHp": 24,
+    "CurrentHp": 4,
     "TempHp": 0,
     "MaxPm": 4,
     "CurrentPm": 4,
@@ -132,7 +132,7 @@
     "Deity": "Wynna",
     "Level": 1,
     "MaxHp": 11,
-    "CurrentHp": 11,
+    "CurrentHp": 3,
     "TempHp": 0,
     "MaxPm": 10,
     "CurrentPm": 10,
@@ -228,49 +228,6 @@
       "Iniciativa",
       "Conhecimento"
     ],
-    "SkillMiscBonuses": {}
-  },
-  {
-    "Id": 3,
-    "Name": "Ferrari",
-    "CharacterClass": "Guerreiro",
-    "Race": "Deus",
-    "Origin": "UFSCariano",
-    "Deity": "Alan Turing",
-    "Level": 1,
-    "MaxHp": 100,
-    "CurrentHp": 100,
-    "TempHp": 0,
-    "MaxPm": 100,
-    "CurrentPm": 100,
-    "Strength": 0,
-    "Dexterity": 0,
-    "Constitution": 0,
-    "Intelligence": 0,
-    "Wisdom": 0,
-    "Charisma": 0,
-    "DefenseBonusMisc": 0,
-    "Tibares": 50,
-    "SpellKeyAttribute": "Intelligence",
-    "Inventory": [
-      {
-        "Name": "Espada Gigante do Melhor",
-        "Description": "Arrega\u00E7a qualquer um",
-        "Type": "Weapon",
-        "Slots": 1,
-        "Damage": "2d6",
-        "Critical": "20/x2",
-        "DamageType": "Slashing",
-        "IsRanged": false,
-        "DefenseBonus": 0,
-        "ArmorPenalty": 0,
-        "Price": 1000000000,
-        "Equipped": true
-      }
-    ],
-    "Skills": [],
-    "UnlockedTreeKeys": [],
-    "TrainedSkills": [],
     "SkillMiscBonuses": {}
   }
 ]

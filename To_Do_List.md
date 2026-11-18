@@ -68,17 +68,17 @@
 ---
 
 ## 5. Interface Gráfica do Projeto (Fase 2 — Godot Engine 4 + C#)
-- [ ] **Configuração do Projeto Godot (.NET) e Integração Nativa**:
-  - [ ] Importar as pastas `bindings/csharp/Native/` e `bindings/csharp/Tormenta20/` no projeto Godot C# e configurar o carregamento automático de `libopenttrpg_core.so` (Linux) / `openttrpg_core.dll` (Windows).
-- [ ] **Tela de Criação e Gerenciamento de Fichas**:
-  - [ ] Interface visual para distribuição de atributos, barras de PV/PM, cálculo dinâmico de Defesa, inventário com barra de espaços de carga e Tibares (T$).
+- [x] **Configuração do Projeto Godot (.NET) e Integração Nativa**:
+  - [x] Importar as pastas `bindings/csharp/Native/` e `bindings/csharp/Tormenta20/` no projeto Godot C# e configurar o carregamento automático de `libopenttrpg_core.so` (Linux) / `openttrpg_core.dll` (Windows).
+- [x] **Tela de Criação e Gerenciamento de Fichas**:
+  - [x] Interface visual para distribuição de atributos, barras de PV/PM, cálculo dinâmico de Defesa, inventário com barra de espaços de carga e Tibares (T$).
 - [ ] **Visualizador Interativo da Árvore de Poderes (`AbilityTree`) (Opcional)**:
   - [ ] Grafo/árvore visual de poderes exibindo nós aprendidos, disponíveis e bloqueados (com *tooltip* detalhando os pré-requisitos pendentes retornados por `CanLearnAbility`).
-- [ ] **HUD de Combate por Turnos e Bandeja de Dados (Dice Tray)**:
-  - [ ] Modal de seleção de participantes para a iniciativa (`RollInitiativeForList`).
-  - [ ] Barra superior de ordem de iniciativa (`GetInitiativeOrder`) com destaque para o combatente do turno atual (`CurrentTurn`) e contador de rodada (`Round`).
+- [x] **HUD de Combate por Turnos e Bandeja de Dados (Dice Tray)**:
+  - [x] Modal de seleção de participantes para a iniciativa (`RollInitiativeForList`).
+  - [x] Barra superior de ordem de iniciativa (`GetInitiativeOrder`) com destaque para o combatente do turno atual (`CurrentTurn`) e contador de rodada (`Round`).
   - [ ] Painel da Fila de Prioridades de Ações do turno (`GetActionQueue`, `EnqueueTurnAction`, botão de desfazer com `CancelQueuedAction` e execução em ordem).
-  - [ ] Bandeja de rolagem de dados consumindo `session.Roll(...)` com destaque para Críticos Naturais e Falhas Críticas.
+  - [x] Bandeja de rolagem de dados consumindo `session.Roll(...)` com destaque para Críticos Naturais e Falhas Críticas.
 
 ---)
 ## 6. Opcional / Última Etapa: Grid Tático Espacial e Mapa de Batalha
