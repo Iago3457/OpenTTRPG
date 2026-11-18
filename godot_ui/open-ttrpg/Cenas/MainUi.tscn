@@ -4,6 +4,10 @@
 [ext_resource type="FontFile" uid="uid://cbsf38jsimf0x" path="res://Assets/MedievalSharp-Regular.ttf" id="2_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
 bg_color = Color(0.12549, 0.133333, 0.156863, 1)
 border_width_left = 1
 border_width_top = 1
@@ -40,6 +44,10 @@ corner_radius_bottom_right = 32
 corner_radius_bottom_left = 32
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
+content_margin_left = 6.0
+content_margin_top = 3.0
+content_margin_right = 6.0
+content_margin_bottom = 3.0
 bg_color = Color(0.521569, 0.113725, 0.141176, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
@@ -47,6 +55,10 @@ corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_attr"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
 bg_color = Color(0.0980392, 0.101961, 0.117647, 1)
 border_width_left = 1
 border_width_top = 1
@@ -69,6 +81,22 @@ corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toast"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.11, 0.12, 0.15, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.85, 0.5, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
 
 [node name="MainUi" type="Control" unique_id=707174912]
 layout_mode = 3
@@ -106,7 +134,7 @@ theme_override_constants/separation = 8
 
 [node name="TopBar" type="HBoxContainer" parent="MarginContainer/VBoxMain" unique_id=684543215]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
 [node name="LblLogo" type="Label" parent="MarginContainer/VBoxMain/TopBar" unique_id=1399281985]
 layout_mode = 2
@@ -116,7 +144,7 @@ theme_override_font_sizes/font_size = 20
 text = "Tormenta20"
 
 [node name="OptPersonagens" type="OptionButton" parent="MarginContainer/VBoxMain/TopBar" unique_id=564636931]
-custom_minimum_size = Vector2(160, 0)
+custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -190,10 +218,10 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader" unique_id=1697005468]
 layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="HBoxHeader" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin" unique_id=2052409756]
 layout_mode = 2
@@ -202,7 +230,7 @@ theme_override_constants/separation = 14
 [node name="VBoxInfo" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader" unique_id=617648768]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 2
+theme_override_constants/separation = 4
 
 [node name="LblCharName" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1734458848]
 layout_mode = 2
@@ -223,21 +251,28 @@ theme_override_constants/separation = 10
 
 [node name="LblCharNivel" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo/HBoxSub" unique_id=833748852]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.25, 0.25, 1)
+theme_override_colors/font_color = Color(0.85, 0.35, 0.35, 1)
 theme_override_font_sizes/font_size = 12
 text = "NÍVEL: 1"
 
 [node name="LblCharOrigem" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo/HBoxSub" unique_id=1873868303]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.25, 0.25, 1)
+theme_override_colors/font_color = Color(0.85, 0.35, 0.35, 1)
 theme_override_font_sizes/font_size = 12
 text = "ORIGEM: Estudioso"
 
 [node name="LblCharCondicoes" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1938431198]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_colors/font_color = Color(0.65, 0.65, 0.65, 1)
 theme_override_font_sizes/font_size = 11
 text = "CONDIÇÕES: Nenhuma ativa"
+
+[node name="BtnDescansar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1938431199]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_colors/font_color = Color(0.6, 0.88, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "🏕️ Descansar (Recuperar PV/PM)"
 
 [node name="HBoxCircles" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader" unique_id=1569109899]
 layout_mode = 2
@@ -332,7 +367,7 @@ value = 1.0
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
 theme_override_font_sizes/font_size = 11
-text = "Dano"
+text = "Gastar"
 
 [node name="BtnPmCurar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm/HBoxPmControls" unique_id=2127774165]
 layout_mode = 2
@@ -366,7 +401,7 @@ theme_override_constants/separation = 6
 alignment = 1
 
 [node name="CardFOR" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=1341495957]
-custom_minimum_size = Vector2(56, 64)
+custom_minimum_size = Vector2(56, 78)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
@@ -389,7 +424,7 @@ text = "FORÇA"
 horizontal_alignment = 1
 
 [node name="CardDES" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=994936062]
-custom_minimum_size = Vector2(56, 64)
+custom_minimum_size = Vector2(56, 78)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
@@ -412,7 +447,7 @@ text = "DESTREZA"
 horizontal_alignment = 1
 
 [node name="CardCON" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=1980825140]
-custom_minimum_size = Vector2(56, 64)
+custom_minimum_size = Vector2(56, 78)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
@@ -435,7 +470,7 @@ text = "CONSTITUIÇÃO"
 horizontal_alignment = 1
 
 [node name="CardINT" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=199246926]
-custom_minimum_size = Vector2(56, 64)
+custom_minimum_size = Vector2(56, 78)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
@@ -458,7 +493,7 @@ text = "INTELIGÊNCIA"
 horizontal_alignment = 1
 
 [node name="CardSAB" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=745361402]
-custom_minimum_size = Vector2(56, 64)
+custom_minimum_size = Vector2(56, 78)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
@@ -481,7 +516,7 @@ text = "SABEDORIA"
 horizontal_alignment = 1
 
 [node name="CardCAR" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=296574725]
-custom_minimum_size = Vector2(56, 64)
+custom_minimum_size = Vector2(56, 78)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
@@ -548,7 +583,8 @@ text = "🎒 Equip."
 
 [node name="PanelContent" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox" unique_id=1691537458]
 layout_mode = 2
-theme_override_constants/separation = 4
+size_flags_vertical = 3
+theme_override_constants/separation = 6
 
 [node name="BannerSubTab" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent" unique_id=114325421]
 layout_mode = 2
@@ -569,8 +605,37 @@ theme_override_font_sizes/font_size = 12
 text = "Defesa Total: 16"
 
 [node name="ListSubItems" type="ItemList" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent" unique_id=696581507]
+custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="HBoxSubActions" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent" unique_id=696581508]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="LblCargaInfo" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/HBoxSubActions" unique_id=696581509]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.75, 0.75, 0.75, 1)
+theme_override_font_sizes/font_size = 11
+text = "Carga: 0/10 esp."
+
+[node name="BtnSubAcao1" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/HBoxSubActions" unique_id=696581510]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "Equipar / Desequipar"
+
+[node name="BtnSubAcao2" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/HBoxSubActions" unique_id=696581511]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
+theme_override_font_sizes/font_size = 11
+text = "➕ Novo Item"
+
+[node name="BtnSubAcao3" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/HBoxSubActions" unique_id=696581512]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "🗑️ Remover"
 
 [node name="CardProficiencias" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=1132233772]
 layout_mode = 2
@@ -648,7 +713,7 @@ placeholder_text = "🔍 Buscar perícia..."
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_font_sizes/font_size = 11
-text = "½ Nível: 0    Treino: 2"
+text = "½ Nível: +0   |   Treino: +2   |   Pen. Armadura: 0"
 horizontal_alignment = 1
 
 [node name="HeaderTabela" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=861292619]
@@ -656,7 +721,7 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="LblColTotal" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=2129345630]
-custom_minimum_size = Vector2(40, 0)
+custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 11
@@ -671,7 +736,7 @@ theme_override_font_sizes/font_size = 11
 text = "Perícias (Clique para Rolar)"
 
 [node name="LblColTreino" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=383152838]
-custom_minimum_size = Vector2(30, 0)
+custom_minimum_size = Vector2(44, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 11
@@ -679,7 +744,7 @@ text = "Treino"
 horizontal_alignment = 1
 
 [node name="LblColOutros" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=497971707]
-custom_minimum_size = Vector2(30, 0)
+custom_minimum_size = Vector2(54, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 11
@@ -693,7 +758,7 @@ size_flags_vertical = 3
 [node name="BoxPericiasList" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/ScrollPericias" unique_id=131206910]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 4
+theme_override_constants/separation = 3
 
 [node name="ViewCombate" type="Control" parent="MarginContainer/VBoxMain/MainContent" unique_id=303373420]
 visible = false
@@ -748,7 +813,8 @@ text = "Clique em 'Iniciar' para começar."
 [node name="HSplitCombate" type="HSplitContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=135115277]
 layout_mode = 2
 size_flags_vertical = 3
-split_offset = 260
+split_offsets = PackedInt32Array(280)
+split_offset = 280
 
 [node name="LeftActions" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=1339745429]
 layout_mode = 2
@@ -777,6 +843,11 @@ text = "🗡️ Atacar Alvo (Ação Padrão)"
 [node name="BtnMovimento" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=874732427]
 layout_mode = 2
 text = "🏃 Avanço Tático (Ação Movimento)"
+
+[node name="BtnUsarHabilidade" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=874732428]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.85, 1, 1)
+text = "✨ Usar Poder / Magia (Gasta PM)"
 
 [node name="RightLog" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=2043962233]
 layout_mode = 2
@@ -884,6 +955,31 @@ layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
 scroll_following = true
+
+[node name="ToastPanel" type="PanelContainer" parent="." unique_id=1563505295]
+visible = false
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -62.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_toast")
+
+[node name="LblToast" type="Label" parent="ToastPanel" unique_id=1563505296]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.98, 0.95, 1)
+theme_override_font_sizes/font_size = 13
+text = "Notificação"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="PopupPericia" type="ColorRect" parent="." unique_id=1563505294]
 visible = false
