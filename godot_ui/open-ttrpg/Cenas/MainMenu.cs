@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Linq;
 
 public partial class MainMenu : MarginContainer
 {
@@ -18,6 +19,12 @@ public partial class MainMenu : MarginContainer
 		if (_btnOpcoes != null)
 		{
 			_btnOpcoes.Pressed += () => _dlgOpcoes.PopupCentered();
+		}
+
+		if (OS.GetCmdlineUserArgs().Contains("--self-test") || OS.GetCmdlineArgs().Contains("--self-test"))
+		{
+			GD.Print("[SELF-TEST] MainMenu carregado -> transitando automaticamente para MainUi.tscn...");
+			CallDeferred(nameof(OnIniciarPressed));
 		}
 	}
 

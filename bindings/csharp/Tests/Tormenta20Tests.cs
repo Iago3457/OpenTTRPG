@@ -420,7 +420,7 @@ namespace OpenTTRPG.Tests
         
         private static void TestCharacterPersistence()
         {
-            Console.Write("[TEST C#] Persistência JSON de Fichas (Salvar e Carregar)... ");
+            Console.Write("[TEST C#] Persistência JSON de Fichas e Snapshot de Combate (Salvar e Carregar)... ");
 
             // 1. Criar ficha de teste com itens e poderes
             var hero = new CharacterSheetData(1, "Lothar", "Guerreiro", "Humano", "Soldado", "Valkaria", 3, 30, 10)
@@ -449,11 +449,42 @@ namespace OpenTTRPG.Tests
             AssertTrue(loadedHero.TrainedSkills.Contains("Luta"), "Perícia treinada restaurada");
             AssertTrue(loadedHero.UnlockedTreeKeys.Contains("ataque_poderoso"), "Poder da árvore restaurado");
 
-            // 4. Limpar o arquivo de teste temporário
-            if (System.IO.File.Exists(testPath))
+            // 4. Testar Snapshot de Combate (EncounterSnapshotDto)
+            var snap = new EncounterSnapshotDto
             {
-                System.IO.File.Delete(testPath);
-            }
+                CombatStarted = true,
+                Round = 3,
+                CurrentTurnSheetId = 1,
+                Participants = new()
+                {
+                    new CombatantSnapshotDto
+                    {
+                        SheetId = 1,
+                        Name = "Lothar",
+                        TeamId = 0,
+                        Initiative = 18,
+                        MaxHp = 30,
+                        CurrentHp = 22,
+                        TempHp = 5,
+                        MaxPm = 10,
+                        CurrentPm = 7,
+                        IsBleedingOut = false,
+                        ActiveConditions = new() { "Abalado" }
+                    }
+                }
+            };
+            string snapPath = "saves/test_encounter_snapshot.json";
+            Tormenta20Persistence.SaveEncounterSnapshotToFile(snap, snapPath);
+            var loadedSnap = Tormenta20Persistence.LoadEncounterSnapshotFromFile(snapPath);
+            AssertTrue(loadedSnap != null, "Snapshot de combate carregado");
+            AssertEqual(3, loadedSnap!.Round, "Rodada do snapshot restaurada");
+            AssertEqual(18, loadedSnap.Participants[0].Initiative, "Iniciativa do combatente restaurada");
+            AssertEqual(5, loadedSnap.Participants[0].TempHp, "PV temporário do combatente restaurado");
+            AssertEqual("Abalado", loadedSnap.Participants[0].ActiveConditions[0], "Condição ativa do combatente restaurada");
+
+            // 5. Limpar os arquivos de teste temporários
+            if (System.IO.File.Exists(testPath)) System.IO.File.Delete(testPath);
+            if (System.IO.File.Exists(snapPath)) System.IO.File.Delete(snapPath);
 
             Console.WriteLine("SUCESSO!");
         }

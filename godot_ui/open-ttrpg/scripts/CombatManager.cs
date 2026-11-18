@@ -36,22 +36,70 @@ public partial class CombatManager : Node
 		{
 			if (libraryName == "openttrpg_core")
 			{
-				string resPath = ProjectSettings.GlobalizePath("res://libopenttrpg_core.so");
-				if (File.Exists(resPath))
+				bool isWin = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+				string[] libFileNames = isWin
+					? new[] { "openttrpg_core.dll", "libopenttrpg_core.dll" }
+					: new[] { "libopenttrpg_core.so", "openttrpg_core.so" };
+
+				var candidateDirs = new List<string>();
+
+				// 1. Diretório do executável exportado (OpenTTRPG.x86_64 ou OpenTTRPG.exe)
+				try
 				{
-					return NativeLibrary.Load(resPath);
+					string exePath = OS.GetExecutablePath();
+					if (!string.IsNullOrWhiteSpace(exePath))
+					{
+						string exeDir = Path.GetDirectoryName(exePath);
+						if (!string.IsNullOrWhiteSpace(exeDir))
+						{
+							candidateDirs.Add(exeDir);
+							candidateDirs.Add(Path.Combine(exeDir, "..", "..", "bin"));
+						}
+					}
+				}
+				catch { }
+
+				// 2. Diretório dos assemblies .NET (data_OpenTTRPG_linuxbsd_x86_64 / data_OpenTTRPG_windows_x86_64) e seu diretório pai
+				if (!string.IsNullOrWhiteSpace(AppContext.BaseDirectory))
+				{
+					candidateDirs.Add(AppContext.BaseDirectory);
+					candidateDirs.Add(Path.Combine(AppContext.BaseDirectory, ".."));
+					candidateDirs.Add(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "bin"));
 				}
 
-				string binPath = ProjectSettings.GlobalizePath("res://../../bin/libopenttrpg_core.so");
-				if (File.Exists(binPath))
+				// 3. Caminhos do projeto Godot (quando rodando no Editor Godot)
+				try
 				{
-					return NativeLibrary.Load(binPath);
+					candidateDirs.Add(ProjectSettings.GlobalizePath("res://"));
+					candidateDirs.Add(ProjectSettings.GlobalizePath("res://../../bin"));
 				}
+				catch { }
 
-				string dllPath = ProjectSettings.GlobalizePath("res://openttrpg_core.dll");
-				if (File.Exists(dllPath))
+				// 4. Diretório de trabalho atual (CWD)
+				try
 				{
-					return NativeLibrary.Load(dllPath);
+					string cwd = Directory.GetCurrentDirectory();
+					candidateDirs.Add(cwd);
+					candidateDirs.Add(Path.Combine(cwd, "bin"));
+				}
+				catch { }
+
+				foreach (string dir in candidateDirs)
+				{
+					if (string.IsNullOrWhiteSpace(dir)) continue;
+					foreach (string fileName in libFileNames)
+					{
+						try
+						{
+							string fullPath = Path.GetFullPath(Path.Combine(dir, fileName));
+							if (File.Exists(fullPath))
+							{
+								GD.Print($"[OpenTTRPG] Carregando biblioteca C++ nativa: {fullPath}");
+								return NativeLibrary.Load(fullPath);
+							}
+						}
+						catch { }
+					}
 				}
 			}
 			return IntPtr.Zero;
@@ -77,7 +125,7 @@ public partial class CombatManager : Node
 		}
 		catch (DllNotFoundException e)
 		{
-			GD.PushError($"[OpenTTRPG] Falha ao encontrar libopenttrpg_core.so: {e.Message}");
+			GD.PushError($"[OpenTTRPG] Falha ao encontrar biblioteca nativa (libopenttrpg_core.so / openttrpg_core.dll): {e.Message}");
 		}
 		catch (Exception e)
 		{
@@ -87,19 +135,42 @@ public partial class CombatManager : Node
 
 	public string GetCharactersSavePath()
 	{
-		string projectPath = ProjectSettings.GlobalizePath("res://../../saves/characters.json");
-		if (File.Exists(projectPath))
+		// 1. Quando rodando dentro do Editor Godot
+		if (OS.HasFeature("editor"))
 		{
-			return projectPath;
+			string editorProjectPath = Path.GetFullPath(ProjectSettings.GlobalizePath("res://../../saves/characters.json"));
+			if (File.Exists(editorProjectPath))
+				return editorProjectPath;
+
+			string editorLocalPath = Path.GetFullPath(ProjectSettings.GlobalizePath("res://characters.json"));
+			if (File.Exists(editorLocalPath))
+				return editorLocalPath;
+
+			return editorProjectPath;
 		}
 
-		string localPath = ProjectSettings.GlobalizePath("res://characters.json");
-		if (File.Exists(localPath))
+		// 2. Quando rodando como Release Exportada (OpenTTRPG.x86_64 no Linux ou OpenTTRPG.exe no Windows)
+		string exeDir = Path.GetDirectoryName(OS.GetExecutablePath());
+		if (string.IsNullOrWhiteSpace(exeDir))
 		{
-			return localPath;
+			exeDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
 		}
 
-		return projectPath;
+		// Prioriza a pasta saves/ ao lado do executável (portátil para distribuição em ZIP)
+		string localSavesPath = Path.GetFullPath(Path.Combine(exeDir, "saves", "characters.json"));
+		if (File.Exists(localSavesPath))
+		{
+			return localSavesPath;
+		}
+
+		// Se estiver rodando dentro de bin/release/linux-x64 ou bin/release/win-x64 no repositório
+		string repoSavesPath = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "saves", "characters.json"));
+		if (File.Exists(repoSavesPath))
+		{
+			return repoSavesPath;
+		}
+
+		return localSavesPath;
 	}
 
 	public void LoadCharacters()
@@ -275,6 +346,20 @@ public partial class CombatManager : Node
 			SeedDefaultCharacters();
 		}
 
+		StartCombatWithSelectedCharacters(Characters);
+	}
+
+	public void StartCombatWithSelectedCharacters(
+		IEnumerable<CharacterSheetData> selectedParticipants,
+		Dictionary<int, int> customTeams = null)
+	{
+		var participants = selectedParticipants?.ToList() ?? new List<CharacterSheetData>();
+		if (participants.Count == 0)
+		{
+			LogCombat("⚠️ Selecione pelo menos 1 participante para iniciar o combate.", "#ff6b6b");
+			return;
+		}
+
 		// Sempre reinicia a sessão nativa do zero para liberar combatentes antigos e evitar IDs fantasmas
 		InitializeSession();
 		// Permite que personagens Morrendo (PV <= 0 mas > Limite de Morte) recebam seu turno para testar Constituição (CD 15);
@@ -286,14 +371,17 @@ public partial class CombatManager : Node
 
 		List<int> combatantIds = new();
 
-		foreach (var sheet in Characters)
+		foreach (var sheet in participants)
 		{
+			int teamId = (customTeams != null && customTeams.TryGetValue(sheet.Id, out int t)) ? t : 1;
 			Tormenta20SkillRules.TryCalculateSkillModifier(sheet, "Iniciativa", out int initMod, out _);
-			int cid = _session.AddCombatant(sheet.Name, initMod, sheet.MaxHp, team: 1);
+			int cid = _session.AddCombatant(sheet.Name, initMod, sheet.MaxHp, team: teamId);
 
 			// Configura PV com mínimo negativo igual ao Limite de Morte de Tormenta20 (-max(10, MaxHp/2))
 			_session.AddResource(cid, HealthResourceId, "Vida", sheet.MaxHp, sheet.GetDeathThreshold());
 			_session.SetResourceCurrent(cid, HealthResourceId, sheet.CurrentHp);
+			if (sheet.TempHp > 0)
+				_session.SetResourceTemp(cid, HealthResourceId, sheet.TempHp);
 			_session.AddResource(cid, ManaResourceId, "PM", sheet.MaxPm, 0);
 			_session.SetResourceCurrent(cid, ManaResourceId, sheet.CurrentPm);
 
@@ -316,12 +404,158 @@ public partial class CombatManager : Node
 			combatantIds.Add(cid);
 		}
 
-		_session.RollInitiativeForList(combatantIds.ToArray());
+		// Rola a iniciativa APENAS para a lista de participantes selecionados (RollInitiativeForList)
+		_session.RollInitiativeForList(combatantIds.ToArray(), 1, 20);
+		foreach (int cid in combatantIds)
+		{
+			if (CombatantIdToSheet.TryGetValue(cid, out var sh))
+			{
+				sh.LastInitiativeRoll = _session.GetCombatantInfo(cid).Initiative;
+			}
+		}
+
 		_session.StartCombat();
 		IsInCombat = true;
 
-		LogCombat($"⚔️ Combate iniciado com {combatantIds.Count} participantes!", "#66d9ef");
+		LogCombat($"⚔️ Combate iniciado com {combatantIds.Count} participante(s) selecionado(s)!", "#66d9ef");
 		NotifyTurnChanged();
+	}
+
+	public string GetCombatSnapshotPath()
+	{
+		string dir = Path.GetDirectoryName(GetCharactersSavePath()) ?? ".";
+		return Path.Combine(dir, "encounter_snapshot.json");
+	}
+
+	public bool SaveCombatSnapshot()
+	{
+		if (!IsInCombat || _session == null) return false;
+
+		try
+		{
+			SaveCharacters();
+			var snap = new EncounterSnapshotDto
+			{
+				CombatStarted = true,
+				Round = _session.Round,
+				CurrentTurnSheetId = CombatantIdToSheet.TryGetValue(_session.CurrentTurn, out var curSheet) ? curSheet.Id : 0
+			};
+
+			foreach (int cid in _session.GetInitiativeOrder())
+			{
+				if (!CombatantIdToSheet.TryGetValue(cid, out var sh)) continue;
+				CombatantInfo info = _session.GetCombatantInfo(cid);
+				ResourceInfo hp = _session.GetResource(cid, HealthResourceId);
+				ResourceInfo pm = _session.GetResource(cid, ManaResourceId);
+
+				snap.Participants.Add(new CombatantSnapshotDto
+				{
+					SheetId = sh.Id,
+					Name = sh.Name,
+					TeamId = info.Team,
+					Initiative = info.Initiative,
+					MaxHp = sh.MaxHp,
+					CurrentHp = hp.Current,
+					TempHp = hp.Temp,
+					MaxPm = sh.MaxPm,
+					CurrentPm = pm.Current,
+					IsBleedingOut = sh.IsBleedingOut,
+					ActiveConditions = Tormenta20ConditionRules.GetActiveConditionNames(_session, cid)
+				});
+			}
+
+			Tormenta20Persistence.SaveEncounterSnapshotToFile(snap, GetCombatSnapshotPath());
+			LogCombat($"💾 Snapshot do combate salvo (Rodada {snap.Round})!", "#55ff99");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			GD.PushError($"[OpenTTRPG] Erro ao salvar snapshot de combate: {ex.Message}");
+			return false;
+		}
+	}
+
+	public bool LoadCombatSnapshot()
+	{
+		try
+		{
+			string path = GetCombatSnapshotPath();
+			var snap = Tormenta20Persistence.LoadEncounterSnapshotFromFile(path);
+			if (snap == null || snap.Participants.Count == 0)
+			{
+				return false;
+			}
+
+			LoadCharacters();
+			InitializeSession();
+			_session.SetAutoSkipDefeated(false);
+			SheetIdToCombatantId.Clear();
+			CombatantIdToSheet.Clear();
+
+			int targetTurnCid = 0;
+			foreach (var p in snap.Participants)
+			{
+				var sheet = Characters.FirstOrDefault(c => c.Id == p.SheetId);
+				if (sheet == null) continue;
+
+				sheet.CurrentHp = p.CurrentHp;
+				sheet.TempHp = p.TempHp;
+				sheet.CurrentPm = p.CurrentPm;
+				sheet.IsBleedingOut = p.IsBleedingOut;
+				sheet.LastInitiativeRoll = p.Initiative;
+
+				Tormenta20SkillRules.TryCalculateSkillModifier(sheet, "Iniciativa", out int initMod, out _);
+				int cid = _session.AddCombatant(sheet.Name, initMod, sheet.MaxHp, p.TeamId);
+
+				_session.AddResource(cid, HealthResourceId, "Vida", sheet.MaxHp, sheet.GetDeathThreshold());
+				_session.SetResourceCurrent(cid, HealthResourceId, sheet.CurrentHp);
+				_session.SetResourceTemp(cid, HealthResourceId, sheet.TempHp);
+				_session.AddResource(cid, ManaResourceId, "PM", sheet.MaxPm, 0);
+				_session.SetResourceCurrent(cid, ManaResourceId, sheet.CurrentPm);
+
+				Tormenta20ActionRules.ConfigureTurnActions(_session, cid, 1, 1, -1);
+				Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
+					_session, cid, sheet.Level,
+					sheet.Strength, sheet.Dexterity, sheet.Constitution,
+					sheet.Intelligence, sheet.Wisdom, sheet.Charisma,
+					sheet.UnlockedTreeKeys);
+
+				foreach (string condKey in p.ActiveConditions)
+				{
+					if (Enum.TryParse<T20Condition>(condKey, true, out var parsedCond))
+						Tormenta20ConditionRules.ApplyCondition(_session, cid, parsedCond);
+				}
+
+				Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_session, cid, sheet);
+				_session.SetInitiative(cid, p.Initiative);
+
+				SheetIdToCombatantId[sheet.Id] = cid;
+				CombatantIdToSheet[cid] = sheet;
+				if (sheet.Id == snap.CurrentTurnSheetId)
+					targetTurnCid = cid;
+			}
+
+			if (CombatantIdToSheet.Count == 0) return false;
+
+			_session.StartCombat();
+			IsInCombat = true;
+
+			int safety = 0;
+			while (targetTurnCid > 0 && _session.CurrentTurn != targetTurnCid && safety < 30)
+			{
+				_session.NextTurn();
+				safety++;
+			}
+
+			LogCombat($"📂 Snapshot de combate restaurado ({CombatantIdToSheet.Count} participantes)!", "#66d9ef");
+			NotifyTurnChanged();
+			return true;
+		}
+		catch (Exception ex)
+		{
+			GD.PushError($"[OpenTTRPG] Erro ao carregar snapshot de combate: {ex.Message}");
+			return false;
+		}
 	}
 
 	public void NextTurn()

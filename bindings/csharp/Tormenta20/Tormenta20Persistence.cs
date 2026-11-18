@@ -81,6 +81,29 @@ namespace OpenTTRPG.Tormenta20
         public Dictionary<string, int> SkillMiscBonuses { get; set; } = new();
     }
 
+    public sealed class CombatantSnapshotDto
+    {
+        public int SheetId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int TeamId { get; set; } = 1;
+        public int Initiative { get; set; }
+        public int MaxHp { get; set; }
+        public int CurrentHp { get; set; }
+        public int TempHp { get; set; }
+        public int MaxPm { get; set; }
+        public int CurrentPm { get; set; }
+        public bool IsBleedingOut { get; set; }
+        public List<string> ActiveConditions { get; set; } = new();
+    }
+
+    public sealed class EncounterSnapshotDto
+    {
+        public bool CombatStarted { get; set; }
+        public int Round { get; set; } = 1;
+        public int CurrentTurnSheetId { get; set; }
+        public List<CombatantSnapshotDto> Participants { get; set; } = new();
+    }
+
     // =========================================================================
     // 2. Classe de Persistência (Mapeamento + Salvar/Carregar em Arquivo)
     // =========================================================================
@@ -262,6 +285,28 @@ namespace OpenTTRPG.Tormenta20
                 result.Add(FromDto(dto));
             }
             return result;
+        }
+
+        public static void SaveEncounterSnapshotToFile(EncounterSnapshotDto snapshot, string filePath)
+        {
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            string? dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            string json = JsonSerializer.Serialize(snapshot, JsonOptions);
+            File.WriteAllText(filePath, json);
+        }
+
+        public static EncounterSnapshotDto? LoadEncounterSnapshotFromFile(string filePath)
+        {
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
+            string json = File.ReadAllText(filePath);
+            return JsonSerializer.Deserialize<EncounterSnapshotDto>(json, JsonOptions);
         }
     }
 }

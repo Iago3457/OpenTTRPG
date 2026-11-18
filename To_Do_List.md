@@ -67,20 +67,20 @@
 
 ---
 
-## 5. Interface Gráfica do Projeto (Fase 2 — Godot Engine 4 + C#)
+## 5. Interface Gráfica do Projeto (Fase 2 — Godot Engine 4 + C#) (Concluído)
 - [x] **Configuração do Projeto Godot (.NET) e Integração Nativa**:
   - [x] Importar as pastas `bindings/csharp/Native/` e `bindings/csharp/Tormenta20/` no projeto Godot C# (`godot_ui/open-ttrpg/OpenTTRPG.csproj`) e configurar o carregamento automático de `libopenttrpg_core.so` (Linux) / `openttrpg_core.dll` (Windows) em `CombatManager.cs`.
 - [x] **Tela de Criação e Gerenciamento de Fichas**:
-  - [x] Interface visual para distribuição de atributos, barras de PV/PM, cálculo dinâmico de Defesa, inventário com barra de espaços de carga, descanso e perícias clicáveis.
+  - [x] Interface visual para distribuição de atributos, barras de PV/PM (incluindo PV Temporário `+Temp`), carteira de Tibares (`T$`) com compra automática no inventário, cálculo dinâmico de Defesa, inventário com barra de espaços de carga, descanso e perícias clicáveis.
 - [x] **Visualizador Interativo da Árvore de Poderes (`AbilityTree`) (Opcional)**:
-  - [x] Janela interativa da árvore de poderes exibindo nós aprendidos, disponíveis e bloqueados (detalhando os pré-requisitos pendentes retornados por `CanLearnAbility`).
+  - [x] Janela interativa da árvore de poderes (`AbilityTreeCanvas`) exibindo os 5 ramos em layout N-ário gráfico com nós aprendidos, disponíveis e bloqueados (detalhando os pré-requisitos pendentes retornados por `CanLearnAbility`).
 - [x] **HUD de Combate por Turnos e Bandeja de Dados (Dice Tray)**:
-  - [ ] Modal de seleção de participantes para a iniciativa (`RollInitiativeForList`).
-  - [x] Barra superior de ordem de iniciativa (`GetInitiativeOrder`) com destaque para o combatente do turno atual (`CurrentTurn`) e contador de rodada (`Round`).
-  - [ ] Painel da Fila de Prioridades de Ações do turno (`GetActionQueue`, `EnqueueTurnAction`, botão de desfazer com `CancelQueuedAction` e execução em ordem).
+  - [x] Modal de seleção de participantes para a iniciativa (`RollInitiativeForList`), incluindo escolha de Time (Heróis vs. Inimigos) e geração rápida de oponentes.
+  - [x] Barra superior de ordem de iniciativa (`GetInitiativeOrder`) com destaque para o combatente do turno atual (`CurrentTurn`), contador de rodada (`Round`) e salvamento/restauração de snapshot de combate em JSON (`SaveEncounterSnapshotToFile` / `LoadEncounterSnapshotFromFile`).
+  - [x] Painel da Fila de Prioridades de Ações do turno (`GetActionQueue`, `EnqueueTurnAction`, Ação Completa, botão de desfazer com `CancelQueuedAction` e reembolso de slot/PM, e botão `PopNextAction` de execução em ordem de prioridade).
   - [x] Bandeja de rolagem de dados em **Pop-up sobreposto** consumindo `session.Roll(...)` com renderizador visual de dados poliedrais (`DiceVisualCanvas`: `CanvasItem._Draw()`, `Tween` e `CpuParticles2D`) e destaque animado para Críticos Naturais e Falhas Críticas.
 
----)
+---
 ## 6. Opcional / Última Etapa: Grid Tático Espacial e Mapa de Batalha
 > **Nota:** Funcionalidade opcional a ser desenvolvida somente após todas as etapas anteriores do sistema de fichas, regras em C# e HUD de combate estarem completas.
 
