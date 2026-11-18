@@ -1,0 +1,69 @@
+[gd_scene format=3 uid="uid://dtk5tg3gjgb87"]
+
+[ext_resource type="Texture2D" uid="uid://cbj2kyorf1pcl" path="res://Tormenta20TTRPG.jpg" id="1_h30wy"]
+[ext_resource type="Script" uid="uid://q3hi81a25cgw" path="res://Cenas/MainMenu.cs" id="1_ngl4r"]
+[ext_resource type="FontFile" uid="uid://cbsf38jsimf0x" path="res://Assets/MedievalSharp-Regular.ttf" id="3_fdryh"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_wgvt7"]
+line_spacing = 10.0
+font = ExtResource("3_fdryh")
+font_size = 107
+font_color = Color(0.754879, 0.5274498, 0.21452099, 1)
+shadow_size = 50
+shadow_color = Color(0.28627452, 0.20392157, 0.11372549, 1)
+
+[node name="Control" type="TextureRect" unique_id=165852931]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -6.0
+offset_top = -11.0
+offset_right = 41.5
+offset_bottom = 155.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("1_h30wy")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1475425755 node_paths=PackedStringArray("_btnIniciar", "_btnOpcoes", "_btnSair")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ngl4r")
+_btnIniciar = NodePath("VBoxContainer/Button3")
+_btnOpcoes = NodePath("VBoxContainer/Button4")
+_btnSair = NodePath("VBoxContainer/Button5")
+
+[node name="Label" type="Label" parent="MarginContainer" unique_id=1287830008]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+theme_override_fonts/font = ExtResource("3_fdryh")
+text = "Open TTRPG"
+label_settings = SubResource("LabelSettings_wgvt7")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=1972011914]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+offset_transform_enabled = true
+offset_transform_position = Vector2(0, 2)
+theme_override_constants/separation = 30
+alignment = 1
+
+[node name="Button3" type="Button" parent="MarginContainer/VBoxContainer" unique_id=1150564935]
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Iniciar"
+
+[node name="Button4" type="Button" parent="MarginContainer/VBoxContainer" unique_id=1633658979]
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Opções"
+
+[node name="Button5" type="Button" parent="MarginContainer/VBoxContainer" unique_id=2113351267]
+layout_mode = 2
+theme_override_font_sizes/font_size = 50
+text = "Sair"

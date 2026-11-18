@@ -1,0 +1,966 @@
+[gd_scene format=3 uid="uid://os3n7kmuyre1"]
+
+[ext_resource type="Script" uid="uid://bthybftrlcyod" path="res://Cenas/MainUi.cs" id="1_mainui"]
+[ext_resource type="FontFile" uid="uid://cbsf38jsimf0x" path="res://Assets/MedievalSharp-Regular.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.12549, 0.133333, 0.156863, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.211765, 0.247059, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_circle_pv"]
+bg_color = Color(0.0823529, 0.180392, 0.109804, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.180392, 0.690196, 0.345098, 1)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_circle_pm"]
+bg_color = Color(0.0784314, 0.141176, 0.219608, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.188235, 0.541176, 0.811765, 1)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
+bg_color = Color(0.521569, 0.113725, 0.141176, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_attr"]
+bg_color = Color(0.0980392, 0.101961, 0.117647, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.15, 0.18, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge"]
+bg_color = Color(0.16, 0.17, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.32, 0.38, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="MainUi" type="Control" unique_id=707174912]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mainui")
+
+[node name="ColorRectBg" type="ColorRect" parent="." unique_id=233072939]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0784314, 0.0823529, 0.0941176, 1)
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1551030328]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxMain" type="VBoxContainer" parent="MarginContainer" unique_id=298023004]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TopBar" type="HBoxContainer" parent="MarginContainer/VBoxMain" unique_id=684543215]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="LblLogo" type="Label" parent="MarginContainer/VBoxMain/TopBar" unique_id=1399281985]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.7, 0.35, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "Tormenta20"
+
+[node name="OptPersonagens" type="OptionButton" parent="MarginContainer/VBoxMain/TopBar" unique_id=564636931]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="VSep1" type="VSeparator" parent="MarginContainer/VBoxMain/TopBar" unique_id=774620870]
+layout_mode = 2
+
+[node name="BtnViewFicha" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=305169308]
+layout_mode = 2
+text = "📜 Ficha do Personagem"
+
+[node name="BtnViewCombate" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=2093714098]
+layout_mode = 2
+text = "⚔️ Mesa de Combate"
+
+[node name="BtnViewDados" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1425063247]
+layout_mode = 2
+text = "🎲 Bandeja de Dados"
+
+[node name="Spacer" type="Control" parent="MarginContainer/VBoxMain/TopBar" unique_id=1179051571]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BtnNovoPersonagem" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1219846237]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
+text = "➕ Novo"
+
+[node name="BtnExcluirPersonagem" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1219846238]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+text = "🗑️ Excluir"
+
+[node name="BtnSalvarFichas" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1219846236]
+layout_mode = 2
+text = "💾 Salvar Fichas"
+
+[node name="BtnVoltarMenu" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=2106940914]
+layout_mode = 2
+text = "🚪 Menu Principal"
+
+[node name="MainContent" type="VBoxContainer" parent="MarginContainer/VBoxMain" unique_id=806716699]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="ViewFicha" type="ScrollContainer" parent="MarginContainer/VBoxMain/MainContent" unique_id=499887881]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="CenterBox" type="MarginContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha" unique_id=1571944537]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="HSplitFicha" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox" unique_id=605660867]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="LeftCol" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha" unique_id=687708686]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="CardHeader" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=1180259545]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader" unique_id=1697005468]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="HBoxHeader" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin" unique_id=2052409756]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="VBoxInfo" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader" unique_id=617648768]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="LblCharName" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1734458848]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "Nome do Personagem"
+
+[node name="LblCharClassRace" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1658626906]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_font_sizes/font_size = 13
+text = "Humano Arcanista"
+
+[node name="HBoxSub" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1322497614]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LblCharNivel" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo/HBoxSub" unique_id=833748852]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.25, 0.25, 1)
+theme_override_font_sizes/font_size = 12
+text = "NÍVEL: 1"
+
+[node name="LblCharOrigem" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo/HBoxSub" unique_id=1873868303]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.25, 0.25, 1)
+theme_override_font_sizes/font_size = 12
+text = "ORIGEM: Estudioso"
+
+[node name="LblCharCondicoes" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo" unique_id=1938431198]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = "CONDIÇÕES: Nenhuma ativa"
+
+[node name="HBoxCircles" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader" unique_id=1569109899]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="VBoxPv" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles" unique_id=2112938862]
+layout_mode = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="CirclePv" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv" unique_id=96033397]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_circle_pv")
+
+[node name="LblPvValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv/CirclePv" unique_id=1014578201]
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "24"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LblPvSubtexto" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv" unique_id=1214768424]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "PV 24/24"
+horizontal_alignment = 1
+
+[node name="HBoxPvControls" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv" unique_id=1369783675]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="SpinPvDelta" type="SpinBox" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv/HBoxPvControls" unique_id=928105221]
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+min_value = 1.0
+value = 1.0
+
+[node name="BtnPvDano" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv/HBoxPvControls" unique_id=1401979165]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 11
+text = "Dano"
+
+[node name="BtnPvCurar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv/HBoxPvControls" unique_id=1153740413]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
+theme_override_font_sizes/font_size = 11
+text = "Curar"
+
+[node name="VBoxPm" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles" unique_id=1778057365]
+layout_mode = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="CirclePm" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm" unique_id=1893616287]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("StyleBoxFlat_circle_pm")
+
+[node name="LblPmValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm/CirclePm" unique_id=1029028115]
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "10"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LblPmSubtexto" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm" unique_id=646744997]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "PM 10/10"
+horizontal_alignment = 1
+
+[node name="HBoxPmControls" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm" unique_id=2075261966]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="SpinPmDelta" type="SpinBox" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm/HBoxPmControls" unique_id=1840711399]
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+min_value = 1.0
+value = 1.0
+
+[node name="BtnPmDano" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm/HBoxPmControls" unique_id=232240442]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 11
+text = "Dano"
+
+[node name="BtnPmCurar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPm/HBoxPmControls" unique_id=2127774165]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "Curar"
+
+[node name="CardAtributos" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=239118350]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos" unique_id=1478877970]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="BannerAtributos" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox" unique_id=1786011327]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+
+[node name="LblBanner" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/BannerAtributos" unique_id=239334974]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "ATRIBUTOS"
+horizontal_alignment = 1
+
+[node name="HBoxAttrCards" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox" unique_id=883669936]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="CardFOR" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=1341495957]
+custom_minimum_size = Vector2(56, 64)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardFOR" unique_id=1055213136]
+layout_mode = 2
+alignment = 1
+
+[node name="LblValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardFOR/VBox" unique_id=484004617]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "+0"
+horizontal_alignment = 1
+
+[node name="LblNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardFOR/VBox" unique_id=1911471037]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "FORÇA"
+horizontal_alignment = 1
+
+[node name="CardDES" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=994936062]
+custom_minimum_size = Vector2(56, 64)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardDES" unique_id=1015428554]
+layout_mode = 2
+alignment = 1
+
+[node name="LblValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardDES/VBox" unique_id=1671926114]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "+0"
+horizontal_alignment = 1
+
+[node name="LblNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardDES/VBox" unique_id=216680604]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "DESTREZA"
+horizontal_alignment = 1
+
+[node name="CardCON" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=1980825140]
+custom_minimum_size = Vector2(56, 64)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardCON" unique_id=1062668096]
+layout_mode = 2
+alignment = 1
+
+[node name="LblValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardCON/VBox" unique_id=375153214]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "+0"
+horizontal_alignment = 1
+
+[node name="LblNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardCON/VBox" unique_id=1109484548]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "CONSTITUIÇÃO"
+horizontal_alignment = 1
+
+[node name="CardINT" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=199246926]
+custom_minimum_size = Vector2(56, 64)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardINT" unique_id=182211696]
+layout_mode = 2
+alignment = 1
+
+[node name="LblValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardINT/VBox" unique_id=35563275]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "+0"
+horizontal_alignment = 1
+
+[node name="LblNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardINT/VBox" unique_id=835017859]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "INTELIGÊNCIA"
+horizontal_alignment = 1
+
+[node name="CardSAB" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=745361402]
+custom_minimum_size = Vector2(56, 64)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardSAB" unique_id=2124709223]
+layout_mode = 2
+alignment = 1
+
+[node name="LblValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardSAB/VBox" unique_id=1739940349]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "+0"
+horizontal_alignment = 1
+
+[node name="LblNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardSAB/VBox" unique_id=28380770]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "SABEDORIA"
+horizontal_alignment = 1
+
+[node name="CardCAR" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards" unique_id=296574725]
+custom_minimum_size = Vector2(56, 64)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_attr")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardCAR" unique_id=467066432]
+layout_mode = 2
+alignment = 1
+
+[node name="LblValor" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardCAR/VBox" unique_id=736797251]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "+0"
+horizontal_alignment = 1
+
+[node name="LblNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardAtributos/VBox/HBoxAttrCards/CardCAR/VBox" unique_id=16136446]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+text = "CARISMA"
+horizontal_alignment = 1
+
+[node name="CardInterativo" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=179847229]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo" unique_id=704041919]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="HBoxSubTabs" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox" unique_id=1746934843]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BtnAtaques" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=95293352]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "🗡️ Ataques"
+
+[node name="BtnDefesa" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=1824865087]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "🛡️ Defesa"
+
+[node name="BtnPoderes" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=1855155071]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "✨ Poderes"
+
+[node name="BtnMagias" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=388874920]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "🔮 Magias"
+
+[node name="BtnEquip" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=390874631]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "🎒 Equip."
+
+[node name="PanelContent" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox" unique_id=1691537458]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BannerSubTab" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent" unique_id=114325421]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+
+[node name="LblBanner" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/BannerSubTab" unique_id=1204014112]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+text = "ATAQUES"
+horizontal_alignment = 1
+
+[node name="LblDefesaDetalhe" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent" unique_id=1483423485]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Defesa Total: 16"
+
+[node name="ListSubItems" type="ItemList" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent" unique_id=696581507]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CardProficiencias" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=1132233772]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias" unique_id=1822230368]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BannerProf" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox" unique_id=1227973550]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+
+[node name="LblBanner" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox/BannerProf" unique_id=676800724]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+text = "PROFICIÊNCIAS"
+horizontal_alignment = 1
+
+[node name="HBoxBadges" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox" unique_id=1062737127]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge1" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox/HBoxBadges" unique_id=907981434]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge")
+
+[node name="Lbl" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox/HBoxBadges/Badge1" unique_id=1407184675]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "  Armas Simples  "
+
+[node name="Badge2" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox/HBoxBadges" unique_id=1161030280]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge")
+
+[node name="Lbl" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardProficiencias/VBox/HBoxBadges/Badge2" unique_id=1352741115]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "  Armaduras Leves  "
+
+[node name="RightCol" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha" unique_id=1506453723]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="CardPericias" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol" unique_id=1733275742]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias" unique_id=613287175]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="BannerPericias" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=79182587]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+
+[node name="LblBanner" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/BannerPericias" unique_id=2003338145]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "PERÍCIAS"
+horizontal_alignment = 1
+
+[node name="TxtBuscaPericia" type="LineEdit" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=273444363]
+layout_mode = 2
+placeholder_text = "🔍 Buscar perícia..."
+
+[node name="LblResumoNivelTreino" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=796337838]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_font_sizes/font_size = 11
+text = "½ Nível: 0    Treino: 2"
+horizontal_alignment = 1
+
+[node name="HeaderTabela" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=861292619]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LblColTotal" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=2129345630]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 11
+text = "Total"
+horizontal_alignment = 1
+
+[node name="LblColNome" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=591007685]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 11
+text = "Perícias (Clique para Rolar)"
+
+[node name="LblColTreino" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=383152838]
+custom_minimum_size = Vector2(30, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 11
+text = "Treino"
+horizontal_alignment = 1
+
+[node name="LblColOutros" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/HeaderTabela" unique_id=497971707]
+custom_minimum_size = Vector2(30, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 11
+text = "Outros"
+horizontal_alignment = 1
+
+[node name="ScrollPericias" type="ScrollContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=1347606853]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BoxPericiasList" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox/ScrollPericias" unique_id=131206910]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="ViewCombate" type="Control" parent="MarginContainer/VBoxMain/MainContent" unique_id=303373420]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate" unique_id=1911792428]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="TopBar" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=754363769]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="BtnIniciarCombate" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/TopBar" unique_id=1061279718]
+layout_mode = 2
+text = "⚔️ Iniciar / Rolar Iniciativa"
+
+[node name="BtnProximoTurno" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/TopBar" unique_id=1632591154]
+layout_mode = 2
+disabled = true
+text = "⏭️ Encerrar Turno (Próximo)"
+
+[node name="ScrollIniciativa" type="ScrollContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=1744275849]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+vertical_scroll_mode = 0
+
+[node name="BoxIniciativa" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/ScrollIniciativa" unique_id=308467433]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="LblStatusCombate" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=239134500]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.8, 0.4, 1)
+theme_override_font_sizes/font_size = 16
+text = "Fora de combate."
+
+[node name="LblTurnoAtual" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=1741669867]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Clique em 'Iniciar' para começar."
+
+[node name="HSplitCombate" type="HSplitContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=135115277]
+layout_mode = 2
+size_flags_vertical = 3
+split_offset = 260
+
+[node name="LeftActions" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=1339745429]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LblTituloAcoes" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=1592264999]
+layout_mode = 2
+text = "Ações do Turno"
+
+[node name="VBoxAlvo" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=762357091]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="LblAlvo" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions/VBoxAlvo" unique_id=1709134279]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "🎯 Selecionar Alvo:"
+
+[node name="OptAlvoCombate" type="OptionButton" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions/VBoxAlvo" unique_id=1745211754]
+layout_mode = 2
+
+[node name="BtnAtacar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=1912734224]
+layout_mode = 2
+text = "🗡️ Atacar Alvo (Ação Padrão)"
+
+[node name="BtnMovimento" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=874732427]
+layout_mode = 2
+text = "🏃 Avanço Tático (Ação Movimento)"
+
+[node name="RightLog" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=2043962233]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LblLogTitulo" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/RightLog" unique_id=1235917354]
+layout_mode = 2
+text = "📜 Histórico de Combate"
+
+[node name="TxtLogCombate" type="RichTextLabel" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/RightLog" unique_id=1174753397]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+scroll_following = true
+
+[node name="ViewDados" type="Control" parent="MarginContainer/VBoxMain/MainContent" unique_id=162089543]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewDados" unique_id=61746669]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="QuickDice" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox" unique_id=179924325]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BtnD4" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=58010938]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+text = "d4"
+
+[node name="BtnD6" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=1931525289]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+text = "d6"
+
+[node name="BtnD8" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=1897583162]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+text = "d8"
+
+[node name="BtnD10" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=146161158]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+text = "d10"
+
+[node name="BtnD12" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=1868103050]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+text = "d12"
+
+[node name="BtnD20" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=2135264187]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+text = "d20"
+
+[node name="BtnD100" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice" unique_id=615791977]
+custom_minimum_size = Vector2(60, 40)
+layout_mode = 2
+text = "d100"
+
+[node name="InputBox" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox" unique_id=102718511]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TxtExpressao" type="LineEdit" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/InputBox" unique_id=989829383]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Digite uma fórmula (ex: 2d20kh1+5, 1d20+7, 4d6dl1)"
+
+[node name="BtnRolar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/InputBox" unique_id=384894996]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "🎲 Rolar"
+
+[node name="DisplayBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox" unique_id=1764602478]
+layout_mode = 2
+alignment = 1
+
+[node name="LblResultado" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/DisplayBox" unique_id=1305410261]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 64
+text = "-"
+horizontal_alignment = 1
+
+[node name="LblDetalhes" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/DisplayBox" unique_id=1320197421]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 14
+text = "Escolha um dado ou digite a fórmula acima."
+horizontal_alignment = 1
+
+[node name="TxtHistorico" type="RichTextLabel" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox" unique_id=1935804861]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+scroll_following = true
+
+[node name="PopupPericia" type="ColorRect" parent="." unique_id=1563505294]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="Center" type="CenterContainer" parent="PopupPericia" unique_id=347918944]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelDialog" type="PanelContainer" parent="PopupPericia/Center" unique_id=297806895]
+custom_minimum_size = Vector2(380, 250)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="PopupPericia/Center/PanelDialog" unique_id=393041638]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="VBox" type="VBoxContainer" parent="PopupPericia/Center/PanelDialog/Margin" unique_id=1901888530]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BannerHeader" type="PanelContainer" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=15349743]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+
+[node name="LblPopupTitulo" type="Label" parent="PopupPericia/Center/PanelDialog/Margin/VBox/BannerHeader" unique_id=196812859]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "TESTE DE PERÍCIA"
+horizontal_alignment = 1
+
+[node name="LblPopupPersonagem" type="Label" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=2135669426]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 13
+text = "Personagem: Valeros"
+horizontal_alignment = 1
+
+[node name="LblPopupResultado" type="Label" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=2002938381]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 54
+text = "20"
+horizontal_alignment = 1
+
+[node name="LblPopupDestaque" type="Label" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=1929011718]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "★ 20 NATURAL! CRÍTICO! ★"
+horizontal_alignment = 1
+
+[node name="LblPopupFormula" type="Label" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=731099329]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+text = "1d20 rolou 16 + Mod 4 = 20"
+horizontal_alignment = 1
+
+[node name="BtnFecharPopup" type="Button" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=258380466]
+custom_minimum_size = Vector2(120, 32)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Fechar"

@@ -1,0 +1,17 @@
+
+
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <NoWarn>CS8632</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../bindings/csharp/Native/**/*.cs" />
+    <Compile Include="../../bindings/csharp/Tormenta20/**/*.cs" />
+    <None Include="libopenttrpg_core.so" Condition="Exists('libopenttrpg_core.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
