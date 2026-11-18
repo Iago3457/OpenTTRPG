@@ -33,6 +33,8 @@ namespace OpenTTRPG.Tests
             TestCanonicalConditionsCatalog();
             TestSpellEnhancementsAndPmSpendLimit();
             TestRestAndRecoveryMechanics();
+            TestDyingAndDeathThresholdMechanics();
+            TestAutoCalculatedStatsByClassAndRace();
             TestCharacterPersistence();
             Console.WriteLine("\n>>> TODOS OS TESTES AUTOMATIZADOS DE C# (TORMENTA20) PASSARAM COM ÊXITO! <<<");
         }
@@ -338,6 +340,80 @@ namespace OpenTTRPG.Tests
             var rLux = Tormenta20RestRules.ApplyRest(hero, RestQuality.Luxurious);
             AssertEqual(18, rLux.HpRestored, "Descanso Luxuoso Nv.6 recupera 18 PV");
             AssertEqual(49, hero.CurrentHp, "PV total = 19 + 12 + 18 = 49");
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestDyingAndDeathThresholdMechanics()
+        {
+            Console.Write("[TEST C#] Estado de Morrendo T20 (0 PV -> Inconsciente/Sangrando, CON CD 15 e Limite de Morte)... ");
+            using var session = new EncounterSession(404);
+
+            // Personagem com 24 PV Máx -> Limite de Morte = -max(10, 24/2) = -12 PV
+            var hero = new CharacterSheetData(10, "Borin", "Guerreiro", "Anão", "Soldado", "Khalmyr", 1, 24, 3)
+            {
+                Constitution = -5 // CON baixa para falhar no teste CD 15
+            };
+            AssertEqual(-12, hero.GetDeathThreshold(), "Limite de morte para 24 PV Máx deve ser -12");
+            AssertEqual(T20HealthState.Healthy, hero.GetHealthState(), "Estado inicial deve ser Healthy");
+
+            // Sofre 26 de dano -> cai para -2 PV (entre 0 e -11 -> MORRENDO: Inconsciente + Sangrando!)
+            hero.TakeDamage(26);
+            AssertEqual(-2, hero.CurrentHp, "PV deve ir para -2");
+            AssertTrue(hero.IsBleedingOut, "Deve estar sangrando ao cair a PV <= 0");
+            AssertEqual(T20HealthState.Dying, hero.GetHealthState(), "Estado em -2 PV com sangramento deve ser Dying (Morrendo)");
+
+            // Se curar +5 PV -> vai para +3 PV -> sai do estado Morrendo e recobra a consciência!
+            hero.HealHp(5);
+            AssertEqual(3, hero.CurrentHp, "PV após cura deve ser +3");
+            AssertTrue(!hero.IsBleedingOut, "Cura acima de 0 PV remove sangramento");
+            AssertEqual(T20HealthState.Bloodied, hero.GetHealthState(), "Em 3/24 PV deve estar Machucado (Bloodied)");
+
+            // Cai novamente para -5 PV e passa no teste de Constituição (CON alta +20) -> Estabiliza!
+            hero.TakeDamage(8);
+            AssertEqual(-5, hero.CurrentHp, "PV cai para -5");
+            AssertEqual(T20HealthState.Dying, hero.GetHealthState(), "Volta a ficar Morrendo");
+            hero.Constitution = 20;
+            var checkPass = Tormenta20ConditionRules.RollDeathAndBleedingCheck(session, hero);
+            AssertTrue(checkPass.Stabilized, "Com CON +20 deve passar na CD 15 e estabilizar");
+            AssertEqual(T20HealthState.UnconsciousStable, hero.GetHealthState(), "Após estabilizar com PV <= 0 fica Inconsciente Estabilizado");
+
+            // Sofre dano massivo até -12 PV -> MORTO!
+            hero.TakeDamage(20);
+            AssertEqual(-12, hero.CurrentHp, "PV limitado ao Limite de Morte (-12)");
+            AssertEqual(T20HealthState.Dead, hero.GetHealthState(), "Em -12 PV o personagem está MORTO");
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestAutoCalculatedStatsByClassAndRace()
+        {
+            Console.Write("[TEST C#] Cálculo Automático de PV e PM por Classe, Raça, Nível e Atributos (Enums T20)... ");
+
+            // 1. Anão Guerreiro Nv.1 com CON +2:
+            // Guerreiro base = 20 + CON(2) = 22; Anão (Duro como Pedra) = +3 no Nv.1 -> Total = 25 PV | PM = 3
+            var anaoTpl = Tormenta20CharacterCreationRules.GetRaceTemplate(T20Race.Anao);
+            var guerTpl = Tormenta20CharacterCreationRules.GetClassTemplate(T20Class.Guerreiro);
+            int hpNv1 = Tormenta20CharacterCreationRules.CalculateMaxHp(guerTpl, anaoTpl, level: 1, conMod: 2);
+            int pmNv1 = Tormenta20CharacterCreationRules.CalculateMaxPm(guerTpl, anaoTpl, level: 1, keyAttrMod: 0);
+            AssertEqual(25, hpNv1, "Anão Guerreiro Nv.1 CON +2 deve ter 25 PV (20 + 2 + 3)");
+            AssertEqual(3, pmNv1, "Anão Guerreiro Nv.1 deve ter 3 PM");
+
+            // No Nível 3: Nv.1 (25) + 2 níveis * (5 Guerreiro + 2 CON + 1 Anão) = 25 + 16 = 41 PV | PM = 3 * 3 = 9 PM
+            int hpNv3 = Tormenta20CharacterCreationRules.CalculateMaxHp(guerTpl, anaoTpl, level: 3, conMod: 2);
+            int pmNv3 = Tormenta20CharacterCreationRules.CalculateMaxPm(guerTpl, anaoTpl, level: 3, keyAttrMod: 0);
+            AssertEqual(41, hpNv3, "Anão Guerreiro Nv.3 CON +2 deve ter 41 PV");
+            AssertEqual(9, pmNv3, "Anão Guerreiro Nv.3 deve ter 9 PM");
+
+            // 2. Elfo Arcanista Nv.2 com CON +1 e INT +4:
+            // PV: Nv.1 (8 + 1 = 9) + Nv.2 (2 + 1 = 3) = 12 PV
+            // PM: 2 níveis * (6 Arcanista + 1 Elfo Sangue Mágico) + 4 (INT) = 14 + 4 = 18 PM
+            var elfoTpl = Tormenta20CharacterCreationRules.GetRaceTemplate(T20Race.Elfo);
+            var arcTpl  = Tormenta20CharacterCreationRules.GetClassTemplate(T20Class.Arcanista);
+            int elfHp = Tormenta20CharacterCreationRules.CalculateMaxHp(arcTpl, elfoTpl, level: 2, conMod: 1);
+            int elfPm = Tormenta20CharacterCreationRules.CalculateMaxPm(arcTpl, elfoTpl, level: 2, keyAttrMod: 4);
+            AssertEqual(12, elfHp, "Elfo Arcanista Nv.2 CON +1 deve ter 12 PV");
+            AssertEqual(18, elfPm, "Elfo Arcanista Nv.2 INT +4 deve ter 18 PM");
 
             Console.WriteLine("SUCESSO!");
         }

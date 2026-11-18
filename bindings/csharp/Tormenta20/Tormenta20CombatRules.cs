@@ -205,7 +205,25 @@ namespace OpenTTRPG.Tormenta20
 
             DamageResult dmgRes = session.DealDamage(defenderId, rawDamage, (int)weapon.DamageType);
             ResourceInfo defHp = session.GetResource(defenderId, Tormenta20ActionRules.HealthResourceId);
-            defender.CurrentHp = defHp.Current;
+            if (defHp.Minimum == 0 && dmgRes.Overflow > 0)
+            {
+                defender.CurrentHp = Math.Max(defender.GetDeathThreshold(), defHp.Current - dmgRes.Overflow);
+            }
+            else
+            {
+                defender.CurrentHp = defHp.Current;
+            }
+
+            if (defender.CurrentHp <= defender.GetDeathThreshold())
+            {
+                defender.IsBleedingOut = false;
+            }
+            else if (defender.CurrentHp <= 0)
+            {
+                defender.IsBleedingOut = true;
+            }
+
+            Tormenta20ConditionRules.SyncDyingAndUnconsciousState(session, defenderId, defender);
 
             string critLabel = isCrit ? $" [ACERTO CRÍTICO! (Ameaça {threatRange}/x{critMultiplier} -> Dados multiplicados: {dmgExpr})]" : $" ({dmgExpr})";
             string rdLabel = dmgRes.ReducedBy > 0 ? $" [RD absorveu {dmgRes.ReducedBy}]" : "";
@@ -216,7 +234,9 @@ namespace OpenTTRPG.Tormenta20
                 DamageResponse.Immune => " [IMUNE x0!]",
                 _ => ""
             };
-            string downLabel = dmgRes.IsDepleted ? $" >>> {defender.Name} CAIU (0 PV)!" : "";
+            string downLabel = defender.CurrentHp <= defender.GetDeathThreshold()
+                ? $" >>> 💀 {defender.Name} MORREU ({defender.CurrentHp} PV)!"
+                : (defender.CurrentHp <= 0 ? $" >>> 🩸 {defender.Name} CAIU MORRENDO ({defender.CurrentHp} PV — Inconsciente e Sangrando)!" : "");
 
             return new T20AttackResolutionResult
             {

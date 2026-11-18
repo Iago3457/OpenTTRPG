@@ -222,6 +222,17 @@ public partial class CombatManager : Node
 			return false;
 		}
 
+		if (IsInCombat && SheetIdToCombatantId.TryGetValue(id, out int cid))
+		{
+			try
+			{
+				_session?.SetForcedOut(cid, true);
+			}
+			catch { }
+			SheetIdToCombatantId.Remove(id);
+			CombatantIdToSheet.Remove(cid);
+		}
+
 		Characters.Remove(target);
 		GD.Print($"[OpenTTRPG] Personagem removido: {target.Name} (id={id})");
 		return true;
@@ -266,6 +277,9 @@ public partial class CombatManager : Node
 
 		// Sempre reinicia a sessão nativa do zero para liberar combatentes antigos e evitar IDs fantasmas
 		InitializeSession();
+		// Permite que personagens Morrendo (PV <= 0 mas > Limite de Morte) recebam seu turno para testar Constituição (CD 15);
+		// personagens Mortos (PV <= Limite de Morte) são marcados com SetForcedOut(true).
+		_session.SetAutoSkipDefeated(false);
 
 		SheetIdToCombatantId.Clear();
 		CombatantIdToSheet.Clear();
@@ -277,6 +291,8 @@ public partial class CombatManager : Node
 			Tormenta20SkillRules.TryCalculateSkillModifier(sheet, "Iniciativa", out int initMod, out _);
 			int cid = _session.AddCombatant(sheet.Name, initMod, sheet.MaxHp, team: 1);
 
+			// Configura PV com mínimo negativo igual ao Limite de Morte de Tormenta20 (-max(10, MaxHp/2))
+			_session.AddResource(cid, HealthResourceId, "Vida", sheet.MaxHp, sheet.GetDeathThreshold());
 			_session.SetResourceCurrent(cid, HealthResourceId, sheet.CurrentHp);
 			_session.AddResource(cid, ManaResourceId, "PM", sheet.MaxPm, 0);
 			_session.SetResourceCurrent(cid, ManaResourceId, sheet.CurrentPm);
@@ -292,6 +308,8 @@ public partial class CombatManager : Node
 			{
 				Tormenta20ConditionRules.ApplyCondition(_session, cid, T20Condition.Sobrecarregado);
 			}
+
+			Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_session, cid, sheet);
 
 			SheetIdToCombatantId[sheet.Id] = cid;
 			CombatantIdToSheet[cid] = sheet;
@@ -312,8 +330,13 @@ public partial class CombatManager : Node
 
 		int currentCid = _session.CurrentTurn;
 
-		// Drena ações pendentes
-		Tormenta20ActionRules.DrainPriorityQueueInOrder(_session, currentCid);
+		// Drena ações pendentes na ordem da Fila de Prioridades (Livre -> Movimento -> Padrão -> Completa)
+		var drained = Tormenta20ActionRules.DrainPriorityQueueInOrder(_session, currentCid);
+		if (drained.Count > 0)
+		{
+			string actorName = CombatantIdToSheet.TryGetValue(currentCid, out var s) ? s.Name : $"ID {currentCid}";
+			LogCombat($"📋 Fila de Prioridades executada ({actorName}): {string.Join(" → ", drained.Select(a => a.Name))}", "#c5e1a5");
+		}
 
 		_session.NextTurn();
 		NotifyTurnChanged();
@@ -344,12 +367,25 @@ public partial class CombatManager : Node
 
 		int cid = _session.CurrentTurn;
 		string name = "Nenhum";
+		CharacterSheetData currentSheet = null;
 		if (CombatantIdToSheet.TryGetValue(cid, out var sheet))
 		{
 			name = sheet.Name;
+			currentSheet = sheet;
 		}
 
-		LogCombat($"👉 Vez de **{name}** (Rodada {_session.Round})", "#a6e22e");
+		LogCombat($"👉 Vez de [b]{name}[/b] (Rodada {_session.Round})", "#a6e22e");
+
+		// Processa condições de início de turno (ex.: teste de Constituição contra Sangrando)
+		if (cid > 0)
+		{
+			var condLogs = Tormenta20ConditionRules.ProcessStartOfTurnConditions(_session, cid, currentSheet);
+			foreach (string log in condLogs)
+			{
+				LogCombat($"🩸 {log}", "#ff7b7b");
+			}
+		}
+
 		EmitSignal(SignalName.TurnChanged, cid, name, _session.Round);
 	}
 

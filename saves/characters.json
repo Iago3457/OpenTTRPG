@@ -21,6 +21,7 @@
     "DefenseBonusMisc": 0,
     "Tibares": 50,
     "SpellKeyAttribute": "Intelligence",
+    "IsBleedingOut": false,
     "Inventory": [
       {
         "Name": "Espada Longa",
@@ -145,6 +146,7 @@
     "DefenseBonusMisc": 0,
     "Tibares": 50,
     "SpellKeyAttribute": "Intelligence",
+    "IsBleedingOut": false,
     "Inventory": [
       {
         "Name": "Varinha Arcana",
@@ -252,6 +254,7 @@
     "DefenseBonusMisc": 0,
     "Tibares": 50,
     "SpellKeyAttribute": "Intelligence",
+    "IsBleedingOut": false,
     "Inventory": [
       {
         "Name": "Espada Gigante do Melhor",
@@ -271,6 +274,95 @@
     "Skills": [],
     "UnlockedTreeKeys": [],
     "TrainedSkills": [],
+    "SkillMiscBonuses": {}
+  },
+  {
+    "Id": 4,
+    "Name": "agaagagagd",
+    "CharacterClass": "agdag",
+    "Race": "gadg",
+    "Origin": "gadg",
+    "Deity": "agdx",
+    "Level": 3,
+    "MaxHp": 20,
+    "CurrentHp": 20,
+    "TempHp": 0,
+    "MaxPm": 3,
+    "CurrentPm": 3,
+    "Strength": 0,
+    "Dexterity": 0,
+    "Constitution": 0,
+    "Intelligence": 0,
+    "Wisdom": 0,
+    "Charisma": 0,
+    "DefenseBonusMisc": 0,
+    "Tibares": 50,
+    "SpellKeyAttribute": "Intelligence",
+    "IsBleedingOut": false,
+    "Inventory": [],
+    "Skills": [],
+    "UnlockedTreeKeys": [],
+    "TrainedSkills": [],
+    "SkillMiscBonuses": {}
+  },
+  {
+    "Id": 5,
+    "Name": "Iago",
+    "CharacterClass": "Nobre",
+    "Race": "Humano",
+    "Origin": "Assistente de Laborat\u00F3rio",
+    "Deity": "N\u00E3o Devoto (Pante\u00E3o)",
+    "Level": 3,
+    "MaxHp": 27,
+    "CurrentHp": 27,
+    "TempHp": 0,
+    "MaxPm": 12,
+    "CurrentPm": 12,
+    "Strength": 1,
+    "Dexterity": 1,
+    "Constitution": 1,
+    "Intelligence": 0,
+    "Wisdom": 0,
+    "Charisma": 0,
+    "DefenseBonusMisc": 0,
+    "Tibares": 50,
+    "SpellKeyAttribute": "Charisma",
+    "IsBleedingOut": false,
+    "Inventory": [
+      {
+        "Name": "Espada Longa",
+        "Description": "L\u00E2mina vers\u00E1til de a\u00E7o",
+        "Type": "Weapon",
+        "Slots": 1,
+        "Damage": "1d8",
+        "Critical": "19/x2",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 15,
+        "Equipped": true
+      }
+    ],
+    "Skills": [
+      {
+        "Name": "Orgulho",
+        "Description": "Gasta 1 PM para receber \u002B2 em um teste de per\u00EDcia",
+        "PmCost": 1,
+        "Action": "Free",
+        "Modifier": 0,
+        "TreeKey": "",
+        "IsSpell": false,
+        "BaseFormula": "",
+        "Enhancements": []
+      }
+    ],
+    "UnlockedTreeKeys": [],
+    "TrainedSkills": [
+      "Diplomacia",
+      "Vontade",
+      "Intimida\u00E7\u00E3o"
+    ],
     "SkillMiscBonuses": {}
   }
 ]
