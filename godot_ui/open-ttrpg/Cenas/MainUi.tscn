@@ -813,7 +813,6 @@ text = "Clique em 'Iniciar' para começar."
 [node name="HSplitCombate" type="HSplitContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=135115277]
 layout_mode = 2
 size_flags_vertical = 3
-split_offsets = PackedInt32Array(280)
 split_offset = 280
 
 [node name="LeftActions" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=1339745429]
