@@ -21,6 +21,11 @@ public partial class CombatManager : Node
 
 	public bool IsInCombat { get; private set; } = false;
 
+	public TacticalFogTracker FogTracker { get; } = new();
+	public T20ArenaPreset CurrentArenaPreset { get; set; } = T20ArenaPreset.PillaredDungeon;
+	public string CurrentMapBackgroundPath { get; set; } = string.Empty;
+	public bool FogOfWarEnabled { get; set; } = false;
+
 	[Signal]
 	public delegate void TurnChangedEventHandler(int combatantId, string combatantName, int round);
 
@@ -360,8 +365,28 @@ public partial class CombatManager : Node
 			return;
 		}
 
+		// Preserva terreno customizado caso o usuário já tenha editado o mapa antes de iniciar o combate
+		bool hadActiveMap = _session != null && _session.IsMapActive;
+		int prevW = hadActiveMap ? _session.MapWidth : 16;
+		int prevH = hadActiveMap ? _session.MapHeight : 12;
+		MapCellInfo[] prevCells = hadActiveMap ? _session.GetNonDefaultMapCells() : Array.Empty<MapCellInfo>();
+
 		// Sempre reinicia a sessão nativa do zero para liberar combatentes antigos e evitar IDs fantasmas
 		InitializeSession();
+		if (hadActiveMap)
+		{
+			_session.ConfigureMap(prevW, prevH);
+			foreach (var cell in prevCells)
+			{
+				_session.SetMapCell(cell.X, cell.Y, cell.TerrainType, cell.CoverLevel, cell.IsSightBlocked);
+			}
+		}
+		else
+		{
+			Tormenta20TacticalRules.ApplyArenaPreset(_session, CurrentArenaPreset, 16, 12);
+		}
+		FogTracker.Clear();
+
 		// Permite que personagens Morrendo (PV <= 0 mas > Limite de Morte) recebam seu turno para testar Constituição (CD 15);
 		// personagens Mortos (PV <= Limite de Morte) são marcados com SetForcedOut(true).
 		_session.SetAutoSkipDefeated(false);
@@ -417,8 +442,86 @@ public partial class CombatManager : Node
 		_session.StartCombat();
 		IsInCombat = true;
 
-		LogCombat($"⚔️ Combate iniciado com {combatantIds.Count} participante(s) selecionado(s)!", "#66d9ef");
+		EnsureMapInitialized(resetTerrain: false);
+
+		LogCombat($"⚔️ Combate iniciado com {combatantIds.Count} participante(s)!", "#66d9ef");
 		NotifyTurnChanged();
+	}
+
+	public void EnsureMapInitialized(bool resetTerrain = false)
+	{
+		if (_session == null) return;
+
+		if (!_session.IsMapActive || resetTerrain)
+		{
+			Tormenta20TacticalRules.ApplyArenaPreset(_session, CurrentArenaPreset, 16, 12);
+			FogTracker.Clear();
+		}
+
+		if (IsInCombat)
+		{
+			int w = Math.Max(4, _session.MapWidth);
+			int h = Math.Max(4, _session.MapHeight);
+			var occupied = new HashSet<GridPos>();
+			foreach (var tok in _session.GetAllTokens())
+			{
+				occupied.Add(new GridPos(tok.X, tok.Y));
+			}
+
+			int heroSlot = 0;
+			int enemySlot = 0;
+			foreach (int cid in _session.GetInitiativeOrder())
+			{
+				if (!resetTerrain && _session.TryGetToken(cid, out var existingTok))
+				{
+					if (_session.GetMapCell(existingTok.X, existingTok.Y).TerrainType != MapTerrainType.Blocked)
+					{
+						continue;
+					}
+					_session.RemoveToken(cid);
+					occupied.Remove(new GridPos(existingTok.X, existingTok.Y));
+				}
+
+				int team = _session.GetCombatantInfo(cid).Team;
+				bool isHeroTeam = team == 1;
+				int startX = isHeroTeam ? 1 : Math.Max(2, w - 2);
+				int dirX = isHeroTeam ? 1 : -1;
+				int slot = isHeroTeam ? heroSlot++ : enemySlot++;
+				int preferredY = Math.Clamp((h / 2) + ((slot % 2 == 0 ? 1 : -1) * ((slot + 1) / 2) * 2 - 1), 1, h - 2);
+
+				GridPos? spawn = FindNearestFreeCell(startX, preferredY, dirX, w, h, occupied);
+				if (spawn.HasValue)
+				{
+					_session.PlaceToken(cid, spawn.Value.X, spawn.Value.Y, 1);
+					occupied.Add(spawn.Value);
+				}
+			}
+
+			Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
+		}
+	}
+
+	private GridPos? FindNearestFreeCell(int baseX, int baseY, int dirX, int w, int h, HashSet<GridPos> occupied)
+	{
+		for (int dx = 0; dx < w; dx++)
+		{
+			int x = baseX + dx * dirX;
+			if (x < 0 || x >= w) continue;
+
+			for (int offsetY = 0; offsetY < h; offsetY++)
+			{
+				int[] candidatesY = offsetY == 0 ? new[] { baseY } : new[] { baseY + offsetY, baseY - offsetY };
+				foreach (int y in candidatesY)
+				{
+					if (y < 0 || y >= h) continue;
+					var p = new GridPos(x, y);
+					if (occupied.Contains(p)) continue;
+					if (_session.GetMapCell(x, y).TerrainType == MapTerrainType.Blocked) continue;
+					return p;
+				}
+			}
+		}
+		return null;
 	}
 
 	public string GetCombatSnapshotPath()
@@ -427,7 +530,9 @@ public partial class CombatManager : Node
 		return Path.Combine(dir, "encounter_snapshot.json");
 	}
 
-	public bool SaveCombatSnapshot()
+	public bool SaveCombatSnapshot() => SaveCombatSnapshotToPath(GetCombatSnapshotPath());
+
+	public bool SaveCombatSnapshotToPath(string filePath)
 	{
 		if (!IsInCombat || _session == null) return false;
 
@@ -464,23 +569,58 @@ public partial class CombatManager : Node
 				});
 			}
 
-			Tormenta20Persistence.SaveEncounterSnapshotToFile(snap, GetCombatSnapshotPath());
+			if (_session.IsMapActive)
+			{
+				var mapDto = new TacticalMapSnapshotDto
+				{
+					Width = _session.MapWidth,
+					Height = _session.MapHeight,
+					BackgroundImagePath = CurrentMapBackgroundPath ?? string.Empty,
+					FogOfWarEnabled = FogOfWarEnabled
+				};
+				foreach (var cell in _session.GetNonDefaultMapCells())
+				{
+					mapDto.Cells.Add(new MapCellDto
+					{
+						X = cell.X,
+						Y = cell.Y,
+						Terrain = cell.Terrain,
+						CoverLevel = cell.CoverLevel,
+						BlocksSight = cell.IsSightBlocked
+					});
+				}
+				foreach (var tok in _session.GetAllTokens())
+				{
+					if (CombatantIdToSheet.TryGetValue(tok.EntityId, out var sh))
+					{
+						mapDto.TokenPositions[sh.Id] = new GridPosDto { X = tok.X, Y = tok.Y };
+					}
+				}
+				foreach (var exp in FogTracker.ExploredCells)
+				{
+					mapDto.ExploredCells.Add(new GridPosDto { X = exp.X, Y = exp.Y });
+				}
+				snap.TacticalMap = mapDto;
+			}
+
+			Tormenta20Persistence.SaveEncounterSnapshotToFile(snap, filePath);
 			LogCombat($"💾 Combate salvo (Rodada {snap.Round}).", "#55ff99");
 			return true;
 		}
 		catch (Exception ex)
 		{
-			GD.PushError($"[OpenTTRPG] Erro ao salvar snapshot de combate: {ex.Message}");
+			GD.PushError($"[OpenTTRPG] Erro ao salvar combate: {ex.Message}");
 			return false;
 		}
 	}
 
-	public bool LoadCombatSnapshot()
+	public bool LoadCombatSnapshot() => LoadCombatSnapshotFromPath(GetCombatSnapshotPath());
+
+	public bool LoadCombatSnapshotFromPath(string filePath)
 	{
 		try
 		{
-			string path = GetCombatSnapshotPath();
-			var snap = Tormenta20Persistence.LoadEncounterSnapshotFromFile(path);
+			var snap = Tormenta20Persistence.LoadEncounterSnapshotFromFile(filePath);
 			if (snap == null || snap.Participants.Count == 0)
 			{
 				return false;
@@ -491,6 +631,22 @@ public partial class CombatManager : Node
 			_session.SetAutoSkipDefeated(false);
 			SheetIdToCombatantId.Clear();
 			CombatantIdToSheet.Clear();
+			FogTracker.Clear();
+
+			if (snap.TacticalMap != null)
+			{
+				_session.ConfigureMap(Math.Max(4, snap.TacticalMap.Width), Math.Max(4, snap.TacticalMap.Height));
+				CurrentMapBackgroundPath = snap.TacticalMap.BackgroundImagePath ?? string.Empty;
+				FogOfWarEnabled = snap.TacticalMap.FogOfWarEnabled;
+				foreach (var cell in snap.TacticalMap.Cells)
+				{
+					_session.SetMapCell(cell.X, cell.Y, (MapTerrainType)cell.Terrain, cell.CoverLevel, cell.BlocksSight);
+				}
+				foreach (var exp in snap.TacticalMap.ExploredCells)
+				{
+					FogTracker.ExploredCells.Add(new GridPos(exp.X, exp.Y));
+				}
+			}
 
 			int targetTurnCid = 0;
 			foreach (var p in snap.Participants)
@@ -533,12 +689,21 @@ public partial class CombatManager : Node
 				CombatantIdToSheet[cid] = sheet;
 				if (sheet.Id == snap.CurrentTurnSheetId)
 					targetTurnCid = cid;
+
+				if (snap.TacticalMap != null && snap.TacticalMap.TokenPositions.TryGetValue(sheet.Id, out var posDto))
+				{
+					if (_session.GetMapCell(posDto.X, posDto.Y).TerrainType != MapTerrainType.Blocked)
+					{
+						_session.PlaceToken(cid, posDto.X, posDto.Y, 1);
+					}
+				}
 			}
 
 			if (CombatantIdToSheet.Count == 0) return false;
 
 			_session.StartCombat();
 			IsInCombat = true;
+			EnsureMapInitialized(resetTerrain: false);
 
 			int safety = 0;
 			while (targetTurnCid > 0 && _session.CurrentTurn != targetTurnCid && safety < 30)
@@ -547,13 +712,14 @@ public partial class CombatManager : Node
 				safety++;
 			}
 
+			Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
 			LogCombat($"📂 Combate restaurado ({CombatantIdToSheet.Count} participantes).", "#66d9ef");
 			NotifyTurnChanged();
 			return true;
 		}
 		catch (Exception ex)
 		{
-			GD.PushError($"[OpenTTRPG] Erro ao carregar snapshot de combate: {ex.Message}");
+			GD.PushError($"[OpenTTRPG] Erro ao carregar combate: {ex.Message}");
 			return false;
 		}
 	}
@@ -564,15 +730,16 @@ public partial class CombatManager : Node
 
 		int currentCid = _session.CurrentTurn;
 
-		// Drena ações pendentes na ordem da Fila de Prioridades (Livre -> Movimento -> Padrão -> Completa)
+		// Drena ações pendentes no encerramento do turno
 		var drained = Tormenta20ActionRules.DrainPriorityQueueInOrder(_session, currentCid);
 		if (drained.Count > 0)
 		{
 			string actorName = CombatantIdToSheet.TryGetValue(currentCid, out var s) ? s.Name : $"ID {currentCid}";
-			LogCombat($"📋 Fila de Prioridades executada ({actorName}): {string.Join(" → ", drained.Select(a => a.Name))}", "#c5e1a5");
+			LogCombat($"▶ Ações concluídas ({actorName}): {string.Join(" → ", drained.Select(a => a.Name))}", "#c5e1a5");
 		}
 
 		_session.NextTurn();
+		Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
 		NotifyTurnChanged();
 	}
 

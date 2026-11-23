@@ -36,6 +36,7 @@ namespace OpenTTRPG.Tests
             TestDyingAndDeathThresholdMechanics();
             TestAutoCalculatedStatsByClassAndRace();
             TestCharacterPersistence();
+            TestTacticalGridMovementRangeCoverAndFog();
             Console.WriteLine("\n>>> TODOS OS TESTES AUTOMATIZADOS DE C# (TORMENTA20) PASSARAM COM ÊXITO! <<<");
         }
 
@@ -488,6 +489,159 @@ namespace OpenTTRPG.Tests
 
             Console.WriteLine("SUCESSO!");
         }
+
+        private static void TestTacticalGridMovementRangeCoverAndFog()
+        {
+            Console.Write("[TEST C#] Tabletop / Grid Tático T20 (1-2-1-2, Pathfinding, Alcance, Cobertura, Flanqueamento, Fog, JSON)... ");
+
+            // 1. Métrica oficial de diagonais T20 (1-2-1-2)
+            AssertEqual(3, Tormenta20TacticalRules.ComputeT20DistanceSquares(new GridPos(0, 0), new GridPos(2, 2)), "Diagonal 2x2 deve custar 3 quadrados (4,5m)");
+            AssertEqual(6, Tormenta20TacticalRules.ComputeT20DistanceSquares(new GridPos(0, 0), new GridPos(4, 4)), "Diagonal 4x4 deve custar 6 quadrados (9m)");
+
+            // 2. Deslocamento racial + sobrecarga + armadura pesada + Imóvel
+            using var session = new EncounterSession(777);
+            var humano = new CharacterSheetData(1, "Valeros", "Guerreiro", "Humano", "Soldado", "Valkaria", 2, 28, 6);
+            var anao   = new CharacterSheetData(2, "Borin", "Guerreiro", "Anão", "Soldado", "Khalmyr", 2, 32, 6);
+            var elfo   = new CharacterSheetData(3, "Lyra", "Caçador", "Elfo", "Eremita", "Allihanna", 2, 20, 8);
+            AssertEqual(6, Tormenta20TacticalRules.GetMovementSpeedSquares(humano), "Humano deslocamento 9m (6q)");
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(anao), "Anão deslocamento 6m (4q)");
+            AssertEqual(8, Tormenta20TacticalRules.GetMovementSpeedSquares(elfo), "Elfo deslocamento 12m (8q)");
+
+            humano.Inventory.Add(new CharacterItem("Armadura Completa", "Pesada", ItemType.Armor, 5, "", "20/x2", 10, -5, 3000, true));
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(humano), "Armadura pesada reduz deslocamento Humano de 6q para 4q");
+            humano.Inventory.Clear();
+
+            // Equipamento para combate
+            var espada = new CharacterItem("Espada Longa", "Corpo a corpo", ItemType.Weapon, 1, "1d8", "19/x2", 0, 0, 15, true, T20DamageType.Slashing, isRanged: false);
+            var arco   = new CharacterItem("Arco Longo", "Disparo médio", ItemType.Weapon, 2, "1d8", "20/x3", 0, 0, 100, true, T20DamageType.Piercing, isRanged: true);
+            humano.Inventory.Add(espada);
+            humano.Strength = 2;
+            elfo.Inventory.Add(arco);
+            elfo.Dexterity = 4;
+            elfo.TrainedSkills.Add("Pontaria");
+
+            var goblin = new CharacterSheetData(4, "Goblin Arqueiro", "Ladino", "Goblin", "Bandido", "Tenebra", 1, 14, 4);
+            var ally   = new CharacterSheetData(5, "Khor", "Bárbaro", "Humano", "Selvagem", "Megalokk", 2, 30, 6);
+
+            int heroId   = session.AddCombatant(humano.Name, 2, humano.MaxHp, team: 1);
+            int allyId   = session.AddCombatant(ally.Name, 1, ally.MaxHp, team: 1);
+            int elfId    = session.AddCombatant(elfo.Name, 4, elfo.MaxHp, team: 1);
+            int goblinId = session.AddCombatant(goblin.Name, 1, goblin.MaxHp, team: 2);
+
+            foreach (int cid in new[] { heroId, allyId, elfId, goblinId })
+            {
+                session.AddResource(cid, 0, "PV", 30, -15);
+                Tormenta20ActionRules.ConfigureTurnActions(session, cid, 1, 1, -1);
+                session.SetInitiative(cid, 20 - cid);
+            }
+            session.StartCombat();
+
+            // Imóvel bloqueia deslocamento
+            Tormenta20ConditionRules.ApplyCondition(session, allyId, T20Condition.Imovel);
+            AssertEqual(0, Tormenta20TacticalRules.GetMovementSpeedSquares(ally, session, allyId), "Imóvel deve reduzir deslocamento a 0");
+            Tormenta20ConditionRules.RemoveCondition(session, allyId, T20Condition.Imovel);
+
+            // 3. Configurar mapa com parede, mureta (cobertura leve) e terreno difícil
+            session.ConfigureMap(12, 10);
+            session.SetMapCell(4, 3, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+            session.SetMapCell(4, 4, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+            session.SetMapCell(3, 4, MapTerrainType.Difficult, coverLevel: 0, blocksSight: false);
+            session.SetMapCell(5, 6, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false); // mureta
+
+            session.PlaceToken(heroId,   2, 4);
+            session.PlaceToken(goblinId, 6, 4);
+            session.PlaceToken(elfId,    1, 6);
+            session.PlaceToken(allyId,   7, 4);
+
+            // Pathfinding desviando de parede (4,4) e pagando custo dobrado em (3,4)
+            var path = Tormenta20TacticalRules.FindShortestPath(session, heroId, new GridPos(5, 4), maxCostSquares: 10, out int pathCost);
+            AssertTrue(path.Count > 2 && pathCost > 3, "Pathfinding deve desviar da parede em (4,4)");
+            foreach (var step in path)
+            {
+                AssertTrue(step != new GridPos(4, 4), "Caminho não pode atravessar parede bloqueada");
+            }
+
+            var reachable = Tormenta20TacticalRules.ComputeReachableCells(session, heroId, 6);
+            AssertTrue(reachable.ContainsKey(new GridPos(3, 4)), "Célula de terreno difícil adjacente deve ser alcançável");
+            AssertEqual(2, reachable[new GridPos(3, 4)], "Entrar em terreno difícil deve custar 2 quadrados");
+
+            // 4. Ataque corpo a corpo fora de alcance deve falhar SEM gastar Ação Padrão
+            var atkFar = Tormenta20CombatRules.ResolveWeaponAttack(session, humano, heroId, goblin, goblinId, espada);
+            AssertTrue(!atkFar.ActionSucceeded, "Ataque corpo a corpo à distância 4q deve ser bloqueado");
+            AssertEqual(1, session.GetActionSlot(heroId, (int)T20ActionType.Standard).Current, "Ataque bloqueado fora de alcance não deve consumir Ação Padrão");
+
+            // 5. Ataque com parede sólida no meio (goblin 6,4 <- hero 2,4 tem parede em 4,4) bloqueia LoS
+            var atkBehindWall = Tormenta20CombatRules.ResolveWeaponAttack(session, elfo, elfId, goblin, goblinId, arco);
+            AssertTrue(atkBehindWall.ActionSucceeded, "Deve haver LoS de (1,6) até (6,4) sem parede no segmento, mas vamos testar mureta e parede dedicada");
+
+            // Colocar parede exatamente entre (1,6) e (6,6)? Vamos colocar mureta em (3,6) -> já temos (5,6) com CoverLevel=1 entre (1,6) e (7,6)!
+            // Vamos testar parede direta entre (2,4) e (6,4) com arco:
+            var atkWallLoS = Tormenta20CombatRules.ResolveWeaponAttack(session, humano, heroId, goblin, goblinId, arco);
+            AssertTrue(!atkWallLoS.ActionSucceeded && atkWallLoS.BlockingReasonOrMessage(atkWallLoS.Message), "Parede em (4,4) deve bloquear linha de visão de (2,4) até (6,4)");
+
+            // Testar Cobertura Leve (+5 Def): mover goblin para (7,6)? Melhor verificar EvaluateAttackContext com (5,6) CoverLevel=1 entre elfId(1,6) e goblin em (6,6)
+            session.MoveToken(goblinId, 6, 6);
+            var ctxCover = Tormenta20TacticalRules.EvaluateAttackContext(session, elfId, goblinId, arco);
+            AssertTrue(ctxCover.HasLineOfSight && ctxCover.InRange, "Deve ter LoS e alcance até (6,6)");
+            AssertEqual(T20CoverLevel.Light, ctxCover.Cover, "Mureta em (5,6) deve conceder Cobertura Leve");
+            AssertEqual(5, ctxCover.DefenseCoverBonus, "Cobertura Leve em T20 concede +5 na Defesa");
+
+            // 6. ExecuteTacticalMove consome Ação de Movimento e atualiza posição no C++
+            session.MoveToken(goblinId, 6, 4);
+            var moveRes = Tormenta20TacticalRules.ExecuteTacticalMove(session, humano, heroId, new GridPos(5, 4));
+            AssertTrue(moveRes.Success, $"Movimento até (5,4) deve ter sucesso: {moveRes.Message}");
+            AssertEqual(0, session.GetActionSlot(heroId, (int)T20ActionType.Movement).Current, "Movimento deve gastar Ação de Movimento");
+            AssertTrue(session.TryGetToken(heroId, out var movedTok) && movedTok.X == 5 && movedTok.Y == 4, "Posição no C++ atualizada");
+
+            // 7. Flanqueamento (+2 Ataque): hero(5,4) e ally(7,4) em lados opostos de goblin(6,4)
+            var ctxFlank = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada);
+            AssertTrue(ctxFlank.IsFlanking, "Herói(5,4) e Aliado(7,4) devem flanquear Goblin(6,4)");
+            AssertEqual(2, ctxFlank.FlankingAttackBonus, "Flanqueamento deve conceder +2 no ataque");
+
+            // 8. Névoa de Guerra (Unseen -> Visible -> Explored)
+            var fog = new TacticalFogTracker();
+            Tormenta20TacticalRules.UpdateFogOfWar(session, fog, alliedTeam: 1, visionRangeSquares: 5);
+            // (0,0) não é visível inicialmente para elfId(1,6)/hero(5,4)/ally(7,4)
+            AssertEqual(FogState.Unseen, fog.GetState(new GridPos(11, 9)), "Célula distante deve iniciar Unseen");
+            AssertEqual(FogState.Visible, fog.GetState(new GridPos(5, 5)), "Célula próxima deve estar Visible");
+            // Mover todos os aliados para longe de (5,5)? Ao re-atualizar depois de afastar hero para (0,0) e remover os outros:
+            session.RemoveToken(elfId);
+            session.RemoveToken(allyId);
+            session.MoveToken(heroId, 0, 9);
+            Tormenta20TacticalRules.UpdateFogOfWar(session, fog, alliedTeam: 1, visionRangeSquares: 3);
+            AssertEqual(FogState.Explored, fog.GetState(new GridPos(5, 5)), "Célula vista anteriormente deve virar Explored ao sair do alcance");
+
+            // 9. Persistência JSON de EncounterSnapshotDto com TacticalMapSnapshotDto
+            var mapSnap = new EncounterSnapshotDto
+            {
+                CombatStarted = true,
+                Round = 2,
+                CurrentTurnSheetId = 1,
+                TacticalMap = new TacticalMapSnapshotDto
+                {
+                    Width = 12,
+                    Height = 10,
+                    FogOfWarEnabled = true,
+                    Cells = new() { new MapCellDto { X = 4, Y = 4, Terrain = 2, CoverLevel = 2, BlocksSight = true } },
+                    TokenPositions = new() { [1] = new GridPosDto { X = 0, Y = 9 } },
+                    ExploredCells = new() { new GridPosDto { X = 5, Y = 5 } }
+                }
+            };
+            string mapSnapPath = "saves/test_tactical_snapshot.json";
+            Tormenta20Persistence.SaveEncounterSnapshotToFile(mapSnap, mapSnapPath);
+            var loadedMapSnap = Tormenta20Persistence.LoadEncounterSnapshotFromFile(mapSnapPath);
+            AssertTrue(loadedMapSnap?.TacticalMap != null, "TacticalMap deve persistir em JSON");
+            AssertEqual(12, loadedMapSnap!.TacticalMap!.Width, "Largura do mapa restaurada");
+            AssertTrue(loadedMapSnap.TacticalMap.FogOfWarEnabled, "Flag de Névoa restaurada");
+            AssertEqual(9, loadedMapSnap.TacticalMap.TokenPositions[1].Y, "Posição do token restaurada");
+            AssertEqual(1, loadedMapSnap.TacticalMap.ExploredCells.Count, "Células exploradas restauradas");
+            if (System.IO.File.Exists(mapSnapPath)) System.IO.File.Delete(mapSnapPath);
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static bool BlockingReasonOrMessage(this T20AttackResolutionResult r, string msg) =>
+            msg.Contains("linha de visão", StringComparison.OrdinalIgnoreCase);
     }
 }
 

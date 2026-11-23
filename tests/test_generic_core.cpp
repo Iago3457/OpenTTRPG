@@ -571,6 +571,97 @@ void testC_ApiDll() {
     std::cout << "SUCESSO!\n";
 }
 
+void testTacticalMapAndApi() {
+    std::cout << "[TEST] TacticalMap (SparseGrid + QuadTree) e C API ottrpg_map_*... ";
+    using namespace openttrpg::core;
+
+    // 1. Teste direto da classe C++ TacticalMap
+    Encounter enc(999);
+    EntityId hero = enc.addCombatant("Valeros", 2, 24, 1);
+    EntityId goblin = enc.addCombatant("Goblin", 3, 10, 2);
+
+    assert(!enc.map().isActive());
+    enc.map().configure(12, 10);
+    assert(enc.map().isActive());
+    assert(enc.map().width() == 12 && enc.map().height() == 10);
+
+    // Configurar parede, cobertura leve e terreno difícil
+    enc.map().setCell(ds::GridCoord{5, 4}, core::MapCell{core::TerrainType::Blocked, 2, true});
+    enc.map().setCell(ds::GridCoord{4, 4}, core::MapCell{core::TerrainType::Difficult, 1, false});
+    assert(enc.map().nonDefaultCellCount() == 2);
+
+    // Voltar célula para padrão remove da SparseGrid
+    enc.map().setCell(ds::GridCoord{4, 4}, core::MapCell{});
+    assert(enc.map().nonDefaultCellCount() == 1);
+
+    // Posicionar tokens e mover atualizando a QuadTree
+    enc.map().placeToken(hero, ds::GridCoord{2, 4}, 1);
+    enc.map().placeToken(goblin, ds::GridCoord{8, 4}, 1);
+
+    // Tentar posicionar sobre parede deve lançar invalid_argument
+    bool threwBlocked = false;
+    try {
+        enc.map().moveToken(hero, ds::GridCoord{5, 4});
+    } catch (const std::invalid_argument&) {
+        threwBlocked = true;
+    }
+    assert(threwBlocked);
+
+    enc.map().moveToken(hero, ds::GridCoord{3, 4});
+    assert(enc.map().getToken(hero)->pos == (ds::GridCoord{3, 4}));
+
+    // Busca espacial por raio (QuadTree)
+    ds::LinkedList<EntityId> nearby;
+    enc.map().queryTokensInRadius(ds::GridCoord{4, 4}, 2, nearby);
+    assert(nearby.size() == 1 && nearby.get(0) == hero);
+
+    // Remover combatente do Encounter remove token automaticamente do mapa e QuadTree
+    assert(enc.removeCombatant(goblin));
+    assert(enc.map().getToken(goblin) == nullptr);
+    assert(enc.map().tokens().size() == 1);
+
+    // 2. Teste completo via C ABI (DLL)
+    OttrpgEncounter* apiEnc = ottrpg_encounter_create(123);
+    assert(apiEnc != nullptr);
+    OttrpgId c1 = ottrpg_combatant_add(apiEnc, "Herói", 1, 20, 1);
+    OttrpgId c2 = ottrpg_combatant_add(apiEnc, "Orc", 0, 15, 2);
+
+    assert(ottrpg_map_configure(apiEnc, 16, 12) == OTTRPG_OK);
+    int32_t active = 0, w = 0, h = 0;
+    assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK);
+    assert(active == 1 && w == 16 && h == 12);
+
+    assert(ottrpg_map_set_cell(apiEnc, 6, 5, OTTRPG_TERRAIN_BLOCKED, 2, 1) == OTTRPG_OK);
+    assert(ottrpg_map_set_cell(apiEnc, 7, 5, OTTRPG_TERRAIN_DIFFICULT, 1, 0) == OTTRPG_OK);
+
+    int32_t cellCount = 0;
+    assert(ottrpg_map_get_non_default_cells(apiEnc, nullptr, 0, &cellCount) == OTTRPG_OK);
+    assert(cellCount == 2);
+    OttrpgMapCellInfo cells[2];
+    assert(ottrpg_map_get_non_default_cells(apiEnc, cells, 2, &cellCount) == OTTRPG_OK);
+
+    assert(ottrpg_map_place_token(apiEnc, c1, 2, 5, 1) == OTTRPG_OK);
+    assert(ottrpg_map_place_token(apiEnc, c2, 4, 5, 1) == OTTRPG_OK);
+    assert(ottrpg_map_move_token(apiEnc, c1, 3, 5) == OTTRPG_OK);
+
+    OttrpgTokenInfo tokInfo;
+    assert(ottrpg_map_get_token(apiEnc, c1, &tokInfo) == OTTRPG_OK);
+    assert(tokInfo.x == 3 && tokInfo.y == 5);
+
+    OttrpgId radiusIds[8];
+    int32_t radCount = 0;
+    assert(ottrpg_map_query_radius(apiEnc, 3, 5, 2, radiusIds, 8, &radCount) == OTTRPG_OK);
+    assert(radCount == 2);
+
+    assert(ottrpg_map_remove_token(apiEnc, c2) == OTTRPG_OK);
+    assert(ottrpg_map_get_token(apiEnc, c2, &tokInfo) == OTTRPG_ERR_NOT_FOUND);
+    assert(ottrpg_map_clear(apiEnc) == OTTRPG_OK);
+    assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && active == 0);
+
+    ottrpg_encounter_destroy(apiEnc);
+    std::cout << "SUCESSO!\n";
+}
+
 int main() {
     std::cout << "=== BATERIA DE TESTES — OPENTTRPG CORE GENÉRICO & C API (DLL) ===\n";
     testLinkedListExtensions();
@@ -583,6 +674,7 @@ int main() {
     testActionPriorityQueueAndEconomy();
     testAbilityAndPrerequisiteTrees();
     testC_ApiDll();
+    testTacticalMapAndApi();
     std::cout << "\n>>> TODOS OS TESTES DO CORE GENÉRICO PASSARAM COM ÊXITO! <<<\n";
     return 0;
 }

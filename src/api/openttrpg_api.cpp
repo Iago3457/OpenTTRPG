@@ -8,6 +8,7 @@
 #include "openttrpg/core/Encounter.hpp"
 #include "openttrpg/core/InitiativeTracker.hpp"
 #include "openttrpg/core/Resource.hpp"
+#include "openttrpg/core/TacticalMap.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -1913,6 +1914,241 @@ OTTRPG_API int32_t ottrpg_dice_last_format(OttrpgEncounter* encounter, char* buf
         return OTTRPG_ERR_NULL_HANDLE;
     }
     return copy_string_to_buffer(encounter->lastDiceResult.format(), buffer, buffer_size, out_required);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Mapa Tático Espacial (SparseGrid + QuadTree no Core)                      */
+/* ------------------------------------------------------------------------- */
+
+OTTRPG_API int32_t ottrpg_map_configure(OttrpgEncounter* encounter, int32_t width, int32_t height) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    try {
+        encounter->encounter.map().configure(width, height);
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_map_clear(OttrpgEncounter* encounter) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    encounter->encounter.map().clear();
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_get_info(OttrpgEncounter* encounter, int32_t* out_active,
+                                       int32_t* out_width, int32_t* out_height) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    const auto& m = encounter->encounter.map();
+    if (out_active != nullptr) *out_active = m.isActive() ? 1 : 0;
+    if (out_width != nullptr)  *out_width  = m.width();
+    if (out_height != nullptr) *out_height = m.height();
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_set_cell(OttrpgEncounter* encounter, int32_t x, int32_t y,
+                                       int32_t terrain, int32_t cover_level, int32_t blocks_sight) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (terrain < 0 || terrain > 2) {
+        set_last_error("Tipo de terreno inválido.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    try {
+        openttrpg::core::MapCell cell;
+        cell.terrain = static_cast<openttrpg::core::TerrainType>(terrain);
+        cell.coverLevel = cover_level < 0 ? 0 : (cover_level > 2 ? 2 : cover_level);
+        cell.blocksSight = (blocks_sight != 0);
+        encounter->encounter.map().setCell(openttrpg::ds::GridCoord{x, y}, cell);
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_map_get_cell(OttrpgEncounter* encounter, int32_t x, int32_t y,
+                                       OttrpgMapCellInfo* out_cell) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (out_cell == nullptr) {
+        set_last_error("Ponteiro out_cell nulo.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const auto c = encounter->encounter.map().getCell(openttrpg::ds::GridCoord{x, y});
+    out_cell->x = x;
+    out_cell->y = y;
+    out_cell->terrain = static_cast<int32_t>(c.terrain);
+    out_cell->cover_level = c.coverLevel;
+    out_cell->blocks_sight = c.blocksSight ? 1 : 0;
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_get_non_default_cells(OttrpgEncounter* encounter, OttrpgMapCellInfo* out_cells,
+                                                   int32_t capacity, int32_t* out_count) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    const auto& m = encounter->encounter.map();
+    const int32_t total = static_cast<int32_t>(m.nonDefaultCellCount());
+    if (out_count != nullptr) {
+        *out_count = total;
+    }
+    if (out_cells == nullptr || capacity <= 0) {
+        return OTTRPG_OK;
+    }
+    int32_t idx = 0;
+    m.forEachNonDefaultCell([&](openttrpg::ds::GridCoord pos, const openttrpg::core::MapCell& cell) {
+        if (idx < capacity) {
+            out_cells[idx].x = pos.x;
+            out_cells[idx].y = pos.y;
+            out_cells[idx].terrain = static_cast<int32_t>(cell.terrain);
+            out_cells[idx].cover_level = cell.coverLevel;
+            out_cells[idx].blocks_sight = cell.blocksSight ? 1 : 0;
+            ++idx;
+        }
+    });
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_place_token(OttrpgEncounter* encounter, OttrpgId entity_id,
+                                          int32_t x, int32_t y, int32_t size_cells) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    try {
+        encounter->encounter.map().placeToken(entity_id, openttrpg::ds::GridCoord{x, y}, size_cells);
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_map_move_token(OttrpgEncounter* encounter, OttrpgId entity_id, int32_t x, int32_t y) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    try {
+        encounter->encounter.map().moveToken(entity_id, openttrpg::ds::GridCoord{x, y});
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
+OTTRPG_API int32_t ottrpg_map_remove_token(OttrpgEncounter* encounter, OttrpgId entity_id) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (!encounter->encounter.map().removeToken(entity_id)) {
+        set_last_error("Token não encontrado no mapa.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_get_token(OttrpgEncounter* encounter, OttrpgId entity_id, OttrpgTokenInfo* out_token) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    if (out_token == nullptr) {
+        set_last_error("Ponteiro out_token nulo.");
+        return OTTRPG_ERR_INVALID_ARGUMENT;
+    }
+    const auto* t = encounter->encounter.map().getToken(entity_id);
+    if (t == nullptr) {
+        set_last_error("Token não posicionado no mapa.");
+        return OTTRPG_ERR_NOT_FOUND;
+    }
+    out_token->entity_id = t->entityId;
+    out_token->x = t->pos.x;
+    out_token->y = t->pos.y;
+    out_token->size_cells = t->sizeCells;
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_get_all_tokens(OttrpgEncounter* encounter, OttrpgTokenInfo* out_tokens,
+                                             int32_t capacity, int32_t* out_count) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    const auto& list = encounter->encounter.map().tokens();
+    const int32_t total = static_cast<int32_t>(list.size());
+    if (out_count != nullptr) {
+        *out_count = total;
+    }
+    if (out_tokens == nullptr || capacity <= 0) {
+        return OTTRPG_OK;
+    }
+    int32_t idx = 0;
+    list.for_each([&](const openttrpg::core::TokenPlacement& t, std::size_t) {
+        if (idx < capacity) {
+            out_tokens[idx].entity_id = t.entityId;
+            out_tokens[idx].x = t.pos.x;
+            out_tokens[idx].y = t.pos.y;
+            out_tokens[idx].size_cells = t.sizeCells;
+            ++idx;
+        }
+    });
+    return OTTRPG_OK;
+}
+
+OTTRPG_API int32_t ottrpg_map_query_radius(OttrpgEncounter* encounter, int32_t center_x, int32_t center_y,
+                                           int32_t radius, OttrpgId* out_ids, int32_t capacity, int32_t* out_count) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    try {
+        openttrpg::ds::LinkedList<openttrpg::core::EntityId> hits;
+        encounter->encounter.map().queryTokensInRadius(openttrpg::ds::GridCoord{center_x, center_y}, radius, hits);
+        const int32_t total = static_cast<int32_t>(hits.size());
+        if (out_count != nullptr) {
+            *out_count = total;
+        }
+        if (out_ids == nullptr || capacity <= 0) {
+            return OTTRPG_OK;
+        }
+        int32_t idx = 0;
+        hits.for_each([&](const openttrpg::core::EntityId& id, std::size_t) {
+            if (idx < capacity) {
+                out_ids[idx++] = id;
+            }
+        });
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
 }
 
 } // extern "C"

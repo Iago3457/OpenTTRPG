@@ -90,6 +90,30 @@ namespace OpenTTRPG.Tormenta20
             if (attacker == null) throw new ArgumentNullException(nameof(attacker));
             if (defender == null) throw new ArgumentNullException(nameof(defender));
 
+            if (weapon == null)
+            {
+                foreach (var item in attacker.Inventory)
+                {
+                    if (item.Equipped && item.Type == ItemType.Weapon)
+                    {
+                        weapon = item;
+                        break;
+                    }
+                }
+                weapon ??= new CharacterItem("Ataque Desarmado", "Golpe desarmado", ItemType.Weapon, 0, "1d4", "20/x2", 0, 0, 0, true, T20DamageType.Bludgeoning, false);
+            }
+
+            TacticalAttackContext tacticalCtx = Tormenta20TacticalRules.EvaluateAttackContext(
+                session, attackerId, defenderId, weapon);
+            if (tacticalCtx.MapActive && (!tacticalCtx.HasLineOfSight || !tacticalCtx.InRange))
+            {
+                return new T20AttackResolutionResult
+                {
+                    ActionSucceeded = false,
+                    Message = tacticalCtx.BlockingReason
+                };
+            }
+
             if (consumeStandardAction)
             {
                 T20ActionResult actRes = Tormenta20ActionRules.EnqueueTurnAction(
@@ -106,19 +130,6 @@ namespace OpenTTRPG.Tormenta20
             else
             {
                 session.RecordActionInTurn(attackerId, "Agredir (Ataque Padrão)");
-            }
-
-            if (weapon == null)
-            {
-                foreach (var item in attacker.Inventory)
-                {
-                    if (item.Equipped && item.Type == ItemType.Weapon)
-                    {
-                        weapon = item;
-                        break;
-                    }
-                }
-                weapon ??= new CharacterItem("Ataque Desarmado", "Golpe desarmado", ItemType.Weapon, 0, "1d4", "20/x2", 0, 0, 0, true, T20DamageType.Bludgeoning, false);
             }
 
             string attackSkill = weapon.IsRanged ? "Pontaria" : "Luta";
@@ -165,10 +176,18 @@ namespace OpenTTRPG.Tormenta20
                 critMultiplier += 1;
             }
 
-            int baseDef = defender.GetDefense(session, defenderId);
+            int baseDef = defender.GetDefense(session, defenderId) + tacticalCtx.DefenseCoverBonus;
             if (weapon.IsRanged && session.HasCondition(defenderId, Tormenta20ConditionRules.ProneKey))
             {
                 baseDef += 10;
+            }
+            skillMod += tacticalCtx.FlankingAttackBonus;
+
+            string tacticalNotes = string.Empty;
+            if (tacticalCtx.MapActive)
+            {
+                if (tacticalCtx.IsFlanking) tacticalNotes += " [Flanqueando +2 Atk]";
+                if (tacticalCtx.Cover == T20CoverLevel.Light) tacticalNotes += " [Cobertura Leve +5 Def]";
             }
 
             RollResult d20 = session.Roll("1d20");
@@ -195,7 +214,7 @@ namespace OpenTTRPG.Tormenta20
                     TargetDefense = baseDef,
                     ThreatRange = threatRange,
                     CriticalMultiplier = critMultiplier,
-                    Message = $"[ATAQUE ERROU] {attacker.Name} atacou {defender.Name} com {weapon.Name}: rolou {attackTotal} (1d20={natural}{FormatSigned(skillMod)}) vs Defesa {baseDef}."
+                    Message = $"[ATAQUE ERROU] {attacker.Name} atacou {defender.Name} com {weapon.Name}: rolou {attackTotal} (1d20={natural}{FormatSigned(skillMod)}) vs Defesa {baseDef}{tacticalNotes}."
                 };
             }
 
@@ -254,7 +273,7 @@ namespace OpenTTRPG.Tormenta20
                 DamageExpression = dmgExpr,
                 RawDamageRolled = rawDamage,
                 CoreDamageResult = dmgRes,
-                Message = $"[ATAQUE ACERTOU!] {attacker.Name} atingiu {defender.Name} com {weapon.Name} (Ataque {attackTotal} vs Defesa {baseDef}){critLabel}: " +
+                Message = $"[ATAQUE ACERTOU!] {attacker.Name} atingiu {defender.Name} com {weapon.Name} (Ataque {attackTotal} vs Defesa {baseDef}{tacticalNotes}){critLabel}: " +
                           $"Dano Bruto = {rawDamage}{rdLabel}{respLabel} -> Dano Final Aplicado = {dmgRes.FinalAmount} PV!{downLabel}"
             };
         }

@@ -71,6 +71,7 @@ bool Encounter::removeCombatant(EntityId id) {
         return false;
     }
     tracker_.remove(id);
+    map_.removeToken(id);
     combatants_.remove_at(idx);
     return true;
 }
@@ -367,5 +368,7 @@ bool Encounter::autoSkipDefeated() const { return autoSkipDefeated_; }
 bool Encounter::autoTickConditions() const { return autoTickConditions_; }
 
 DiceEngine& Encounter::dice() { return dice_; }
+TacticalMap& Encounter::map() { return map_; }
+const TacticalMap& Encounter::map() const { return map_; }
 
 } // namespace openttrpg::core

@@ -13,6 +13,7 @@ public partial class MainUi : Control
 	private OptionButton _optPersonagens;
 	private Button _btnViewFicha;
 	private Button _btnViewCombate;
+	private Button _btnViewMapa;
 	private Button _btnViewDados;
 	private Button _btnSalvarFichas;
 	private Button _btnVoltarMenu;
@@ -22,6 +23,7 @@ public partial class MainUi : Control
 	// ── Views ───────────────────────────────────────────────────────────────
 	private Control _viewFicha;
 	private Control _viewCombate;
+	private Control _viewMapa;
 	private Control _viewDadosLegacy;
 
 	// ── Ficha: Cabeçalho ────────────────────────────────────────────────────
@@ -155,6 +157,31 @@ public partial class MainUi : Control
 	private CharacterSheetData _selectedCharacter;
 	private string _currentMainView = "Ficha";
 	private string _currentSubTab = "Ataques";
+
+	// ── Mapa Tático (Tabletop) ──────────────────────────────────────────────
+	private enum MapEditorBrush { Floor, Wall, Cover, Difficult, MoveToken }
+	private MapEditorBrush _editorBrush = MapEditorBrush.Wall;
+	private int _editorSelectedTokenId;
+	private bool _runModeNextClick;
+	private TacticalGridCanvas _tacticalGridCanvas;
+	private OptionButton _optArenaPreset;
+	private Button _btnModoEditorMapa;
+	private HBoxContainer _boxPinceisEditor;
+	private readonly List<Button> _brushButtons = new();
+	private Button _btnFogToggle;
+	private Button _btnReguaMapa;
+	private Button _btnMapaCorrer;
+	private Button _btnMapaAtacar;
+	private Button _btnMapaIniciarCombate;
+	private Button _btnMapaProximoTurno;
+	private Button _btnMapaSalvar;
+	private Button _btnMapaHabilidade;
+	private Button _btnMapaCondicoes;
+	private Label _lblMapaStatusBar;
+	private Label _lblMapaTurnoInfo;
+	private Label _lblMapaAlvoResumo;
+	private RichTextLabel _txtMapaMiniLog;
+	private FileDialog _fileDlgMapaFundo;
 
 	// ════════════════════════════════════════════════════════════════════════
 	// _Ready
@@ -728,6 +755,16 @@ public partial class MainUi : Control
 		_btnPopNextAction.AddThemeColorOverride("font_color", new Color(0.55f, 1f, 0.65f));
 		_btnPopNextAction.AddThemeFontSizeOverride("font_size", 11);
 		vQueue.AddChild(_btnPopNextAction);
+
+		// Botão e aba do Mapa Tático (Tabletop)
+		_btnViewMapa = new Button
+		{
+			Text = "🗺️ Mapa Tático"
+		};
+		topBarMain.AddChild(_btnViewMapa);
+		topBarMain.MoveChild(_btnViewMapa, _btnViewCombate.GetIndex() + 1);
+
+		BuildTacticalMapView();
 	}
 
 	private void ToggleDiceTrayPopup(bool? forceState = null)
@@ -2278,9 +2315,11 @@ public partial class MainUi : Control
 	// ════════════════════════════════════════════════════════════════════════
 	private void ConnectEvents()
 	{
-		// TopBar: Ficha e Combate trocam de tela; Bandeja de Dados abre como POP-UP sobre a tela atual!
+		// TopBar: Ficha, Combate e Mapa trocam de tela; Bandeja de Dados abre como POP-UP sobre a tela atual!
 		_btnViewFicha.Pressed         += () => ShowView("Ficha");
 		_btnViewCombate.Pressed       += () => ShowView("Combate");
+		if (_btnViewMapa != null)
+			_btnViewMapa.Pressed      += () => ShowView("Mapa");
 		_btnViewDados.Pressed         += () => ToggleDiceTrayPopup();
 		_btnSalvarFichas.Pressed      += OnSalvarFichasPressed;
 		_btnVoltarMenu.Pressed        += () => GetTree().ChangeSceneToFile("res://Cenas/MainMenu.tscn");
@@ -2393,12 +2432,16 @@ public partial class MainUi : Control
 			_dlgCondicoesCombate.PopupCentered();
 		};
 
+		_optAlvoCombate.ItemSelected += (_) => RefreshTacticalMapView();
+
 		_combatManager.TurnChanged += (cid, cname, round) =>
 		{
+			_runModeNextClick = false;
 			UpdateCombatStatusDisplay();
 			RefreshInitiativeBar();
 			PopularAlvoCombate();
 			RefreshActionQueuePanel();
+			RefreshTacticalMapView();
 			RefreshSheetUI();
 		};
 
@@ -2440,9 +2483,25 @@ public partial class MainUi : Control
 		_currentMainView     = view;
 		_viewFicha.Visible   = view == "Ficha";
 		_viewCombate.Visible = view == "Combate";
+		if (_viewMapa != null)
+			_viewMapa.Visible = view == "Mapa";
 
 		_btnViewFicha.Modulate   = view == "Ficha"   ? new Color(1f, 0.9f, 0.45f) : Colors.White;
 		_btnViewCombate.Modulate = view == "Combate" ? new Color(1f, 0.9f, 0.45f) : Colors.White;
+		if (_btnViewMapa != null)
+			_btnViewMapa.Modulate = view == "Mapa" ? new Color(1f, 0.9f, 0.45f) : Colors.White;
+
+		if (view == "Mapa")
+		{
+			_combatManager.EnsureMapInitialized(resetTerrain: false);
+			RefreshTacticalMapView();
+			CallDeferred(nameof(CenterTacticalMapDeferred));
+		}
+	}
+
+	private void CenterTacticalMapDeferred()
+	{
+		_tacticalGridCanvas?.CenterView();
 	}
 
 	private void ShowToast(string message, Color? borderColor = null)
@@ -3399,6 +3458,7 @@ public partial class MainUi : Control
 			if (_btnPopNextAction != null) _btnPopNextAction.Disabled = true;
 		}
 		RefreshActionQueuePanel();
+		RefreshTacticalMapView();
 	}
 
 	private void OnAcaoCompletaPressed()
@@ -3670,6 +3730,7 @@ public partial class MainUi : Control
 		RefreshSheetUI();
 		RefreshInitiativeBar();
 		PopularAlvoCombate();
+		RefreshTacticalMapView();
 	}
 
 	private void OnMovimentoPressed()
@@ -3764,11 +3825,625 @@ public partial class MainUi : Control
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
+	// Mapa Tático (Tabletop 2D)
+	// ════════════════════════════════════════════════════════════════════════
+	private void BuildTacticalMapView()
+	{
+		var mainContent = GetNode<VBoxContainer>("MarginContainer/VBoxMain/MainContent");
+
+		var container = new VBoxContainer
+		{
+			Name = "ViewMapa",
+			Visible = false,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		container.AddThemeConstantOverride("separation", 8);
+		mainContent.AddChild(container);
+		_viewMapa = container;
+
+		// 1. Barra de ferramentas superior do Mapa
+		var toolBar = new HBoxContainer();
+		toolBar.AddThemeConstantOverride("separation", 8);
+		container.AddChild(toolBar);
+
+		toolBar.AddChild(new Label { Text = "🗺️ Cenário:" });
+		_optArenaPreset = new OptionButton { CustomMinimumSize = new Vector2(180, 0) };
+		_optArenaPreset.AddItem("Masmorra com Pilares", (int)T20ArenaPreset.PillaredDungeon);
+		_optArenaPreset.AddItem("Arena Aberta", (int)T20ArenaPreset.OpenArena);
+		_optArenaPreset.AddItem("Taverna", (int)T20ArenaPreset.Tavern);
+		_optArenaPreset.AddItem("Emboscada na Floresta", (int)T20ArenaPreset.ForestAmbush);
+		_optArenaPreset.Select(0);
+		_optArenaPreset.ItemSelected += (idx) =>
+		{
+			_combatManager.CurrentArenaPreset = (T20ArenaPreset)_optArenaPreset.GetItemId((int)idx);
+			_combatManager.EnsureMapInitialized(resetTerrain: true);
+			RefreshTacticalMapView();
+			ShowToast($"🗺️ Cenário alterado para {_optArenaPreset.GetItemText((int)idx)}.");
+		};
+		toolBar.AddChild(_optArenaPreset);
+
+		_btnModoEditorMapa = new Button
+		{
+			Text = "✏️ Modo: Combate",
+			ToggleMode = true
+		};
+		_btnModoEditorMapa.Toggled += (bool editing) =>
+		{
+			_btnModoEditorMapa.Text = editing ? "✏️ Modo: Editor de Mapa" : "⚔️ Modo: Combate";
+			_btnModoEditorMapa.AddThemeColorOverride("font_color", editing ? new Color(1f, 0.85f, 0.35f) : Colors.White);
+			if (_boxPinceisEditor != null) _boxPinceisEditor.Visible = editing;
+			if (_tacticalGridCanvas != null) _tacticalGridCanvas.IsEditorMode = editing;
+			_editorSelectedTokenId = 0;
+			_tacticalGridCanvas?.SetSelectedEditorToken(0);
+			RefreshTacticalMapView();
+		};
+		toolBar.AddChild(_btnModoEditorMapa);
+
+		_btnReguaMapa = new Button
+		{
+			Text = "📏 Régua",
+			ToggleMode = true,
+			TooltipText = "Medir distância em metros e linha de visão no mapa"
+		};
+		_btnReguaMapa.Toggled += (bool active) =>
+		{
+			if (_tacticalGridCanvas != null)
+			{
+				_tacticalGridCanvas.RulerMode = active;
+				_tacticalGridCanvas.QueueRedraw();
+			}
+		};
+		toolBar.AddChild(_btnReguaMapa);
+
+		_btnFogToggle = new Button
+		{
+			Text = "👁️ Visão do Mestre",
+			ToggleMode = true,
+			TooltipText = "Alterna entre visão total do Mestre e Névoa de Guerra dos heróis"
+		};
+		_btnFogToggle.Toggled += (bool fog) =>
+		{
+			_combatManager.FogOfWarEnabled = fog;
+			_btnFogToggle.Text = fog ? "🌫️ Névoa de Guerra" : "👁️ Visão do Mestre";
+			Tormenta20TacticalRules.UpdateFogOfWar(_combatManager.Session, _combatManager.FogTracker, alliedTeam: 1);
+			RefreshTacticalMapView();
+		};
+		toolBar.AddChild(_btnFogToggle);
+
+		var btnBg = new Button
+		{
+			Text = "🖼️ Mapa de Fundo"
+		};
+		btnBg.Pressed += () => _fileDlgMapaFundo?.PopupCentered(new Vector2I(680, 460));
+		toolBar.AddChild(btnBg);
+
+		var btnLimparBg = new Button
+		{
+			Text = "🧹 Limpar Fundo",
+			TooltipText = "Remove a imagem de fundo e volta ao piso padrão da grade"
+		};
+		btnLimparBg.Pressed += () =>
+		{
+			_combatManager.CurrentMapBackgroundPath = string.Empty;
+			_tacticalGridCanvas?.SetBackgroundImage(string.Empty);
+		};
+		toolBar.AddChild(btnLimparBg);
+
+		var btnCenter = new Button { Text = "🔍 Centralizar" };
+		btnCenter.Pressed += () => _tacticalGridCanvas?.CenterView();
+		toolBar.AddChild(btnCenter);
+
+		_btnMapaSalvar = new Button { Text = "💾 Salvar Combate" };
+		_btnMapaSalvar.AddThemeColorOverride("font_color", new Color(0.5f, 0.95f, 0.65f));
+		_btnMapaSalvar.Pressed += () =>
+		{
+			if (_combatManager.SaveCombatSnapshot())
+				ShowToast("💾 Combate e mapa salvos com sucesso!");
+			else
+				ShowToast("⚠️ Inicie um combate antes de salvar.", new Color(1f, 0.45f, 0.45f));
+		};
+		toolBar.AddChild(_btnMapaSalvar);
+
+		var btnMapaRestaurar = new Button { Text = "📂 Restaurar" };
+		btnMapaRestaurar.AddThemeColorOverride("font_color", new Color(0.55f, 0.85f, 1f));
+		btnMapaRestaurar.Pressed += () =>
+		{
+			_queuedActionPmSpent.Clear();
+			if (_combatManager.LoadCombatSnapshot())
+			{
+				UpdateCharacterDropdown();
+				UpdateCombatStatusDisplay();
+				RefreshInitiativeBar();
+				PopularAlvoCombate();
+				RefreshActionQueuePanel();
+				RefreshTacticalMapView();
+				RefreshSheetUI();
+				ShowToast("📂 Combate e mapa restaurados com sucesso!");
+			}
+			else
+			{
+				ShowToast("⚠️ Nenhum combate salvo encontrado.", new Color(1f, 0.45f, 0.45f));
+			}
+		};
+		toolBar.AddChild(btnMapaRestaurar);
+
+		// 2. Barra de Pincéis do Editor (visível apenas no Modo Editor)
+		_boxPinceisEditor = new HBoxContainer { Visible = false };
+		_boxPinceisEditor.AddThemeConstantOverride("separation", 6);
+		container.AddChild(_boxPinceisEditor);
+
+		_boxPinceisEditor.AddChild(new Label { Text = "Pincel:" });
+		void AddBrushBtn(string text, MapEditorBrush brush)
+		{
+			var b = new Button { Text = text };
+			b.Pressed += () =>
+			{
+				_editorBrush = brush;
+				_editorSelectedTokenId = 0;
+				_tacticalGridCanvas?.SetSelectedEditorToken(0);
+				for (int i = 0; i < _brushButtons.Count; i++)
+				{
+					_brushButtons[i].Modulate = (i == (int)brush) ? new Color(1f, 0.88f, 0.35f) : Colors.White;
+				}
+			};
+			_brushButtons.Add(b);
+			_boxPinceisEditor.AddChild(b);
+		}
+		AddBrushBtn("⬜ Chão Livre", MapEditorBrush.Floor);
+		AddBrushBtn("🧱 Parede Sólida", MapEditorBrush.Wall);
+		AddBrushBtn("🛡️ Cobertura Leve (+5 Def)", MapEditorBrush.Cover);
+		AddBrushBtn("🌿 Terreno Difícil (×2)", MapEditorBrush.Difficult);
+		AddBrushBtn("📍 Reposicionar Token", MapEditorBrush.MoveToken);
+		if (_brushButtons.Count > 1) _brushButtons[1].Modulate = new Color(1f, 0.88f, 0.35f);
+
+		var lblDicaEditor = new Label
+		{
+			Text = "  |  Clique ou arraste para pintar • Botão direito: mover câmera • Scroll: zoom"
+		};
+		lblDicaEditor.AddThemeColorOverride("font_color", new Color(0.70f, 0.74f, 0.82f));
+		lblDicaEditor.AddThemeFontSizeOverride("font_size", 11);
+		_boxPinceisEditor.AddChild(lblDicaEditor);
+
+		// 3. Corpo principal dividido: Canvas (Esquerda/Centro) + Painel Lateral Compacto (Direita)
+		var hSplit = new HSplitContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		container.AddChild(hSplit);
+
+		var vCanvasCol = new VBoxContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		vCanvasCol.AddThemeConstantOverride("separation", 4);
+		hSplit.AddChild(vCanvasCol);
+
+		var canvasFrame = new PanelContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		var frameStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.06f, 0.07f, 0.09f, 1f),
+			BorderColor = new Color(0.32f, 0.35f, 0.44f, 1f),
+			BorderWidthLeft = 1,
+			BorderWidthTop = 1,
+			BorderWidthRight = 1,
+			BorderWidthBottom = 1,
+			CornerRadiusTopLeft = 6,
+			CornerRadiusTopRight = 6,
+			CornerRadiusBottomLeft = 6,
+			CornerRadiusBottomRight = 6
+		};
+		canvasFrame.AddThemeStyleboxOverride("panel", frameStyle);
+		vCanvasCol.AddChild(canvasFrame);
+
+		_tacticalGridCanvas = new TacticalGridCanvas
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		canvasFrame.AddChild(_tacticalGridCanvas);
+
+		_tacticalGridCanvas.CellClicked += OnMapCellClicked;
+		_tacticalGridCanvas.CellDragged += PaintCellInEditor;
+		_tacticalGridCanvas.TokenClicked += OnMapTokenClicked;
+		_tacticalGridCanvas.HoverStatusChanged += (status) =>
+		{
+			if (_lblMapaStatusBar != null) _lblMapaStatusBar.Text = status;
+		};
+
+		_lblMapaStatusBar = new Label
+		{
+			Text = "Escala: 1 quadrado = 1,5m • Botão direito: mover câmera • Scroll: zoom"
+		};
+		_lblMapaStatusBar.AddThemeColorOverride("font_color", new Color(0.78f, 0.82f, 0.90f));
+		_lblMapaStatusBar.AddThemeFontSizeOverride("font_size", 11);
+		vCanvasCol.AddChild(_lblMapaStatusBar);
+
+		// Painel lateral de controle rápido no mapa
+		var sidePanel = new PanelContainer
+		{
+			CustomMinimumSize = new Vector2(305, 0),
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		var sideStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.10f, 0.11f, 0.14f, 0.98f),
+			BorderColor = new Color(0.30f, 0.32f, 0.40f, 1f),
+			BorderWidthLeft = 1,
+			BorderWidthTop = 1,
+			BorderWidthRight = 1,
+			BorderWidthBottom = 1,
+			CornerRadiusTopLeft = 6,
+			CornerRadiusTopRight = 6,
+			CornerRadiusBottomLeft = 6,
+			CornerRadiusBottomRight = 6,
+			ContentMarginLeft = 10,
+			ContentMarginRight = 10,
+			ContentMarginTop = 10,
+			ContentMarginBottom = 10
+		};
+		sidePanel.AddThemeStyleboxOverride("panel", sideStyle);
+		hSplit.AddChild(sidePanel);
+
+		var vSide = new VBoxContainer();
+		vSide.AddThemeConstantOverride("separation", 8);
+		sidePanel.AddChild(vSide);
+
+		var lblSideTitle = new Label { Text = "⚔️ Controle Tático" };
+		lblSideTitle.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.38f));
+		lblSideTitle.AddThemeFontSizeOverride("font_size", 14);
+		vSide.AddChild(lblSideTitle);
+
+		_lblMapaTurnoInfo = new Label
+		{
+			Text = "Fora de combate.\nInicie um combate para posicionar os combatentes no mapa.",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		_lblMapaTurnoInfo.AddThemeFontSizeOverride("font_size", 12);
+		vSide.AddChild(_lblMapaTurnoInfo);
+
+		var hSideTurnBtns = new HBoxContainer();
+		hSideTurnBtns.AddThemeConstantOverride("separation", 6);
+		vSide.AddChild(hSideTurnBtns);
+
+		_btnMapaIniciarCombate = new Button
+		{
+			Text = "⚔️ Iniciar Combate",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_btnMapaIniciarCombate.Pressed += OnIniciarCombatePressed;
+		hSideTurnBtns.AddChild(_btnMapaIniciarCombate);
+
+		_btnMapaProximoTurno = new Button
+		{
+			Text = "⏭️ Próximo Turno",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			Disabled = true
+		};
+		_btnMapaProximoTurno.Pressed += () => _combatManager.NextTurn();
+		hSideTurnBtns.AddChild(_btnMapaProximoTurno);
+
+		_lblMapaAlvoResumo = new Label
+		{
+			Text = "Alvo: Clique em um inimigo no mapa.",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		_lblMapaAlvoResumo.AddThemeColorOverride("font_color", new Color(0.82f, 0.90f, 1f));
+		_lblMapaAlvoResumo.AddThemeFontSizeOverride("font_size", 12);
+		vSide.AddChild(_lblMapaAlvoResumo);
+
+		_btnMapaAtacar = new Button { Text = "🗡️ Atacar Alvo Selecionado" };
+		_btnMapaAtacar.AddThemeColorOverride("font_color", new Color(1f, 0.65f, 0.45f));
+		_btnMapaAtacar.Pressed += OnAtacarPressed;
+		vSide.AddChild(_btnMapaAtacar);
+
+		_btnMapaCorrer = new Button
+		{
+			Text = "🏃 Correr (2× Desloc. • Ação Completa)",
+			ToggleMode = true
+		};
+		_btnMapaCorrer.AddThemeColorOverride("font_color", new Color(0.55f, 0.92f, 1f));
+		_btnMapaCorrer.Toggled += (bool active) =>
+		{
+			_runModeNextClick = active;
+			RefreshTacticalMapView();
+		};
+		vSide.AddChild(_btnMapaCorrer);
+
+		var hSideSub = new HBoxContainer();
+		hSideSub.AddThemeConstantOverride("separation", 6);
+		vSide.AddChild(hSideSub);
+
+		_btnMapaHabilidade = new Button
+		{
+			Text = "✨ Poder / Magia",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_btnMapaHabilidade.Pressed += OnAbrirUsarHabilidadeCombate;
+		hSideSub.AddChild(_btnMapaHabilidade);
+
+		_btnMapaCondicoes = new Button
+		{
+			Text = "⚡ Condições",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_btnMapaCondicoes.Pressed += () =>
+		{
+			if (!_combatManager.IsInCombat)
+			{
+				ShowToast("⚠️ Inicie o combate antes de aplicar condições!", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
+			_dlgCondicoesCombate.PopupCentered();
+		};
+		hSideSub.AddChild(_btnMapaCondicoes);
+
+		var lblLogTitle = new Label { Text = "📜 Registro de Combate" };
+		lblLogTitle.AddThemeColorOverride("font_color", new Color(0.88f, 0.85f, 0.72f));
+		lblLogTitle.AddThemeFontSizeOverride("font_size", 12);
+		vSide.AddChild(lblLogTitle);
+
+		_txtMapaMiniLog = new RichTextLabel
+		{
+			BbcodeEnabled = true,
+			ScrollFollowing = true,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		vSide.AddChild(_txtMapaMiniLog);
+
+		// Diálogo para escolher imagem de fundo do mapa
+		_fileDlgMapaFundo = new FileDialog
+		{
+			Title = "Escolher Imagem do Mapa de Batalha",
+			Access = FileDialog.AccessEnum.Filesystem,
+			FileMode = FileDialog.FileModeEnum.OpenFile,
+			Filters = new[] { "*.png, *.jpg, *.jpeg, *.webp ; Imagens de Mapa" }
+		};
+		_fileDlgMapaFundo.FileSelected += (string path) =>
+		{
+			_combatManager.CurrentMapBackgroundPath = path;
+			_tacticalGridCanvas?.SetBackgroundImage(path);
+			ShowToast("🖼️ Imagem de fundo aplicada ao mapa!");
+		};
+		AddChild(_fileDlgMapaFundo);
+	}
+
+	private void OnMapTokenClicked(int clickedEntityId)
+	{
+		if (_tacticalGridCanvas != null && _tacticalGridCanvas.IsEditorMode)
+		{
+			if (_editorBrush == MapEditorBrush.MoveToken)
+			{
+				_editorSelectedTokenId = clickedEntityId;
+				_tacticalGridCanvas.SetSelectedEditorToken(clickedEntityId);
+				string tName = _combatManager.CombatantIdToSheet.TryGetValue(clickedEntityId, out var sh) ? sh.Name : $"#{clickedEntityId}";
+				ShowToast($"📍 Token {tName} selecionado. Clique em uma célula livre para mover.");
+			}
+			return;
+		}
+
+		if (!_combatManager.IsInCombat) return;
+
+		// Seleciona o personagem clicado no dropdown de Alvo do combate
+		for (int i = 0; i < _optAlvoCombate.ItemCount; i++)
+		{
+			var meta = _optAlvoCombate.GetItemMetadata(i);
+			if (meta.VariantType == Variant.Type.Int && (int)meta == clickedEntityId)
+			{
+				_optAlvoCombate.Select(i);
+				break;
+			}
+		}
+
+		if (_combatManager.CombatantIdToSheet.TryGetValue(clickedEntityId, out var clickedSheet))
+		{
+			int sheetIdx = _combatManager.Characters.IndexOf(clickedSheet);
+			if (sheetIdx >= 0) SelectCharacter(sheetIdx);
+		}
+
+		RefreshTacticalMapView();
+	}
+
+	private void OnMapCellClicked(GridPos cell)
+	{
+		if (_tacticalGridCanvas != null && _tacticalGridCanvas.IsEditorMode)
+		{
+			if (_editorBrush == MapEditorBrush.MoveToken)
+			{
+				if (_editorSelectedTokenId > 0)
+				{
+					if (_combatManager.Session.MoveToken(_editorSelectedTokenId, cell.X, cell.Y))
+					{
+						Tormenta20TacticalRules.UpdateFogOfWar(_combatManager.Session, _combatManager.FogTracker, alliedTeam: 1);
+						_editorSelectedTokenId = 0;
+						_tacticalGridCanvas.SetSelectedEditorToken(0);
+						RefreshTacticalMapView();
+					}
+					else
+					{
+						ShowToast("⚠️ Não é possível colocar o token nessa célula.", new Color(1f, 0.45f, 0.45f));
+					}
+				}
+				return;
+			}
+			PaintCellInEditor(cell);
+			return;
+		}
+
+		if (!_combatManager.IsInCombat || (_tacticalGridCanvas != null && _tacticalGridCanvas.RulerMode)) return;
+
+		int actorId = _combatManager.Session.CurrentTurn;
+		if (!_combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet)) return;
+
+		if (actorSheet.CurrentHp <= 0)
+		{
+			ShowToast($"⚠️ {actorSheet.Name} está incapacitado e não pode se mover!", new Color(1f, 0.45f, 0.45f));
+			return;
+		}
+
+		var res = Tormenta20TacticalRules.ExecuteTacticalMove(
+			_combatManager.Session, actorSheet, actorId, cell, useFullRunAction: _runModeNextClick);
+
+		if (res.Success)
+		{
+			_runModeNextClick = false;
+			if (_btnMapaCorrer != null) _btnMapaCorrer.ButtonPressed = false;
+			_tacticalGridCanvas?.AnimateTokenMove(actorId, res.Path);
+			Tormenta20TacticalRules.UpdateFogOfWar(_combatManager.Session, _combatManager.FogTracker, alliedTeam: 1);
+			AppendCombatLog($"🏃 {res.Message}", "#a6e22e");
+			ShowToast($"🏃 {res.Message}");
+			UpdateCombatStatusDisplay();
+			RefreshTacticalMapView();
+		}
+		else
+		{
+			AppendCombatLog($"⚠️ {res.Message}", "#ff6b6b");
+			ShowToast($"⚠️ {res.Message}", new Color(1f, 0.45f, 0.45f));
+		}
+	}
+
+	private void PaintCellInEditor(GridPos cell)
+	{
+		if (_combatManager.Session == null || !_combatManager.Session.IsMapActive) return;
+		if (_editorBrush == MapEditorBrush.MoveToken) return;
+
+		switch (_editorBrush)
+		{
+			case MapEditorBrush.Floor:
+				_combatManager.Session.SetMapCell(cell.X, cell.Y, MapTerrainType.Passable, 0, false);
+				break;
+			case MapEditorBrush.Wall:
+				_combatManager.Session.SetMapCell(cell.X, cell.Y, MapTerrainType.Blocked, 2, true);
+				break;
+			case MapEditorBrush.Cover:
+				_combatManager.Session.SetMapCell(cell.X, cell.Y, MapTerrainType.Difficult, 1, false);
+				break;
+			case MapEditorBrush.Difficult:
+				_combatManager.Session.SetMapCell(cell.X, cell.Y, MapTerrainType.Difficult, 0, false);
+				break;
+		}
+		Tormenta20TacticalRules.UpdateFogOfWar(_combatManager.Session, _combatManager.FogTracker, alliedTeam: 1);
+		RefreshTacticalMapView();
+	}
+
+	private void RefreshTacticalMapView()
+	{
+		if (_tacticalGridCanvas == null || _combatManager?.Session == null) return;
+
+		if (!string.IsNullOrEmpty(_combatManager.CurrentMapBackgroundPath))
+		{
+			_tacticalGridCanvas.SetBackgroundImage(_combatManager.CurrentMapBackgroundPath);
+		}
+
+		int actorId = _combatManager.IsInCombat ? _combatManager.Session.CurrentTurn : 0;
+		int targetId = _combatManager.IsInCombat ? GetSelectedCombatTargetId(actorId) : 0;
+		var reachable = new Dictionary<GridPos, int>();
+		int weaponRange = 1;
+
+		if (_combatManager.IsInCombat && actorId > 0 && _combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet))
+		{
+			var weapon = actorSheet.Inventory.FirstOrDefault(i => i.Type == ItemType.Weapon && i.Equipped);
+			weaponRange = Tormenta20TacticalRules.GetWeaponRangeSquares(weapon);
+
+			int moveSquares = Tormenta20TacticalRules.GetMovementSpeedSquares(actorSheet, _combatManager.Session, actorId);
+			bool hasMoveSlot = _runModeNextClick
+				? (_combatManager.Session.CanUseAction(actorId, (int)T20ActionType.Standard, out _) &&
+				   _combatManager.Session.GetActionSlot(actorId, (int)T20ActionType.Movement).Current > 0)
+				: _combatManager.Session.CanUseAction(actorId, (int)T20ActionType.Movement, out _);
+
+			if (hasMoveSlot && moveSquares > 0)
+			{
+				int budget = _runModeNextClick ? moveSquares * 2 : moveSquares;
+				reachable = Tormenta20TacticalRules.ComputeReachableCells(_combatManager.Session, actorId, budget);
+			}
+
+			string slots = Tormenta20ActionRules.FormatRemainingActions(_combatManager.Session, actorId);
+			string moveLabel = Tormenta20TacticalRules.FormatMeters(moveSquares);
+			_lblMapaTurnoInfo.Text = actorSheet.CurrentHp <= 0
+				? $"Rodada {_combatManager.Session.Round} — {actorSheet.Name}\n⚠️ Incapacitado ({actorSheet.CurrentHp} PV)"
+				: $"Rodada {_combatManager.Session.Round} — Vez de {actorSheet.Name}\nDeslocamento: {moveLabel} ({moveSquares}q)\nAções: {slots}";
+
+			_btnMapaProximoTurno.Disabled = false;
+			_btnMapaAtacar.Disabled = actorSheet.CurrentHp <= 0;
+			_btnMapaCorrer.Disabled = actorSheet.CurrentHp <= 0;
+			_btnMapaHabilidade.Disabled = actorSheet.CurrentHp <= 0;
+
+			AtualizarResumoAlvoNoMapa(actorId, targetId, weapon);
+		}
+		else
+		{
+			if (_lblMapaTurnoInfo != null)
+				_lblMapaTurnoInfo.Text = "Fora de combate.\nInicie o combate para posicionar e movimentar os combatentes.";
+			if (_lblMapaAlvoResumo != null)
+				_lblMapaAlvoResumo.Text = "Alvo: Nenhum";
+			if (_btnMapaProximoTurno != null) _btnMapaProximoTurno.Disabled = true;
+			if (_btnMapaAtacar != null) _btnMapaAtacar.Disabled = true;
+			if (_btnMapaCorrer != null) _btnMapaCorrer.Disabled = true;
+			if (_btnMapaHabilidade != null) _btnMapaHabilidade.Disabled = true;
+		}
+
+		if (_btnFogToggle != null && _btnFogToggle.ButtonPressed != _combatManager.FogOfWarEnabled)
+		{
+			_btnFogToggle.SetPressedNoSignal(_combatManager.FogOfWarEnabled);
+			_btnFogToggle.Text = _combatManager.FogOfWarEnabled ? "🌫️ Névoa de Guerra" : "👁️ Visão do Mestre";
+		}
+
+		_tacticalGridCanvas.SyncFromSession(
+			_combatManager.Session,
+			_combatManager.CombatantIdToSheet,
+			actorId,
+			targetId,
+			_combatManager.FogTracker,
+			_combatManager.FogOfWarEnabled,
+			reachable,
+			weaponRange);
+	}
+
+	private void AtualizarResumoAlvoNoMapa(int actorId, int targetId, CharacterItem weapon)
+	{
+		if (_lblMapaAlvoResumo == null) return;
+		if (targetId <= 0 || !_combatManager.CombatantIdToSheet.TryGetValue(targetId, out var targetSheet))
+		{
+			_lblMapaAlvoResumo.Text = "Alvo: Clique em um inimigo no mapa.";
+			return;
+		}
+
+		var ctx = Tormenta20TacticalRules.EvaluateAttackContext(_combatManager.Session, actorId, targetId, weapon);
+		string armaNome = weapon?.Name ?? "Ataque Desarmado";
+		if (!ctx.MapActive)
+		{
+			_lblMapaAlvoResumo.Text = $"Alvo: {targetSheet.Name} (PV {targetSheet.CurrentHp}/{targetSheet.MaxHp})";
+			return;
+		}
+
+		var tags = new List<string>();
+		if (!ctx.HasLineOfSight) tags.Add("🚫 Sem Visão");
+		else if (!ctx.InRange) tags.Add($"⚠️ Fora de alcance ({Tormenta20TacticalRules.FormatMeters(ctx.MaxRangeSquares)})");
+		else tags.Add("✔ No alcance");
+
+		if (ctx.Cover == T20CoverLevel.Light) tags.Add("🛡️ Cobertura Leve (+5 Def)");
+		if (ctx.IsFlanking) tags.Add("⚔️ Flanqueando (+2 Atk)");
+
+		_lblMapaAlvoResumo.Text =
+			$"Alvo: {targetSheet.Name} (PV {targetSheet.CurrentHp}/{targetSheet.MaxHp})\n" +
+			$"Arma: {armaNome} • Distância: {Tormenta20TacticalRules.FormatMeters(ctx.DistanceSquares)}\n" +
+			string.Join(" • ", tags);
+	}
+
+	// ════════════════════════════════════════════════════════════════════════
 	// Helpers & Diagnóstico Automatizado (--self-test)
 	// ════════════════════════════════════════════════════════════════════════
 	private void AppendCombatLog(string message, string colorHex)
 	{
-		_txtLogCombate?.AppendText($"[color={colorHex}]{message}[/color]\n");
+		string bb = $"[color={colorHex}]{message}[/color]\n";
+		_txtLogCombate?.AppendText(bb);
+		_txtMapaMiniLog?.AppendText(bb);
 	}
 
 	private void RunAutomatedUiCSharpCppSelfTest()
@@ -3782,7 +4457,7 @@ public partial class MainUi : Control
 			if (_combatManager?.Session == null)
 				throw new InvalidOperationException("EncounterSession nativa C++ está nula!");
 
-			// 1. Ficha de Personagem + Árvore N-ária de Habilidades (Tree<T> / RequirementTree C++)
+			// 1. Ficha de Personagem + Árvore de Habilidades
 			if (_selectedCharacter == null && _combatManager.Characters.Count > 0)
 				SelectCharacter(0);
 			if (_selectedCharacter == null)
@@ -3790,17 +4465,17 @@ public partial class MainUi : Control
 
 			AbrirArvorePoderes();
 			_dlgArvorePoderes.Hide();
-			GD.Print($"[SELF-TEST 1/5] Ficha ({_selectedCharacter.Name}) e Árvore N-ária de Habilidades (Tree<T> C++) renderizadas... OK!");
+			GD.Print($"[SELF-TEST 1/7] Ficha ({_selectedCharacter.Name}) e Árvore de Habilidades renderizadas... OK!");
 
-			// 2. Bandeja de Dados Visual (DiceVisualCanvas + DiceEngine C++)
+			// 2. Bandeja de Dados Visual
 			ToggleDiceTrayPopup();
 			RolarDadoExpressao("2d20kh1+5");
 			if (string.IsNullOrWhiteSpace(_lblResultado.Text) || _lblResultado.Text == "Erro")
-				throw new InvalidOperationException($"Falha na rolagem de dados via C++ DiceEngine: {_lblDetalhes.Text}");
+				throw new InvalidOperationException($"Falha na rolagem de dados via DiceEngine: {_lblDetalhes.Text}");
 			_popupDadosOverlay.Visible = false;
-			GD.Print($"[SELF-TEST 2/5] Bandeja de Dados Visual + C++ DiceEngine (2d20kh1+5 => {_lblResultado.Text})... OK!");
+			GD.Print($"[SELF-TEST 2/7] Bandeja de Dados Visual (2d20kh1+5 => {_lblResultado.Text})... OK!");
 
-			// 3. Seleção de Iniciativa (RollInitiativeForList + InitiativeTracker C++)
+			// 3. Seleção de Iniciativa e Participantes
 			ShowView("Combate");
 			AbrirModalSelecaoIniciativa();
 			_dlgSelecaoIniciativa.Hide();
@@ -3816,30 +4491,85 @@ public partial class MainUi : Control
 
 			int[] initOrder = _combatManager.Session.GetInitiativeOrder();
 			if (initOrder.Length != testParticipants.Count)
-				throw new InvalidOperationException("RollInitiativeForList não registrou todos os combatentes selecionados!");
-			GD.Print($"[SELF-TEST 3/5] Combate Iniciado via RollInitiativeForList ({initOrder.Length} participantes, Rodada {_combatManager.Session.Round})... OK!");
+				throw new InvalidOperationException("Não foi possível registrar todos os combatentes na iniciativa!");
+			GD.Print($"[SELF-TEST 3/7] Combate iniciado ({initOrder.Length} participantes, Rodada {_combatManager.Session.Round})... OK!");
 
-			// 4. Fila de Prioridades de Ações do Turno (PriorityQueue<T> C++: Enqueue, Cancel/Refund, Pop)
+			// 4. Painel de Ações do Turno (Enqueue + Pop)
 			int currentActor = _combatManager.Session.CurrentTurn;
 			OnMovimentoPressed();
 			var queued = _combatManager.Session.GetActionQueue(currentActor);
 			if (queued.Length == 0)
-				throw new InvalidOperationException("Ação de Movimento não entrou na PriorityQueue C++!");
+				throw new InvalidOperationException("Ação de Movimento não foi preparada no turno!");
 			OnPopNextActionPressed();
 			if (_combatManager.Session.GetActionQueue(currentActor).Length != 0)
-				throw new InvalidOperationException("PopNextAction não consumiu a ação da PriorityQueue C++!");
-			GD.Print("[SELF-TEST 4/5] Painel da Fila de Prioridades de Ações (Enqueue + PopNextAction + PriorityQueue<T> C++)... OK!");
+				throw new InvalidOperationException("Executar Próxima Ação não consumiu a ação preparada!");
+			GD.Print("[SELF-TEST 4/7] Painel de Ações do Turno e Fila de Prioridades... OK!");
 
-			// 5. Ataque vs. Defesa + Pipeline de Dano C++
+			// 5. Mesa de Combate: Ataque respeitando alcance no mapa (sem gastar Ação Padrão quando distante)
+			int firstEnemyId = initOrder.FirstOrDefault(id => id != currentActor);
 			OnAtacarPressed();
+			GD.Print("[SELF-TEST 5/7] Validação tática de ataque na Mesa de Combate... OK!");
+
+			// 6. Mapa Tático (Tabletop): abrir aba, mover token com Ação de Movimento e atualizar Névoa de Guerra
+			ShowView("Mapa");
+			_combatManager.FogOfWarEnabled = true;
+			_combatManager.Session.ResetTurnActions(currentActor);
+			if (!_combatManager.Session.TryGetToken(currentActor, out var actorTok))
+				throw new InvalidOperationException("Combatente atual não possui token no Mapa Tático!");
+
+			var reachable = Tormenta20TacticalRules.ComputeReachableCells(_combatManager.Session, currentActor, 4);
+			if (reachable.Count == 0)
+				throw new InvalidOperationException("Nenhuma célula alcançável encontrada para o token no Mapa Tático!");
+			GridPos dest = reachable.Keys.First();
+			OnMapCellClicked(dest);
+			if (!_combatManager.Session.TryGetToken(currentActor, out var movedTok) || movedTok.X != dest.X || movedTok.Y != dest.Y)
+				throw new InvalidOperationException("Clique no Mapa Tático não deslocou o token corretamente!");
+			if (_combatManager.FogTracker.VisibleCells.Count == 0)
+				throw new InvalidOperationException("Névoa de Guerra não revelou células ao redor dos aliados!");
+			GD.Print($"[SELF-TEST 6/7] Mapa Tático (Movimento até ({dest.X},{dest.Y}) + Névoa de Guerra com {_combatManager.FogTracker.VisibleCells.Count} células visíveis)... OK!");
+
+			// 7. Ataque adjacente no Mapa + Persistência do combate e mapa em arquivo temporário
+			if (firstEnemyId > 0)
+			{
+				GridPos? adjFree = null;
+				foreach (var d in new[] { new GridPos(1, 0), new GridPos(-1, 0), new GridPos(0, 1), new GridPos(0, -1) })
+				{
+					int nx = dest.X + d.X;
+					int ny = dest.Y + d.Y;
+					if (nx >= 0 && nx < _combatManager.Session.MapWidth &&
+					    ny >= 0 && ny < _combatManager.Session.MapHeight &&
+					    _combatManager.Session.GetMapCell(nx, ny).TerrainType != MapTerrainType.Blocked)
+					{
+						adjFree = new GridPos(nx, ny);
+						break;
+					}
+				}
+				if (adjFree.HasValue)
+				{
+					_combatManager.Session.MoveToken(firstEnemyId, adjFree.Value.X, adjFree.Value.Y);
+				}
+				RefreshTacticalMapView();
+				OnAtacarPressed();
+			}
+
+			string tempSnapPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_combatManager.GetCombatSnapshotPath()) ?? ".", "_selftest_encounter.json");
+			if (!_combatManager.SaveCombatSnapshotToPath(tempSnapPath))
+				throw new InvalidOperationException("Falha ao salvar combate + mapa Tático!");
+			if (!_combatManager.LoadCombatSnapshotFromPath(tempSnapPath))
+				throw new InvalidOperationException("Falha ao restaurar combate + mapa Tático!");
+			if (System.IO.File.Exists(tempSnapPath))
+				System.IO.File.Delete(tempSnapPath);
+
+			_combatManager.FogOfWarEnabled = false;
 			_combatManager.EndCombat();
 			UpdateCombatStatusDisplay();
 			RefreshInitiativeBar();
 			RefreshActionQueuePanel();
-			GD.Print("[SELF-TEST 5/5] Resolução de Ataque vs. Defesa + Pipeline de Dano C++ e Encerramento... OK!");
+			RefreshTacticalMapView();
+			GD.Print("[SELF-TEST 7/7] Ataque adjacente no Mapa + Persistência completa de Combate e Mapa... OK!");
 
 			GD.Print("====================================================================");
-			GD.Print("  >>> [SELF-TEST UI+C#+C++] SUCESSO TOTAL! 0 ERROS ENCONTRADOS! <<< ");
+			GD.Print("  >>> [SELF-TEST UI+C#+C++] SUCESSO TOTAL! 7/7 ETAPAS OK! <<<      ");
 			GD.Print("====================================================================");
 			GetTree().Quit(0);
 		}

@@ -81,12 +81,12 @@
   - [x] Bandeja de rolagem de dados em **Pop-up sobreposto** consumindo `session.Roll(...)` com renderizador visual de dados poliedrais (`DiceVisualCanvas`: `CanvasItem._Draw()`, `Tween` e `CpuParticles2D`) e destaque animado para Críticos Naturais e Falhas Críticas.
 
 ---
-## 6. Opcional / Última Etapa: Grid Tático Espacial e Mapa de Batalha
-> **Nota:** Funcionalidade opcional a ser desenvolvida somente após todas as etapas anteriores do sistema de fichas, regras em C# e HUD de combate estarem completas.
+## 6. Opcional / Última Etapa: Grid Tático Espacial e Mapa de Batalha (Concluído)
+> **Nota:** Todas as etapas anteriores do sistema de fichas, regras em C#, HUD de combate e agora o Tabletop Tático estão 100% implementadas e testadas.
 
-- [ ] *(Opcional)* **Estrutura de Dados Espacial no Core C++ (`QuadTree` / Matriz Esparsa)**:
-  - [ ] Representação agnóstica de coordenadas e células do mapa tático no Core C++.
-- [ ] *(Opcional)* **Movimentação e Alcance no Grid (Godot + Core)**:
-  - [ ] Renderização de tabuleiro em grid quadrado ou hexagonal no Godot, validação de deslocamento por ação de movimento e cálculo de distância para ataques corpo a corpo e à distância.
-- [ ] *(Opcional)* **Linha de Visão (*Line of Sight*) e *Fog of War***:
-  - [ ] Cálculo de obstáculos/cobertura e visibilidade de tokens no mapa tático.
+- [x] **Estrutura de Dados Espacial no Core C++ (`QuadTree` / Matriz Esparsa)**:
+  - [x] `SpatialTypes.hpp`, `SparseGrid<T>` e `QuadTree<T>` manuais de AED1 integrados em `TacticalMap` + `Encounter` + C ABI (`ottrpg_map_*`) com auditoria `AddressSanitizer` (`0 memory leaks`).
+- [x] **Movimentação e Alcance no Grid (Godot + Core)**:
+  - [x] Tabuleiro interativo em grid quadrado no Godot (`TacticalGridCanvas.cs`, zoom/pan, imagem de fundo opcional, animações `Tween` e Editor de Cenários), cálculo oficial de diagonais alternadas `1-2-1-2` (`1 quadrado = 1,5m`), pathfinding Dijkstra/A\* e validação de alcance corpo a corpo / à distância em `Tormenta20TacticalRules.cs`.
+- [x] **Linha de Visão (*Line of Sight*) e *Fog of War***:
+  - [x] Raycasting Supercover em grid avaliando paredes bloqueadas, Cobertura Leve (`+5 Defesa`), Flanqueamento (`+2 Ataque`) e Névoa de Guerra (*Unseen / Explored / Visible*) com alternância entre Visão do Mestre e Visão dos Heróis e persistência em JSON.

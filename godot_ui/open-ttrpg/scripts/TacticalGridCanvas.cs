@@ -1,0 +1,699 @@
+using Godot;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using OpenTTRPG.Native;
+using OpenTTRPG.Tormenta20;
+
+/// <summary>
+/// Tabuleiro 2D interativo em grade quadrada para combate tático no Godot.
+/// Suporta zoom, pan, imagem de fundo, terrenos, tokens animados, régua de alcance/visão e Névoa de Guerra.
+/// </summary>
+public partial class TacticalGridCanvas : Control
+{
+	private const float BaseCellSize = 48f;
+	private const float MarginHeader = 26f;
+
+	public event Action<GridPos> CellClicked;
+	public event Action<GridPos> CellDragged;
+	public event Action<int> TokenClicked;
+	public event Action<string> HoverStatusChanged;
+
+	public int GridWidth { get; private set; } = 16;
+	public int GridHeight { get; private set; } = 12;
+
+	public bool IsEditorMode { get; set; }
+	public bool RulerMode { get; set; }
+	public bool FogOfWarEnabled { get; set; }
+
+	private float _zoom = 1.0f;
+	private Vector2 _panOffset = new Vector2(18f, 18f);
+	private bool _isPanning;
+	private Vector2 _lastPanMouse;
+	private bool _isPaintingDrag;
+	private GridPos? _lastDraggedCell;
+
+	private Texture2D _bgTexture;
+	private string _bgImagePath = string.Empty;
+
+	private readonly Dictionary<GridPos, MapCellInfo> _cells = new();
+	private readonly List<TokenRenderItem> _tokens = new();
+	private readonly Dictionary<int, Vector2> _visualPositions = new();
+	private readonly Dictionary<GridPos, int> _reachableCells = new();
+	private TacticalFogTracker _fogTracker;
+
+	private EncounterSession _sessionRef;
+	private int _currentTurnId;
+	private int _selectedTargetId;
+	private int _selectedMoveTokenId;
+	private int _maxWeaponRangeSquares = 1;
+
+	private GridPos? _hoverCell;
+	private List<GridPos> _hoverPath = new();
+	private int _hoverPathCost = -1;
+	private Tween _moveTween;
+
+	private sealed class TokenRenderItem
+	{
+		public int EntityId;
+		public GridPos GridPos;
+		public int Team;
+		public string Name = string.Empty;
+		public string Initials = string.Empty;
+		public int CurrentHp;
+		public int MaxHp;
+		public bool IsBleedingOut;
+		public bool IsDead;
+	}
+
+	public override void _Ready()
+	{
+		ClipContents = true;
+		MouseFilter = MouseFilterEnum.Stop;
+	}
+
+	public void SetBackgroundImage(string path)
+	{
+		string clean = path?.Trim() ?? string.Empty;
+		if (clean == _bgImagePath) return;
+		_bgImagePath = clean;
+		_bgTexture = null;
+
+		if (!string.IsNullOrEmpty(clean) && File.Exists(clean))
+		{
+			try
+			{
+				var img = Image.LoadFromFile(clean);
+				if (img != null && !img.IsEmpty())
+				{
+					_bgTexture = ImageTexture.CreateFromImage(img);
+				}
+			}
+			catch { }
+		}
+		QueueRedraw();
+	}
+
+	public void CenterView()
+	{
+		float contentW = GridWidth * BaseCellSize + MarginHeader * 2f;
+		float contentH = GridHeight * BaseCellSize + MarginHeader * 2f;
+		if (Size.X > 40f && Size.Y > 40f && contentW > 0f && contentH > 0f)
+		{
+			float fitX = (Size.X - 24f) / contentW;
+			float fitY = (Size.Y - 24f) / contentH;
+			_zoom = Mathf.Clamp(Mathf.Min(fitX, fitY), 0.55f, 1.35f);
+			float drawnW = contentW * _zoom;
+			float drawnH = contentH * _zoom;
+			_panOffset = new Vector2(
+				Mathf.Max(12f, (Size.X - drawnW) * 0.5f),
+				Mathf.Max(12f, (Size.Y - drawnH) * 0.5f));
+		}
+		else
+		{
+			_zoom = 1.0f;
+			_panOffset = new Vector2(18f, 18f);
+		}
+		QueueRedraw();
+	}
+
+	public void SetSelectedEditorToken(int entityId)
+	{
+		_selectedMoveTokenId = entityId;
+		QueueRedraw();
+	}
+
+	public void SyncFromSession(
+		EncounterSession session,
+		Dictionary<int, CharacterSheetData> combatantToSheet,
+		int currentTurnId,
+		int selectedTargetId,
+		TacticalFogTracker fogTracker,
+		bool fogEnabled,
+		Dictionary<GridPos, int> reachableCells,
+		int maxWeaponRangeSquares)
+	{
+		_sessionRef = session;
+		_currentTurnId = currentTurnId;
+		_selectedTargetId = selectedTargetId;
+		_fogTracker = fogTracker;
+		FogOfWarEnabled = fogEnabled;
+		_maxWeaponRangeSquares = Math.Max(1, maxWeaponRangeSquares);
+
+		_cells.Clear();
+		_tokens.Clear();
+		_reachableCells.Clear();
+		_hoverPath.Clear();
+		_hoverPathCost = -1;
+
+		if (reachableCells != null)
+		{
+			foreach (var kv in reachableCells)
+				_reachableCells[kv.Key] = kv.Value;
+		}
+
+		if (session != null && session.IsMapActive)
+		{
+			GridWidth = Math.Max(1, session.MapWidth);
+			GridHeight = Math.Max(1, session.MapHeight);
+
+			foreach (var cell in session.GetNonDefaultMapCells())
+			{
+				_cells[new GridPos(cell.X, cell.Y)] = cell;
+			}
+
+			var aliveIds = new HashSet<int>();
+			foreach (var tok in session.GetAllTokens())
+			{
+				aliveIds.Add(tok.EntityId);
+				CharacterSheetData sheet = null;
+				combatantToSheet?.TryGetValue(tok.EntityId, out sheet);
+
+				int team = 1;
+				int curHp = sheet?.CurrentHp ?? 10;
+				int maxHp = sheet?.MaxHp ?? 10;
+				try
+				{
+					team = session.GetCombatantInfo(tok.EntityId).Team;
+					var hpRes = session.GetResource(tok.EntityId, CombatManager.HealthResourceId);
+					curHp = hpRes.Current;
+					maxHp = Math.Max(1, hpRes.Max);
+				}
+				catch { }
+
+				string name = sheet?.Name ?? $"#{tok.EntityId}";
+				bool isDead = sheet != null
+					? curHp <= sheet.GetDeathThreshold()
+					: curHp <= -10;
+				bool isBleeding = sheet != null ? sheet.IsBleedingOut && !isDead : curHp <= 0 && !isDead;
+
+				var pos = new GridPos(tok.X, tok.Y);
+				if (!_visualPositions.ContainsKey(tok.EntityId))
+				{
+					_visualPositions[tok.EntityId] = new Vector2(pos.X, pos.Y);
+				}
+				else if (_moveTween == null || !_moveTween.IsRunning())
+				{
+					_visualPositions[tok.EntityId] = new Vector2(pos.X, pos.Y);
+				}
+
+				_tokens.Add(new TokenRenderItem
+				{
+					EntityId = tok.EntityId,
+					GridPos = pos,
+					Team = team,
+					Name = name,
+					Initials = BuildInitials(name),
+					CurrentHp = curHp,
+					MaxHp = maxHp,
+					IsBleedingOut = isBleeding,
+					IsDead = isDead
+				});
+			}
+
+			foreach (int oldId in _visualPositions.Keys.Where(id => !aliveIds.Contains(id)).ToList())
+			{
+				_visualPositions.Remove(oldId);
+			}
+		}
+
+		QueueRedraw();
+	}
+
+	public void AnimateTokenMove(int entityId, List<GridPos> path)
+	{
+		if (path == null || path.Count == 0) return;
+
+		_moveTween?.Kill();
+		_moveTween = CreateTween();
+		_visualPositions[entityId] = new Vector2(path[0].X, path[0].Y);
+
+		float stepDuration = Mathf.Clamp(0.45f / Math.Max(1, path.Count), 0.055f, 0.14f);
+		for (int i = 1; i < path.Count; i++)
+		{
+			Vector2 nextCoord = new Vector2(path[i].X, path[i].Y);
+			_moveTween.TweenMethod(
+				Callable.From<Vector2>(v =>
+				{
+					_visualPositions[entityId] = v;
+					QueueRedraw();
+				}),
+				new Vector2(path[i - 1].X, path[i - 1].Y),
+				nextCoord,
+				stepDuration);
+		}
+	}
+
+	private static string BuildInitials(string name)
+	{
+		if (string.IsNullOrWhiteSpace(name)) return "?";
+		var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		if (parts.Length == 1)
+			return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+		return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+	}
+
+	private float CellPx => BaseCellSize * _zoom;
+
+	private Vector2 GridOriginScreen => _panOffset + new Vector2(MarginHeader * _zoom, MarginHeader * _zoom);
+
+	private GridPos? ScreenToCell(Vector2 localMouse)
+	{
+		Vector2 rel = localMouse - GridOriginScreen;
+		float cell = CellPx;
+		if (rel.X < 0 || rel.Y < 0) return null;
+		int gx = Mathf.FloorToInt(rel.X / cell);
+		int gy = Mathf.FloorToInt(rel.Y / cell);
+		if (gx < 0 || gx >= GridWidth || gy < 0 || gy >= GridHeight) return null;
+		return new GridPos(gx, gy);
+	}
+
+	private Vector2 CellCenterScreen(Vector2 gridCoord)
+	{
+		float cell = CellPx;
+		return GridOriginScreen + new Vector2((gridCoord.X + 0.5f) * cell, (gridCoord.Y + 0.5f) * cell);
+	}
+
+	private Rect2 CellRectScreen(int gx, int gy)
+	{
+		float cell = CellPx;
+		Vector2 topLeft = GridOriginScreen + new Vector2(gx * cell, gy * cell);
+		return new Rect2(topLeft, new Vector2(cell, cell));
+	}
+
+	private TokenRenderItem FindVisibleTokenAt(GridPos cell)
+	{
+		foreach (var tok in _tokens)
+		{
+			if (tok.GridPos != cell) continue;
+			if (!IsTokenVisibleUnderFog(tok)) continue;
+			return tok;
+		}
+		return null;
+	}
+
+	private bool IsTokenVisibleUnderFog(TokenRenderItem tok)
+	{
+		if (!FogOfWarEnabled || IsEditorMode || _fogTracker == null) return true;
+		if (tok.Team == 1) return true;
+		return _fogTracker.GetState(tok.GridPos) == FogState.Visible;
+	}
+
+	public override void _GuiInput(InputEvent @event)
+	{
+		if (@event is InputEventMouseButton mb)
+		{
+			if (mb.ButtonIndex == MouseButton.WheelUp && mb.Pressed)
+			{
+				ApplyZoom(1.12f, mb.Position);
+				AcceptEvent();
+				return;
+			}
+			if (mb.ButtonIndex == MouseButton.WheelDown && mb.Pressed)
+			{
+				ApplyZoom(0.89f, mb.Position);
+				AcceptEvent();
+				return;
+			}
+
+			if (mb.ButtonIndex == MouseButton.Right || mb.ButtonIndex == MouseButton.Middle)
+			{
+				_isPanning = mb.Pressed;
+				_lastPanMouse = mb.Position;
+				AcceptEvent();
+				return;
+			}
+
+			if (mb.ButtonIndex == MouseButton.Left)
+			{
+				if (mb.Pressed)
+				{
+					var cellOpt = ScreenToCell(mb.Position);
+					if (cellOpt.HasValue)
+					{
+						var cell = cellOpt.Value;
+						_isPaintingDrag = IsEditorMode;
+						_lastDraggedCell = cell;
+
+						var tok = FindVisibleTokenAt(cell);
+						if (tok != null && !IsEditorMode && !RulerMode)
+						{
+							TokenClicked?.Invoke(tok.EntityId);
+						}
+						else if (tok != null && IsEditorMode)
+						{
+							TokenClicked?.Invoke(tok.EntityId);
+							CellClicked?.Invoke(cell);
+						}
+						else
+						{
+							CellClicked?.Invoke(cell);
+						}
+					}
+					AcceptEvent();
+				}
+				else
+				{
+					_isPaintingDrag = false;
+					_lastDraggedCell = null;
+				}
+			}
+		}
+		else if (@event is InputEventMouseMotion mm)
+		{
+			if (_isPanning)
+			{
+				Vector2 delta = mm.Position - _lastPanMouse;
+				_lastPanMouse = mm.Position;
+				_panOffset += delta;
+				QueueRedraw();
+				AcceptEvent();
+				return;
+			}
+
+			var cellOpt = ScreenToCell(mm.Position);
+			if (cellOpt != _hoverCell)
+			{
+				_hoverCell = cellOpt;
+				UpdateHoverPreview();
+
+				if (_isPaintingDrag && IsEditorMode && cellOpt.HasValue && cellOpt != _lastDraggedCell)
+				{
+					_lastDraggedCell = cellOpt;
+					CellDragged?.Invoke(cellOpt.Value);
+				}
+				QueueRedraw();
+			}
+		}
+	}
+
+	private void ApplyZoom(float factor, Vector2 pivotLocal)
+	{
+		float oldZoom = _zoom;
+		float newZoom = Mathf.Clamp(oldZoom * factor, 0.55f, 2.2f);
+		if (Mathf.IsEqualApprox(oldZoom, newZoom)) return;
+
+		Vector2 worldBefore = (pivotLocal - _panOffset) / oldZoom;
+		_zoom = newZoom;
+		_panOffset = pivotLocal - worldBefore * _zoom;
+		QueueRedraw();
+	}
+
+	private void UpdateHoverPreview()
+	{
+		_hoverPath.Clear();
+		_hoverPathCost = -1;
+
+		if (!_hoverCell.HasValue)
+		{
+			HoverStatusChanged?.Invoke("Passe o mouse sobre o mapa para inspecionar distâncias e terrenos.");
+			return;
+		}
+
+		GridPos cell = _hoverCell.Value;
+		string colLetter = ((char)('A' + (cell.X % 26))).ToString();
+		string coordLabel = $"{colLetter}{cell.Y + 1}";
+
+		string terrainName = "Chão Livre";
+		if (_cells.TryGetValue(cell, out var cInfo))
+		{
+			if (cInfo.TerrainType == MapTerrainType.Blocked) terrainName = "Parede / Obstáculo";
+			else if (cInfo.CoverLevel == 1 && cInfo.TerrainType == MapTerrainType.Difficult) terrainName = "Mureta (Terreno Difícil + Cobertura Leve)";
+			else if (cInfo.CoverLevel == 1) terrainName = "Cobertura Leve (+5 Def)";
+			else if (cInfo.TerrainType == MapTerrainType.Difficult) terrainName = "Terreno Difícil (Custo ×2)";
+		}
+
+		var tok = FindVisibleTokenAt(cell);
+		string tokNote = tok != null ? $" • {tok.Name} (PV {tok.CurrentHp}/{tok.MaxHp})" : string.Empty;
+
+		if (!IsEditorMode && _sessionRef != null && _currentTurnId > 0 && _sessionRef.TryGetToken(_currentTurnId, out var curTok))
+		{
+			var origin = new GridPos(curTok.X, curTok.Y);
+			int straightSquares = Tormenta20TacticalRules.ComputeT20DistanceSquares(origin, cell);
+			string straightDist = Tormenta20TacticalRules.FormatMeters(straightSquares);
+
+			if (!RulerMode && _reachableCells.TryGetValue(cell, out int costSquares))
+			{
+				_hoverPath = Tormenta20TacticalRules.FindShortestPath(_sessionRef, _currentTurnId, cell, costSquares, out _hoverPathCost);
+				HoverStatusChanged?.Invoke($"{coordLabel} — {terrainName} • Movimento: {Tormenta20TacticalRules.FormatMeters(costSquares)} ({costSquares}q){tokNote}");
+				return;
+			}
+
+			HoverStatusChanged?.Invoke($"{coordLabel} — {terrainName} • Distância: {straightDist}{tokNote}");
+			return;
+		}
+
+		HoverStatusChanged?.Invoke($"{coordLabel} — {terrainName}{tokNote}");
+	}
+
+	public override void _Draw()
+	{
+		// 1. Fundo geral
+		DrawRect(new Rect2(Vector2.Zero, Size), new Color(0.06f, 0.07f, 0.09f, 1f));
+
+		float cellPx = CellPx;
+		Vector2 origin = GridOriginScreen;
+		Vector2 mapSize = new Vector2(GridWidth * cellPx, GridHeight * cellPx);
+		Rect2 mapRect = new Rect2(origin, mapSize);
+
+		// 2. Chão ou imagem de fundo
+		if (_bgTexture != null)
+		{
+			DrawTextureRect(_bgTexture, mapRect, false, new Color(1f, 1f, 1f, 0.88f));
+		}
+		else
+		{
+			for (int y = 0; y < GridHeight; y++)
+			{
+				for (int x = 0; x < GridWidth; x++)
+				{
+					Color tileColor = ((x + y) % 2 == 0)
+						? new Color(0.12f, 0.13f, 0.17f, 1f)
+						: new Color(0.14f, 0.15f, 0.20f, 1f);
+					DrawRect(CellRectScreen(x, y), tileColor);
+				}
+			}
+		}
+
+		// 3. Terrenos especiais (Terreno Difícil, Cobertura Leve, Parede)
+		foreach (var kv in _cells)
+		{
+			var pos = kv.Key;
+			var cell = kv.Value;
+			if (pos.X < 0 || pos.X >= GridWidth || pos.Y < 0 || pos.Y >= GridHeight) continue;
+			Rect2 r = CellRectScreen(pos.X, pos.Y);
+
+			if (cell.TerrainType == MapTerrainType.Blocked)
+			{
+				DrawRect(r, new Color(0.24f, 0.25f, 0.30f, 0.96f));
+				DrawRect(r.Grow(-2f), new Color(0.16f, 0.17f, 0.21f, 1f));
+				DrawLine(r.Position, r.End, new Color(0.35f, 0.37f, 0.44f, 0.65f), 1.5f);
+				DrawLine(new Vector2(r.End.X, r.Position.Y), new Vector2(r.Position.X, r.End.Y), new Color(0.35f, 0.37f, 0.44f, 0.65f), 1.5f);
+				DrawRect(r, new Color(0.55f, 0.58f, 0.68f, 0.8f), false, 1.5f);
+			}
+			else if (cell.TerrainType == MapTerrainType.Difficult)
+			{
+				DrawRect(r, new Color(0.62f, 0.42f, 0.10f, 0.42f));
+				for (float offset = cellPx * 0.25f; offset < cellPx; offset += cellPx * 0.35f)
+				{
+					DrawLine(
+						new Vector2(r.Position.X + offset, r.Position.Y + 3f),
+						new Vector2(r.Position.X + 3f, r.Position.Y + offset),
+						new Color(0.95f, 0.68f, 0.22f, 0.55f), 1.5f);
+				}
+			}
+
+			if (cell.CoverLevel == 1 && cell.TerrainType != MapTerrainType.Blocked)
+			{
+				Rect2 inner = r.Grow(-cellPx * 0.12f);
+				DrawRect(inner, new Color(0.26f, 0.48f, 0.64f, 0.55f));
+				DrawRect(inner, new Color(0.50f, 0.80f, 1.0f, 0.85f), false, 2.0f);
+			}
+		}
+
+		// 4. Células alcançáveis e caminho pré-visualizado no Modo Combate
+		if (!IsEditorMode && !RulerMode && _reachableCells.Count > 0)
+		{
+			foreach (var kv in _reachableCells)
+			{
+				Rect2 r = CellRectScreen(kv.Key.X, kv.Key.Y);
+				DrawRect(r.Grow(-1.5f), new Color(0.20f, 0.56f, 0.95f, 0.22f));
+				DrawRect(r.Grow(-1.5f), new Color(0.36f, 0.72f, 1.0f, 0.38f), false, 1.0f);
+			}
+		}
+
+		// 5. Névoa de Guerra
+		if (FogOfWarEnabled && !IsEditorMode && _fogTracker != null)
+		{
+			for (int y = 0; y < GridHeight; y++)
+			{
+				for (int x = 0; x < GridWidth; x++)
+				{
+					FogState fs = _fogTracker.GetState(new GridPos(x, y));
+					if (fs == FogState.Unseen)
+					{
+						DrawRect(CellRectScreen(x, y), new Color(0.03f, 0.04f, 0.06f, 0.95f));
+					}
+					else if (fs == FogState.Explored)
+					{
+						DrawRect(CellRectScreen(x, y), new Color(0.04f, 0.05f, 0.08f, 0.62f));
+					}
+				}
+			}
+		}
+
+		// 6. Linhas da grade e borda externa
+		for (int x = 0; x <= GridWidth; x++)
+		{
+			float px = origin.X + x * cellPx;
+			DrawLine(new Vector2(px, origin.Y), new Vector2(px, origin.Y + mapSize.Y), new Color(1f, 1f, 1f, 0.14f), 1.0f);
+		}
+		for (int y = 0; y <= GridHeight; y++)
+		{
+			float py = origin.Y + y * cellPx;
+			DrawLine(new Vector2(origin.X, py), new Vector2(origin.X + mapSize.X, py), new Color(1f, 1f, 1f, 0.14f), 1.0f);
+		}
+		DrawRect(mapRect, new Color(0.75f, 0.62f, 0.32f, 0.75f), false, 2.0f);
+
+		// Coordenadas nas margens
+		Font font = ThemeDB.FallbackFont;
+		int coordFontSize = Math.Clamp((int)(11 * _zoom), 9, 14);
+		for (int x = 0; x < GridWidth; x++)
+		{
+			string col = ((char)('A' + (x % 26))).ToString();
+			Vector2 pos = new Vector2(origin.X + (x + 0.35f) * cellPx, origin.Y - 6f * _zoom);
+			DrawString(font, pos, col, HorizontalAlignment.Left, -1, coordFontSize, new Color(0.75f, 0.78f, 0.84f));
+		}
+		for (int y = 0; y < GridHeight; y++)
+		{
+			Vector2 pos = new Vector2(origin.X - 20f * _zoom, origin.Y + (y + 0.62f) * cellPx);
+			DrawString(font, pos, (y + 1).ToString(), HorizontalAlignment.Left, -1, coordFontSize, new Color(0.75f, 0.78f, 0.84f));
+		}
+
+		// 7. Destaque do hover + Caminho A* + Régua de Linha de Visão
+		if (_hoverCell.HasValue)
+		{
+			Rect2 hr = CellRectScreen(_hoverCell.Value.X, _hoverCell.Value.Y);
+			DrawRect(hr, new Color(1f, 0.88f, 0.35f, 0.85f), false, 2.2f);
+		}
+
+		if (!IsEditorMode && !RulerMode && _hoverPath.Count >= 2)
+		{
+			for (int i = 0; i < _hoverPath.Count - 1; i++)
+			{
+				Vector2 p0 = CellCenterScreen(new Vector2(_hoverPath[i].X, _hoverPath[i].Y));
+				Vector2 p1 = CellCenterScreen(new Vector2(_hoverPath[i + 1].X, _hoverPath[i + 1].Y));
+				DrawLine(p0, p1, new Color(0.35f, 0.92f, 1.0f, 0.95f), 3.0f);
+			}
+			if (_hoverPathCost > 0)
+			{
+				Vector2 endCenter = CellCenterScreen(new Vector2(_hoverPath[^1].X, _hoverPath[^1].Y));
+				string distStr = Tormenta20TacticalRules.FormatMeters(_hoverPathCost);
+				DrawBadge(font, endCenter + new Vector2(0, -cellPx * 0.48f), distStr, new Color(0.15f, 0.72f, 0.95f));
+			}
+		}
+
+		if (!IsEditorMode && (RulerMode || (_hoverCell.HasValue && FindVisibleTokenAt(_hoverCell.Value)?.EntityId != _currentTurnId && FindVisibleTokenAt(_hoverCell.Value) != null))
+		    && _sessionRef != null && _currentTurnId > 0 && _hoverCell.HasValue && _sessionRef.TryGetToken(_currentTurnId, out var atkTok))
+		{
+			var originPos = new GridPos(atkTok.X, atkTok.Y);
+			var destPos = _hoverCell.Value;
+			if (originPos != destPos)
+			{
+				int distSq = Tormenta20TacticalRules.ComputeT20DistanceSquares(originPos, destPos);
+				Tormenta20TacticalRules.EvaluateLineOfSightAndCover(_sessionRef, originPos, destPos, out bool hasLoS, out var cover);
+				bool inRange = distSq <= _maxWeaponRangeSquares;
+
+				Color rayColor = !hasLoS || !inRange
+					? new Color(1f, 0.30f, 0.30f, 0.9f)
+					: (cover == T20CoverLevel.Light ? new Color(1f, 0.82f, 0.25f, 0.92f) : new Color(0.32f, 0.95f, 0.52f, 0.92f));
+
+				Vector2 p0 = CellCenterScreen(new Vector2(originPos.X, originPos.Y));
+				Vector2 p1 = CellCenterScreen(new Vector2(destPos.X, destPos.Y));
+				DrawLine(p0, p1, rayColor, 2.8f);
+
+				string label = Tormenta20TacticalRules.FormatMeters(distSq);
+				if (!hasLoS) label += " • Sem Visão";
+				else if (!inRange) label += " • Fora de Alcance";
+				else if (cover == T20CoverLevel.Light) label += " • Cobertura (+5 Def)";
+				DrawBadge(font, (p0 + p1) * 0.5f, label, rayColor);
+			}
+		}
+
+		// 8. Tokens dos combatentes
+		int nameFontSize = Math.Clamp((int)(10 * _zoom), 8, 13);
+		int initFontSize = Math.Clamp((int)(14 * _zoom), 10, 18);
+
+		foreach (var tok in _tokens)
+		{
+			if (!IsTokenVisibleUnderFog(tok)) continue;
+
+			Vector2 gridCoord = _visualPositions.TryGetValue(tok.EntityId, out var vp)
+				? vp
+				: new Vector2(tok.GridPos.X, tok.GridPos.Y);
+			Vector2 center = CellCenterScreen(gridCoord);
+			float radius = cellPx * 0.36f;
+
+			// Halo do turno atual
+			if (tok.EntityId == _currentTurnId)
+			{
+				DrawArc(center, radius + 5f * _zoom, 0, Mathf.Tau, 28, new Color(1f, 0.86f, 0.25f, 0.95f), 2.8f);
+			}
+			// Mira do alvo selecionado
+			if (tok.EntityId == _selectedTargetId && tok.EntityId != _currentTurnId)
+			{
+				DrawArc(center, radius + 4.5f * _zoom, 0, Mathf.Tau, 24, new Color(1f, 0.32f, 0.32f, 0.95f), 2.4f);
+			}
+			// Seleção no editor de movimento
+			if (IsEditorMode && tok.EntityId == _selectedMoveTokenId)
+			{
+				DrawArc(center, radius + 5f * _zoom, 0, Mathf.Tau, 24, new Color(0.45f, 0.95f, 1f, 0.95f), 2.5f);
+			}
+
+			Color fillColor = tok.IsDead
+				? new Color(0.22f, 0.16f, 0.18f, 0.92f)
+				: (tok.Team == 1 ? new Color(0.16f, 0.34f, 0.62f, 0.96f) : new Color(0.56f, 0.16f, 0.18f, 0.96f));
+			Color borderColor = tok.Team == 1
+				? new Color(0.58f, 0.82f, 1.0f, 1f)
+				: new Color(1.0f, 0.52f, 0.45f, 1f);
+
+			DrawCircle(center + new Vector2(0, 2f), radius, new Color(0, 0, 0, 0.45f));
+			DrawCircle(center, radius, fillColor);
+			DrawArc(center, radius, 0, Mathf.Tau, 24, borderColor, 2.0f);
+
+			string centerText = tok.IsDead ? "💀" : (tok.IsBleedingOut ? "🩸" : tok.Initials);
+			DrawString(font, center + new Vector2(-radius * 0.58f, initFontSize * 0.36f), centerText, HorizontalAlignment.Center, radius * 1.16f, initFontSize, Colors.White);
+
+			// Mini-barra de PV
+			float barW = cellPx * 0.72f;
+			float barH = Mathf.Max(3.5f, 4.5f * _zoom);
+			Vector2 barPos = new Vector2(center.X - barW * 0.5f, center.Y + radius + 2f * _zoom);
+			DrawRect(new Rect2(barPos, new Vector2(barW, barH)), new Color(0.08f, 0.08f, 0.10f, 0.9f));
+			float hpPct = tok.MaxHp > 0 ? Mathf.Clamp((float)tok.CurrentHp / tok.MaxHp, 0f, 1f) : 0f;
+			Color hpColor = hpPct > 0.5f
+				? new Color(0.25f, 0.85f, 0.42f)
+				: (hpPct > 0.25f ? new Color(0.95f, 0.72f, 0.20f) : new Color(0.95f, 0.25f, 0.25f));
+			if (hpPct > 0f)
+			{
+				DrawRect(new Rect2(barPos, new Vector2(barW * hpPct, barH)), hpColor);
+			}
+
+			// Nome curto abaixo da célula
+			string shortName = tok.Name.Length > 12 ? tok.Name.Substring(0, 11) + "…" : tok.Name;
+			DrawString(font, new Vector2(center.X - cellPx * 0.55f, barPos.Y + barH + nameFontSize + 1f),
+				shortName, HorizontalAlignment.Center, cellPx * 1.1f, nameFontSize, new Color(0.94f, 0.94f, 0.96f));
+		}
+	}
+
+	private void DrawBadge(Font font, Vector2 centerPos, string text, Color borderColor)
+	{
+		int fSize = Math.Clamp((int)(11 * _zoom), 10, 14);
+		float estW = Math.Max(46f, text.Length * fSize * 0.62f + 14f);
+		float estH = fSize + 10f;
+		Rect2 box = new Rect2(centerPos - new Vector2(estW * 0.5f, estH * 0.5f), new Vector2(estW, estH));
+		DrawRect(box, new Color(0.06f, 0.07f, 0.10f, 0.92f));
+		DrawRect(box, borderColor, false, 1.4f);
+		DrawString(font, new Vector2(box.Position.X + 6f, box.Position.Y + fSize + 2f), text, HorizontalAlignment.Left, -1, fSize, Colors.White);
+	}
+}

@@ -17,6 +17,7 @@ Quando o usuário abre o executável final (`OpenTTRPG.x86_64` no Linux ou `Open
 │    • Renderizadores Procedurais (CanvasItem._Draw + Tween + CpuParticles2D): │
 │      - DiceVisualCanvas.cs (Dados poliedrais d4..d100 animados)              │
 │      - AbilityTreeCanvas.cs (Grafo visual da Árvore N-ária de Habilidades)   │
+│      - TacticalGridCanvas.cs (Tabuleiro 2D, tokens animados e Névoa)         │
 └──────────────────────────────────────┬───────────────────────────────────────┘
                                        │ Eventos de UI ( Sinais / Callbacks C# )
                                        ▼
@@ -31,7 +32,8 @@ Quando o usuário abre o executável final (`OpenTTRPG.x86_64` no Linux ou `Open
 │      - Tormenta20SkillRules, Tormenta20CombatRules, Tormenta20MagicRules     │
 │      - Tormenta20ConditionRules (Estado Morrendo, Sangrando, CON CD 15)      │
 │      - Tormenta20ActionRules, Tormenta20AbilityTreeRules, Tormenta20RestRules│
-│      - Tormenta20Persistence (JSON de Fichas e Snapshot de Combate)          │
+│      - Tormenta20TacticalRules (1-2-1-2, A*, LoS, Cobertura, Flanqueio, Fog) │
+│      - Tormenta20Persistence (JSON de Fichas e Snapshot Combate + Mapa)      │
 └──────────────────────────────────────┬───────────────────────────────────────┘
                                        │ P/Invoke (C ABI: ottrpg_api.h)
                                        ▼
@@ -43,9 +45,12 @@ Quando o usuário abre o executável final (`OpenTTRPG.x86_64` no Linux ou `Open
 │      - Queue<T>         -> Fila FIFO circular dinâmica de turnos             │
 │      - PriorityQueue<T> -> Fila de Prioridades das ações planejadas no turno │
 │      - Tree<T>          -> Árvore N-ária de habilidades e RequirementTree    │
+│      - SparseGrid<T>    -> Matriz esparsa hash de terrenos/obstáculos do mapa│
+│      - QuadTree<T>      -> Árvore quaternária espacial de tokens no tabuleiro│
 │    • Sistemas Core (src/core/):                                              │
 │      - DiceEngine, ResourcePool (PV/PM/Temp), DamagePipeline (RD/Imunidade), │
 │      - InitiativeTracker (RollInitiativeForList), ActionEconomy, Encounter   │
+│      - TacticalMap (grid agnóstico e posicionamento/busca espacial de tokens)│
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -168,12 +173,14 @@ Para distribuir o programa para outra pessoa, basta compactar (`.zip` ou `.tar.g
 
 ## 5. Como Verificar e Diagnosticar Qualquer Release (`--self-test`)
 
-A release possui um modo de auto-diagnóstico automatizado (`--self-test`) que inicializa o `MainMenu`, transita para a `MainUi` e testa em sequência:
+A release possui um modo de auto-diagnóstico automatizado (`--self-test`) que inicializa o `MainMenu`, transita para a `MainUi` e testa **7/7** fluxos em sequência:
 1. Inicialização da `EncounterSession` no C++ via P/Invoke e carregamento das fichas em `saves/characters.json`;
 2. Renderização da Ficha e avaliação da **Árvore N-ária de Habilidades** (`Tree<T>` e `RequirementTree` no C++);
 3. Rolagem na **Bandeja de Dados Visual** (`DiceVisualCanvas` + `DiceEngine` C++);
 4. Início de combate com seleção de participantes e times via **`RollInitiativeForList`** (`InitiativeTracker` C++);
-5. Enfileiramento e consumo de ações no **Painel da Fila de Prioridades** (`PriorityQueue<T>` C++) e resolução de **Ataque vs. Defesa** (`DamagePipeline` C++).
+5. Enfileiramento e consumo de ações no **Painel de Ações do Turno** (`PriorityQueue<T>` C++) e validação tática de ataque;
+6. Abertura do **Mapa Tático (`TacticalGridCanvas`)**, movimento de token via `SparseGrid`/`QuadTree` consumindo Ação de Movimento e atualização da **Névoa de Guerra**;
+7. Ataque corpo a corpo adjacente no mapa (`DamagePipeline` C++) e persistência/restauração completa do combate com estado do mapa em JSON.
 
 Para rodar o auto-teste:
 - **No Linux:**

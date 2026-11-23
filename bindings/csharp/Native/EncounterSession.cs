@@ -736,6 +736,139 @@ namespace OpenTTRPG.Native
             return res == 1;
         }
 
+        // ----- Mapa Tático Espacial (SparseGrid + QuadTree no Core) -----
+
+        public void ConfigureMap(int width, int height)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_map_configure(_handle, width, height);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao configurar mapa ({width}x{height}): {GetLastError()}");
+            }
+        }
+
+        public void ClearMap()
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_map_clear(_handle);
+        }
+
+        public bool IsMapActive
+        {
+            get
+            {
+                EnsureNotDisposed();
+                NativeMethods.ottrpg_map_get_info(_handle, out int active, out _, out _);
+                return active != 0;
+            }
+        }
+
+        public int MapWidth
+        {
+            get
+            {
+                EnsureNotDisposed();
+                NativeMethods.ottrpg_map_get_info(_handle, out _, out int width, out _);
+                return width;
+            }
+        }
+
+        public int MapHeight
+        {
+            get
+            {
+                EnsureNotDisposed();
+                NativeMethods.ottrpg_map_get_info(_handle, out _, out _, out int height);
+                return height;
+            }
+        }
+
+        public void SetMapCell(int x, int y, MapTerrainType terrain, int coverLevel = 0, bool blocksSight = false)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_map_set_cell(_handle, x, y, (int)terrain, coverLevel, blocksSight ? 1 : 0);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao configurar célula ({x},{y}): {GetLastError()}");
+            }
+        }
+
+        public MapCellInfo GetMapCell(int x, int y)
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_map_get_cell(_handle, x, y, out MapCellInfo cell);
+            return cell;
+        }
+
+        public MapCellInfo[] GetNonDefaultMapCells()
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_map_get_non_default_cells(_handle, null, 0, out int count);
+            if (count <= 0)
+            {
+                return Array.Empty<MapCellInfo>();
+            }
+            var cells = new MapCellInfo[count];
+            NativeMethods.ottrpg_map_get_non_default_cells(_handle, cells, cells.Length, out _);
+            return cells;
+        }
+
+        public void PlaceToken(int entityId, int x, int y, int sizeCells = 1)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_map_place_token(_handle, entityId, x, y, sizeCells);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao posicionar token {entityId} em ({x},{y}): {GetLastError()}");
+            }
+        }
+
+        public bool MoveToken(int entityId, int x, int y)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_map_move_token(_handle, entityId, x, y);
+            return res == (int)OttrpgStatus.Ok;
+        }
+
+        public bool RemoveToken(int entityId)
+        {
+            EnsureNotDisposed();
+            return NativeMethods.ottrpg_map_remove_token(_handle, entityId) == (int)OttrpgStatus.Ok;
+        }
+
+        public bool TryGetToken(int entityId, out MapTokenInfo token)
+        {
+            EnsureNotDisposed();
+            return NativeMethods.ottrpg_map_get_token(_handle, entityId, out token) == (int)OttrpgStatus.Ok;
+        }
+
+        public MapTokenInfo[] GetAllTokens()
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_map_get_all_tokens(_handle, null, 0, out int count);
+            if (count <= 0)
+            {
+                return Array.Empty<MapTokenInfo>();
+            }
+            var tokens = new MapTokenInfo[count];
+            NativeMethods.ottrpg_map_get_all_tokens(_handle, tokens, tokens.Length, out _);
+            return tokens;
+        }
+
+        public int[] QueryTokensInRadius(int centerX, int centerY, int radius)
+        {
+            EnsureNotDisposed();
+            NativeMethods.ottrpg_map_query_radius(_handle, centerX, centerY, radius, null, 0, out int count);
+            if (count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+            var ids = new int[count];
+            NativeMethods.ottrpg_map_query_radius(_handle, centerX, centerY, radius, ids, ids.Length, out _);
+            return ids;
+        }
+
         public int CurrentTurn => NativeMethods.ottrpg_combat_current(_handle);
         public int Round => NativeMethods.ottrpg_combat_round(_handle);
         public bool IsActive => NativeMethods.ottrpg_combat_is_active(_handle) != 0;

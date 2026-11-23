@@ -89,6 +89,12 @@ enum OttrpgKeepMode {
     OTTRPG_KEEP_LOWEST  = 2
 };
 
+enum OttrpgTerrainType {
+    OTTRPG_TERRAIN_PASSABLE  = 0,
+    OTTRPG_TERRAIN_DIFFICULT = 1,
+    OTTRPG_TERRAIN_BLOCKED   = 2
+};
+
 enum OttrpgRequirementKind {
     OTTRPG_REQ_ALL_OF              = 0,  /* Nó lógico E (todos os filhos da subárvore) */
     OTTRPG_REQ_ANY_OF              = 1,  /* Nó lógico OU (pelo menos 1 filho da subárvore) */
@@ -166,6 +172,21 @@ typedef struct OttrpgQueuedActionInfo {
     OttrpgId target_id;
     int32_t  priority;
 } OttrpgQueuedActionInfo;
+
+typedef struct OttrpgMapCellInfo {
+    int32_t x;
+    int32_t y;
+    int32_t terrain;      /* OttrpgTerrainType */
+    int32_t cover_level;  /* 0 = Nenhuma, 1 = Leve, 2 = Total */
+    int32_t blocks_sight; /* 1 = bloqueia visão */
+} OttrpgMapCellInfo;
+
+typedef struct OttrpgTokenInfo {
+    OttrpgId entity_id;
+    int32_t  x;
+    int32_t  y;
+    int32_t  size_cells;
+} OttrpgTokenInfo;
 
 /* ------------------------------------------------------------------------- */
 /* Biblioteca                                                                */
@@ -400,6 +421,30 @@ OTTRPG_API int32_t ottrpg_dice_last_values(OttrpgEncounter* encounter, int32_t* 
                                            int32_t capacity, int32_t* out_count);
 OTTRPG_API int32_t ottrpg_dice_last_format(OttrpgEncounter* encounter, char* buffer, int32_t buffer_size,
                                            int32_t* out_required);
+
+/* ------------------------------------------------------------------------- */
+/* Mapa Tático Espacial (SparseGrid + QuadTree no Core)                      */
+/* ------------------------------------------------------------------------- */
+
+OTTRPG_API int32_t ottrpg_map_configure(OttrpgEncounter* encounter, int32_t width, int32_t height);
+OTTRPG_API int32_t ottrpg_map_clear(OttrpgEncounter* encounter);
+OTTRPG_API int32_t ottrpg_map_get_info(OttrpgEncounter* encounter, int32_t* out_active,
+                                       int32_t* out_width, int32_t* out_height);
+OTTRPG_API int32_t ottrpg_map_set_cell(OttrpgEncounter* encounter, int32_t x, int32_t y,
+                                       int32_t terrain, int32_t cover_level, int32_t blocks_sight);
+OTTRPG_API int32_t ottrpg_map_get_cell(OttrpgEncounter* encounter, int32_t x, int32_t y,
+                                       OttrpgMapCellInfo* out_cell);
+OTTRPG_API int32_t ottrpg_map_get_non_default_cells(OttrpgEncounter* encounter, OttrpgMapCellInfo* out_cells,
+                                                   int32_t capacity, int32_t* out_count);
+OTTRPG_API int32_t ottrpg_map_place_token(OttrpgEncounter* encounter, OttrpgId entity_id,
+                                          int32_t x, int32_t y, int32_t size_cells);
+OTTRPG_API int32_t ottrpg_map_move_token(OttrpgEncounter* encounter, OttrpgId entity_id, int32_t x, int32_t y);
+OTTRPG_API int32_t ottrpg_map_remove_token(OttrpgEncounter* encounter, OttrpgId entity_id);
+OTTRPG_API int32_t ottrpg_map_get_token(OttrpgEncounter* encounter, OttrpgId entity_id, OttrpgTokenInfo* out_token);
+OTTRPG_API int32_t ottrpg_map_get_all_tokens(OttrpgEncounter* encounter, OttrpgTokenInfo* out_tokens,
+                                             int32_t capacity, int32_t* out_count);
+OTTRPG_API int32_t ottrpg_map_query_radius(OttrpgEncounter* encounter, int32_t center_x, int32_t center_y,
+                                           int32_t radius, OttrpgId* out_ids, int32_t capacity, int32_t* out_count);
 
 #ifdef __cplusplus
 } /* extern "C" */

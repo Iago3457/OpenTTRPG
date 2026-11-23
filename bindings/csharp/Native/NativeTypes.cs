@@ -174,5 +174,34 @@ namespace OpenTTRPG.Native
             Priority = info.Priority;
         }
     }
+
+    public enum MapTerrainType : int
+    {
+        Passable = 0,
+        Difficult = 1,
+        Blocked = 2
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MapCellInfo
+    {
+        public int X;
+        public int Y;
+        public int Terrain;
+        public int CoverLevel;
+        public int BlocksSight;
+
+        public MapTerrainType TerrainType => (MapTerrainType)Terrain;
+        public bool IsSightBlocked => BlocksSight != 0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MapTokenInfo
+    {
+        public int EntityId;
+        public int X;
+        public int Y;
+        public int SizeCells;
+    }
 }
 

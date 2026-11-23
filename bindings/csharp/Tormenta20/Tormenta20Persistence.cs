@@ -96,12 +96,39 @@ namespace OpenTTRPG.Tormenta20
         public List<string> ActiveConditions { get; set; } = new();
     }
 
+    public sealed class GridPosDto
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+    }
+
+    public sealed class MapCellDto
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int Terrain { get; set; }
+        public int CoverLevel { get; set; }
+        public bool BlocksSight { get; set; }
+    }
+
+    public sealed class TacticalMapSnapshotDto
+    {
+        public int Width { get; set; } = 16;
+        public int Height { get; set; } = 12;
+        public string BackgroundImagePath { get; set; } = string.Empty;
+        public bool FogOfWarEnabled { get; set; }
+        public List<MapCellDto> Cells { get; set; } = new();
+        public Dictionary<int, GridPosDto> TokenPositions { get; set; } = new();
+        public List<GridPosDto> ExploredCells { get; set; } = new();
+    }
+
     public sealed class EncounterSnapshotDto
     {
         public bool CombatStarted { get; set; }
         public int Round { get; set; } = 1;
         public int CurrentTurnSheetId { get; set; }
         public List<CombatantSnapshotDto> Participants { get; set; } = new();
+        public TacticalMapSnapshotDto? TacticalMap { get; set; }
     }
 
     // =========================================================================
