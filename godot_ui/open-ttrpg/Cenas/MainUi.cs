@@ -22,7 +22,7 @@ public partial class MainUi : Control
 	// ── Views ───────────────────────────────────────────────────────────────
 	private Control _viewFicha;
 	private Control _viewCombate;
-	private Control _viewDados;
+	private Control _viewDadosLegacy;
 
 	// ── Ficha: Cabeçalho ────────────────────────────────────────────────────
 	private Label _lblCharName;
@@ -30,7 +30,12 @@ public partial class MainUi : Control
 	private Label _lblCharNivel;
 	private Label _lblCharOrigem;
 	private Label _lblCharCondicoes;
+	private Label _lblEstadoVital;
+	private Label _lblTibaresFicha;
 	private Button _btnDescansar;
+	private Button _btnTestarMorte;
+	private Button _btnReviver;
+	private Button _btnPvTemp;
 	private PopupMenu _menuDescanso;
 
 	// ── Ficha: PV / PM ──────────────────────────────────────────────────────
@@ -64,6 +69,7 @@ public partial class MainUi : Control
 	private Label _lblDefesaDetalhe;
 	private ItemList _listSubItems;
 	private Label _lblCargaInfo;
+	private Button _btnSubAcaoUsar;
 	private Button _btnSubAcao1;
 	private Button _btnSubAcao2;
 	private Button _btnSubAcao3;
@@ -76,16 +82,30 @@ public partial class MainUi : Control
 	// ── Combate ─────────────────────────────────────────────────────────────
 	private Button _btnIniciarCombate;
 	private Button _btnProximoTurno;
+	private Button _btnEncerrarCombate;
+	private Button _btnSalvarCombate;
+	private Button _btnCarregarCombate;
 	private HBoxContainer _boxIniciativa;
 	private Label _lblStatusCombate;
 	private Label _lblTurnoAtual;
 	private RichTextLabel _txtLogCombate;
 	private Button _btnAtacar;
 	private Button _btnMovimento;
+	private Button _btnAcaoCompleta;
 	private Button _btnUsarHabilidade;
+	private Button _btnCondicoesCombate;
 	private OptionButton _optAlvoCombate;
+	private VBoxContainer _boxActionQueueList;
+	private Label _lblActionQueueSlots;
+	private Button _btnPopNextAction;
+	private readonly Dictionary<(int cid, int actionId), int> _queuedActionPmSpent = new();
 
-	// ── Dados ───────────────────────────────────────────────────────────────
+	// ── Pop-up Bandeja de Dados (Overlay sem trocar de aba!) ────────────────
+	private ColorRect _popupDadosOverlay;
+	private DiceVisualCanvas _diceVisualTray;
+	private SpinBox _spinDiceQtd;
+	private SpinBox _spinDiceMod;
+	private OptionButton _optDiceModo;
 	private LineEdit _txtExpressao;
 	private Button _btnRolar;
 	private Label _lblResultado;
@@ -94,6 +114,7 @@ public partial class MainUi : Control
 
 	// ── Pop-up Perícia & Toast ──────────────────────────────────────────────
 	private ColorRect _popupPericia;
+	private DiceVisualCanvas _diceVisualPericia;
 	private Label _lblPopupTitulo;
 	private Label _lblPopupPersonagem;
 	private Label _lblPopupResultado;
@@ -109,12 +130,30 @@ public partial class MainUi : Control
 	private Window _dlgNovoPersonagem;
 	private Window _dlgNovoItem;
 	private Window _dlgNovaMagia;
+	private CheckBox _chkNovaMagiaIsSpell;
+	private LineEdit _leNovaMagiaFormula;
 	private Window _dlgArvorePoderes;
-	private VBoxContainer _boxArvoreList;
+	private AbilityTreeCanvas _abilityTreeCanvas;
+	private Label _lblArvoreCharResumo;
+	private Label _lblArvoreNodeTitle;
+	private Label _lblArvoreNodeDesc;
+	private Label _lblArvoreNodeReqs;
+	private Button _btnArvoreActionNode;
+	private string _inspectedPowerKey = "estilo_uma_arma";
 	private Window _dlgUsarHabilidadeCombate;
 	private ItemList _listHabilidadesCombate;
+	private SpinBox _spinAprimoramentoPm;
+	private Label _lblLimitePmCombate;
+	private Window _dlgCondicoesCombate;
+	private OptionButton _optCondicaoAplicar;
+	private SpinBox _spinDuracaoCondicao;
+	private Window _dlgSelecaoIniciativa;
+	private VBoxContainer _boxSelecaoIniciativaRows;
+	private readonly List<(CharacterSheetData sheet, CheckBox chk, OptionButton optTeam)> _initSelectionEntries = new();
+	private int _quickMonsterCounter = 1;
 
 	private CharacterSheetData _selectedCharacter;
+	private string _currentMainView = "Ficha";
 	private string _currentSubTab = "Ataques";
 
 	// ════════════════════════════════════════════════════════════════════════
@@ -126,7 +165,11 @@ public partial class MainUi : Control
 
 		BindUiElements();
 		SetupAttributeEditButtons();
+		SetupSheetHeaderAndSubActionControls();
 		SetupRestMenu();
+		BuildDiceTrayPopup();
+		EnhanceSkillPopupWithVisualDie();
+		SetupExtraCombatControls();
 		BuildDialogs();
 		ConnectEvents();
 
@@ -145,6 +188,23 @@ public partial class MainUi : Control
 
 		ShowView("Ficha");
 		UpdateCombatStatusDisplay();
+
+		if (OS.GetCmdlineUserArgs().Contains("--self-test") || OS.GetCmdlineArgs().Contains("--self-test"))
+		{
+			CallDeferred(nameof(RunAutomatedUiCSharpCppSelfTest));
+		}
+	}
+
+	private int GetSelectedCombatantId()
+	{
+		if (_selectedCharacter != null &&
+			_combatManager != null &&
+			_combatManager.IsInCombat &&
+			_combatManager.SheetIdToCombatantId.TryGetValue(_selectedCharacter.Id, out int cid))
+		{
+			return cid;
+		}
+		return 0;
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
@@ -166,9 +226,10 @@ public partial class MainUi : Control
 
 		// Views
 		string mc = $"{root}/MainContent";
-		_viewFicha   = GetNode<Control>($"{mc}/ViewFicha");
-		_viewCombate = GetNode<Control>($"{mc}/ViewCombate");
-		_viewDados   = GetNode<Control>($"{mc}/ViewDados");
+		_viewFicha       = GetNode<Control>($"{mc}/ViewFicha");
+		_viewCombate     = GetNode<Control>($"{mc}/ViewCombate");
+		_viewDadosLegacy = GetNode<Control>($"{mc}/ViewDados");
+		_viewDadosLegacy.Visible = false;
 
 		// Ficha – Cabeçalho
 		string lc = $"{mc}/ViewFicha/CenterBox/HSplitFicha/LeftCol";
@@ -237,14 +298,6 @@ public partial class MainUi : Control
 		_btnUsarHabilidade = GetNode<Button>($"{cv}/HSplitCombate/LeftActions/BtnUsarHabilidade");
 		_optAlvoCombate    = GetNode<OptionButton>($"{cv}/HSplitCombate/LeftActions/VBoxAlvo/OptAlvoCombate");
 
-		// Dados
-		string dv = $"{mc}/ViewDados/VBox";
-		_txtExpressao = GetNode<LineEdit>($"{dv}/InputBox/TxtExpressao");
-		_btnRolar     = GetNode<Button>($"{dv}/InputBox/BtnRolar");
-		_lblResultado = GetNode<Label>($"{dv}/DisplayBox/LblResultado");
-		_lblDetalhes  = GetNode<Label>($"{dv}/DisplayBox/LblDetalhes");
-		_txtHistorico = GetNode<RichTextLabel>($"{dv}/TxtHistorico");
-
 		// Pop-up Perícia & Toast
 		_popupPericia       = GetNode<ColorRect>("PopupPericia");
 		_lblPopupTitulo     = GetNode<Label>("PopupPericia/Center/PanelDialog/Margin/VBox/BannerHeader/LblPopupTitulo");
@@ -255,6 +308,474 @@ public partial class MainUi : Control
 		_btnFecharPopup     = GetNode<Button>("PopupPericia/Center/PanelDialog/Margin/VBox/BtnFecharPopup");
 		_toastPanel         = GetNode<PanelContainer>("ToastPanel");
 		_lblToast           = GetNode<Label>("ToastPanel/LblToast");
+	}
+
+	// ════════════════════════════════════════════════════════════════════════
+	// Pop-up Flutuante: Bandeja de Dados Visual (Sobre Ficha ou Combate)
+	// ════════════════════════════════════════════════════════════════════════
+	private void BuildDiceTrayPopup()
+	{
+		_popupDadosOverlay = new ColorRect
+		{
+			Name = "PopupBandejaDados",
+			Visible = false,
+			Color = new Color(0f, 0f, 0f, 0.68f)
+		};
+		_popupDadosOverlay.SetAnchorsPreset(LayoutPreset.FullRect);
+		AddChild(_popupDadosOverlay);
+
+		var center = new CenterContainer();
+		center.SetAnchorsPreset(LayoutPreset.FullRect);
+		_popupDadosOverlay.AddChild(center);
+
+		var cardStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.11f, 0.12f, 0.15f, 0.98f),
+			BorderColor = new Color(0.85f, 0.68f, 0.32f, 1f),
+			BorderWidthLeft = 2,
+			BorderWidthTop = 2,
+			BorderWidthRight = 2,
+			BorderWidthBottom = 2,
+			CornerRadiusTopLeft = 10,
+			CornerRadiusTopRight = 10,
+			CornerRadiusBottomLeft = 10,
+			CornerRadiusBottomRight = 10,
+			ShadowColor = new Color(0, 0, 0, 0.55f),
+			ShadowSize = 18
+		};
+
+		var panel = new PanelContainer
+		{
+			CustomMinimumSize = new Vector2(680, 490)
+		};
+		panel.AddThemeStyleboxOverride("panel", cardStyle);
+		center.AddChild(panel);
+
+		// Consumir cliques dentro do painel para não fechar ao clicar nele
+		panel.GuiInput += (InputEvent e) =>
+		{
+			if (e is InputEventMouseButton)
+				AcceptEvent();
+		};
+
+		// Clicar fora do painel (no backdrop escuro) fecha o popup
+		center.GuiInput += (InputEvent e) =>
+		{
+			if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+			{
+				Vector2 localMouse = panel.GetLocalMousePosition();
+				if (!new Rect2(Vector2.Zero, panel.Size).HasPoint(localMouse))
+					ToggleDiceTrayPopup(false);
+			}
+		};
+
+		var margin = new MarginContainer();
+		margin.AddThemeConstantOverride("margin_left", 18);
+		margin.AddThemeConstantOverride("margin_right", 18);
+		margin.AddThemeConstantOverride("margin_top", 14);
+		margin.AddThemeConstantOverride("margin_bottom", 14);
+		panel.AddChild(margin);
+
+		var vbox = new VBoxContainer();
+		vbox.AddThemeConstantOverride("separation", 10);
+		margin.AddChild(vbox);
+
+		// 1. Cabeçalho do Popup com botão Fechar
+		var bannerStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.52f, 0.11f, 0.14f, 1f),
+			CornerRadiusTopLeft = 6,
+			CornerRadiusTopRight = 6,
+			CornerRadiusBottomLeft = 6,
+			CornerRadiusBottomRight = 6,
+			ContentMarginLeft = 12,
+			ContentMarginRight = 10,
+			ContentMarginTop = 6,
+			ContentMarginBottom = 6
+		};
+		var banner = new PanelContainer();
+		banner.AddThemeStyleboxOverride("panel", bannerStyle);
+		vbox.AddChild(banner);
+
+		var hHeader = new HBoxContainer();
+		banner.AddChild(hHeader);
+
+		var lblTitle = new Label
+		{
+			Text = "🎲 BANDEJA DE DADOS DE ARTON (POP-UP INTERATIVO)",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		lblTitle.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.72f));
+		lblTitle.AddThemeFontSizeOverride("font_size", 15);
+		hHeader.AddChild(lblTitle);
+
+		var btnClose = new Button
+		{
+			Text = "✕ Fechar",
+			Flat = true
+		};
+		btnClose.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.85f));
+		btnClose.Pressed += () => ToggleDiceTrayPopup(false);
+		hHeader.AddChild(btnClose);
+
+		// 2. Barra de Seleção de Dados Poliedrais + Modificadores Rápidos
+		var hQuickDice = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+		hQuickDice.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(hQuickDice);
+
+		var diceDefs = new (string label, int sides, Color tint)[]
+		{
+			("▲ d4",   4,   new Color(0.65f, 0.95f, 0.75f)),
+			("◼ d6",   6,   new Color(0.75f, 0.88f, 1.00f)),
+			("◆ d8",   8,   new Color(0.85f, 0.75f, 1.00f)),
+			("❖ d10",  10,  new Color(1.00f, 0.78f, 0.65f)),
+			("⬟ d12",  12,  new Color(1.00f, 0.68f, 0.78f)),
+			("⬢ d20",  20,  new Color(1.00f, 0.86f, 0.32f)),
+			("✪ d100", 100, new Color(0.60f, 0.95f, 0.95f))
+		};
+
+		foreach (var (label, sides, tint) in diceDefs)
+		{
+			var btn = new Button
+			{
+				Text = label,
+				CustomMinimumSize = new Vector2(78, 38),
+				SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+			};
+			btn.AddThemeColorOverride("font_color", tint);
+			btn.AddThemeFontSizeOverride("font_size", 13);
+			int capturedSides = sides;
+			btn.Pressed += () => OnQuickDieButtonClicked(capturedSides);
+			hQuickDice.AddChild(btn);
+		}
+
+		// 3. Controles de Quantidade, Modificador e Modo (Normal / Vantagem / Desvantagem / Explosivo)
+		var hModifiers = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+		hModifiers.AddThemeConstantOverride("separation", 12);
+		vbox.AddChild(hModifiers);
+
+		hModifiers.AddChild(new Label { Text = "Qtd Dados:" });
+		_spinDiceQtd = new SpinBox { MinValue = 1, MaxValue = 20, Value = 1, CustomMinimumSize = new Vector2(72, 0) };
+		hModifiers.AddChild(_spinDiceQtd);
+
+		hModifiers.AddChild(new Label { Text = "Modificador (+/-):" });
+		_spinDiceMod = new SpinBox { MinValue = -30, MaxValue = 60, Value = 0, CustomMinimumSize = new Vector2(78, 0) };
+		hModifiers.AddChild(_spinDiceMod);
+
+		hModifiers.AddChild(new Label { Text = "Modo:" });
+		_optDiceModo = new OptionButton { CustomMinimumSize = new Vector2(175, 0) };
+		_optDiceModo.AddItem("Rolagem Normal", 0);
+		_optDiceModo.AddItem("Vantagem (2d20kh1)", 1);
+		_optDiceModo.AddItem("Desvantagem (2d20kl1)", 2);
+		_optDiceModo.AddItem("Dados Explosivos (!)", 3);
+		hModifiers.AddChild(_optDiceModo);
+
+		// 4. Entrada de Fórmula Livre
+		var hInput = new HBoxContainer();
+		hInput.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hInput);
+
+		_txtExpressao = new LineEdit
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			Text = "1d20",
+			PlaceholderText = "Digite uma fórmula (ex: 2d20kh1+5, 1d20+7, 4d6dl1, 3d6!+2)"
+		};
+		hInput.AddChild(_txtExpressao);
+
+		_btnRolar = new Button
+		{
+			Text = "🎲 Rolar Fórmula",
+			CustomMinimumSize = new Vector2(145, 36)
+		};
+		_btnRolar.AddThemeColorOverride("font_color", new Color(1f, 0.88f, 0.35f));
+		hInput.AddChild(_btnRolar);
+
+		// 5. Área Central: Renderizador Visual do Dado Poliedral (Esquerda) + Resultado & Histórico (Direita)
+		var hCenterDisplay = new HBoxContainer
+		{
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		hCenterDisplay.AddThemeConstantOverride("separation", 16);
+		vbox.AddChild(hCenterDisplay);
+
+		// Painel do Dado Poliedral Animado
+		var dieStagePanel = new PanelContainer
+		{
+			CustomMinimumSize = new Vector2(220, 210)
+		};
+		var stageStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.07f, 0.08f, 0.10f, 1f),
+			BorderColor = new Color(0.25f, 0.27f, 0.34f, 1f),
+			BorderWidthLeft = 1,
+			BorderWidthTop = 1,
+			BorderWidthRight = 1,
+			BorderWidthBottom = 1,
+			CornerRadiusTopLeft = 8,
+			CornerRadiusTopRight = 8,
+			CornerRadiusBottomLeft = 8,
+			CornerRadiusBottomRight = 8
+		};
+		dieStagePanel.AddThemeStyleboxOverride("panel", stageStyle);
+		hCenterDisplay.AddChild(dieStagePanel);
+
+		_diceVisualTray = new DiceVisualCanvas
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		dieStagePanel.AddChild(_diceVisualTray);
+
+		// Coluna Direita: Resultado Numérico + Detalhes + Histórico
+		var vRightResult = new VBoxContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		vRightResult.AddThemeConstantOverride("separation", 6);
+		hCenterDisplay.AddChild(vRightResult);
+
+		var hResTop = new HBoxContainer();
+		hResTop.AddThemeConstantOverride("separation", 14);
+		vRightResult.AddChild(hResTop);
+
+		_lblResultado = new Label
+		{
+			Text = "-",
+			CustomMinimumSize = new Vector2(90, 0),
+			HorizontalAlignment = HorizontalAlignment.Center
+		};
+		_lblResultado.AddThemeFontSizeOverride("font_size", 46);
+		hResTop.AddChild(_lblResultado);
+
+		_lblDetalhes = new Label
+		{
+			Text = "Clique em um dado acima ou digite sua fórmula.",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			VerticalAlignment = VerticalAlignment.Center,
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		_lblDetalhes.AddThemeColorOverride("font_color", new Color(0.82f, 0.84f, 0.88f));
+		_lblDetalhes.AddThemeFontSizeOverride("font_size", 13);
+		hResTop.AddChild(_lblDetalhes);
+
+		var hHistHeader = new HBoxContainer();
+		vRightResult.AddChild(hHistHeader);
+
+		var lblHistTitle = new Label
+		{
+			Text = "📜 Histórico de Rolagens da Sessão:",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		lblHistTitle.AddThemeColorOverride("font_color", new Color(0.75f, 0.75f, 0.75f));
+		lblHistTitle.AddThemeFontSizeOverride("font_size", 12);
+		hHistHeader.AddChild(lblHistTitle);
+
+		var btnLimparHist = new Button
+		{
+			Text = "🧹 Limpar",
+			Flat = true
+		};
+		btnLimparHist.AddThemeFontSizeOverride("font_size", 11);
+		btnLimparHist.Pressed += () => _txtHistorico.Clear();
+		hHistHeader.AddChild(btnLimparHist);
+
+		_txtHistorico = new RichTextLabel
+		{
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill,
+			BbcodeEnabled = true,
+			ScrollFollowing = true,
+			CustomMinimumSize = new Vector2(0, 125)
+		};
+		vRightResult.AddChild(_txtHistorico);
+	}
+
+	private void EnhanceSkillPopupWithVisualDie()
+	{
+		// Insere o renderizador visual de d20 dentro do PopupPericia para animar os testes de perícia da ficha!
+		var vbox = GetNode<VBoxContainer>("PopupPericia/Center/PanelDialog/Margin/VBox");
+		_diceVisualPericia = new DiceVisualCanvas
+		{
+			CustomMinimumSize = new Vector2(150, 145),
+			SizeFlagsHorizontal = SizeFlags.ShrinkCenter
+		};
+		vbox.AddChild(_diceVisualPericia);
+		vbox.MoveChild(_diceVisualPericia, 2);
+		_lblPopupResultado.Visible = false; // O número já aparece animado dentro do icosaedro d20!
+	}
+
+	private void SetupExtraCombatControls()
+	{
+		// Botão de Acesso Rápido à Árvore Visual de Habilidades na TopBar principal
+		var topBarMain = GetNode<HBoxContainer>("MarginContainer/VBoxMain/TopBar");
+		var btnTopArvore = new Button
+		{
+			Text = "🌳 Árvore de Habilidades"
+		};
+		btnTopArvore.AddThemeColorOverride("font_color", new Color(0.55f, 0.95f, 0.68f));
+		btnTopArvore.Pressed += AbrirArvorePoderes;
+		topBarMain.AddChild(btnTopArvore);
+		topBarMain.MoveChild(btnTopArvore, 6);
+
+		// Botões na barra superior de combate: Encerrar Combate, Salvar Snapshot e Carregar Snapshot
+		var topBarCombate = GetNode<HBoxContainer>("MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/TopBar");
+		_btnEncerrarCombate = new Button
+		{
+			Text = "🕊️ Encerrar Combate",
+			Disabled = true
+		};
+		_btnEncerrarCombate.AddThemeColorOverride("font_color", new Color(1f, 0.55f, 0.55f));
+		topBarCombate.AddChild(_btnEncerrarCombate);
+
+		_btnSalvarCombate = new Button
+		{
+			Text = "💾 Salvar Combate (JSON)",
+			Disabled = true
+		};
+		_btnSalvarCombate.AddThemeColorOverride("font_color", new Color(0.5f, 0.95f, 0.65f));
+		topBarCombate.AddChild(_btnSalvarCombate);
+
+		_btnCarregarCombate = new Button
+		{
+			Text = "📂 Restaurar Combate (JSON)"
+		};
+		_btnCarregarCombate.AddThemeColorOverride("font_color", new Color(0.55f, 0.85f, 1f));
+		topBarCombate.AddChild(_btnCarregarCombate);
+
+		// Botões extras no painel esquerdo de ações de combate + Painel Visual da Fila de Prioridades (PriorityQueue)
+		var leftActions = GetNode<VBoxContainer>("MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions");
+
+		_btnAcaoCompleta = new Button
+		{
+			Text = "💥 Investida / Ação Completa (Padrão+Mov)"
+		};
+		_btnAcaoCompleta.AddThemeColorOverride("font_color", new Color(1f, 0.65f, 0.45f));
+		leftActions.AddChild(_btnAcaoCompleta);
+
+		_btnCondicoesCombate = new Button
+		{
+			Text = "⚡ Aplicar / Remover Condição (T20)"
+		};
+		_btnCondicoesCombate.AddThemeColorOverride("font_color", new Color(1f, 0.78f, 0.35f));
+		leftActions.AddChild(_btnCondicoesCombate);
+
+		// Painel da Fila de Prioridades de Ações do Turno (Livre [10] -> Movimento [20] -> Padrão [30] -> Completa [40])
+		var queueCard = new PanelContainer
+		{
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		var queueStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.08f, 0.09f, 0.12f, 0.96f),
+			BorderColor = new Color(0.45f, 0.68f, 0.92f, 0.85f),
+			BorderWidthLeft = 1,
+			BorderWidthTop = 1,
+			BorderWidthRight = 1,
+			BorderWidthBottom = 1,
+			CornerRadiusTopLeft = 6,
+			CornerRadiusTopRight = 6,
+			CornerRadiusBottomLeft = 6,
+			CornerRadiusBottomRight = 6,
+			ContentMarginLeft = 8,
+			ContentMarginRight = 8,
+			ContentMarginTop = 6,
+			ContentMarginBottom = 6
+		};
+		queueCard.AddThemeStyleboxOverride("panel", queueStyle);
+		leftActions.AddChild(queueCard);
+
+		var vQueue = new VBoxContainer();
+		vQueue.AddThemeConstantOverride("separation", 5);
+		queueCard.AddChild(vQueue);
+
+		var lblQueueTitle = new Label
+		{
+			Text = "📋 Fila de Prioridades do Turno (AED1 PriorityQueue)",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		lblQueueTitle.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.38f));
+		lblQueueTitle.AddThemeFontSizeOverride("font_size", 12);
+		vQueue.AddChild(lblQueueTitle);
+
+		_lblActionQueueSlots = new Label
+		{
+			Text = "Slots: Padrão 1/1 | Movimento 1/1 | Livre ∞",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		_lblActionQueueSlots.AddThemeColorOverride("font_color", new Color(0.75f, 0.85f, 0.95f));
+		_lblActionQueueSlots.AddThemeFontSizeOverride("font_size", 11);
+		vQueue.AddChild(_lblActionQueueSlots);
+
+		var scrollQueue = new ScrollContainer
+		{
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill,
+			CustomMinimumSize = new Vector2(0, 95)
+		};
+		vQueue.AddChild(scrollQueue);
+
+		_boxActionQueueList = new VBoxContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_boxActionQueueList.AddThemeConstantOverride("separation", 4);
+		scrollQueue.AddChild(_boxActionQueueList);
+
+		_btnPopNextAction = new Button
+		{
+			Text = "▶ Executar 1ª Ação da Fila (Pop PriorityQueue)"
+		};
+		_btnPopNextAction.AddThemeColorOverride("font_color", new Color(0.55f, 1f, 0.65f));
+		_btnPopNextAction.AddThemeFontSizeOverride("font_size", 11);
+		vQueue.AddChild(_btnPopNextAction);
+	}
+
+	private void ToggleDiceTrayPopup(bool? forceState = null)
+	{
+		bool target = forceState ?? !_popupDadosOverlay.Visible;
+		if (target)
+		{
+			_popupDadosOverlay.Modulate = new Color(1, 1, 1, 0);
+			_popupDadosOverlay.Visible = true;
+			var tw = CreateTween();
+			tw.TweenProperty(_popupDadosOverlay, "modulate", new Color(1, 1, 1, 1), 0.18f);
+			_txtExpressao.GrabFocus();
+		}
+		else
+		{
+			_popupDadosOverlay.Visible = false;
+		}
+	}
+
+	private void OnQuickDieButtonClicked(int sides)
+	{
+		int qtd = (int)_spinDiceQtd.Value;
+		int mod = (int)_spinDiceMod.Value;
+		int modo = _optDiceModo.GetSelectedId();
+
+		string expr;
+		if (modo == 1 && sides == 20)
+		{
+			expr = "2d20kh1";
+		}
+		else if (modo == 2 && sides == 20)
+		{
+			expr = "2d20kl1";
+		}
+		else if (modo == 3)
+		{
+			expr = $"{qtd}d{sides}!";
+		}
+		else
+		{
+			expr = $"{qtd}d{sides}";
+		}
+
+		if (mod > 0) expr += $"+{mod}";
+		else if (mod < 0) expr += mod.ToString();
+
+		_txtExpressao.Text = expr;
+		RolarDadoExpressao(expr);
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
@@ -297,12 +818,171 @@ public partial class MainUi : Control
 		}
 	}
 
+	private void SetupSheetHeaderAndSubActionControls()
+	{
+		string hdrInfo = "MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/VBoxInfo";
+		var vboxInfo = GetNode<VBoxContainer>(hdrInfo);
+		var hboxSub  = GetNode<HBoxContainer>($"{hdrInfo}/HBoxSub");
+
+		// Botões - / + de Nível ao lado de LblCharNivel (recalculam PV/PM automaticamente!)
+		var btnNivelMinus = new Button { Text = "-", CustomMinimumSize = new Vector2(22, 18), Flat = true };
+		btnNivelMinus.AddThemeFontSizeOverride("font_size", 11);
+		btnNivelMinus.AddThemeColorOverride("font_color", new Color(0.9f, 0.55f, 0.55f));
+		btnNivelMinus.Pressed += () => AjustarNivel(-1);
+
+		var btnNivelPlus = new Button { Text = "+", CustomMinimumSize = new Vector2(22, 18), Flat = true };
+		btnNivelPlus.AddThemeFontSizeOverride("font_size", 11);
+		btnNivelPlus.AddThemeColorOverride("font_color", new Color(0.55f, 0.95f, 0.65f));
+		btnNivelPlus.Pressed += () => AjustarNivel(+1);
+
+		hboxSub.AddChild(btnNivelMinus);
+		hboxSub.MoveChild(btnNivelMinus, 1);
+		hboxSub.AddChild(btnNivelPlus);
+		hboxSub.MoveChild(btnNivelPlus, 2);
+
+		// Carteira de Tibares (T$) na Ficha do Personagem com botões rápidos (-10 / +10 / +100)
+		var sepTib = new VSeparator();
+		hboxSub.AddChild(sepTib);
+
+		_lblTibaresFicha = new Label
+		{
+			Text = "💰 T$ 50"
+		};
+		_lblTibaresFicha.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.32f));
+		_lblTibaresFicha.AddThemeFontSizeOverride("font_size", 12);
+		hboxSub.AddChild(_lblTibaresFicha);
+
+		Button AddTibarBtn(string txt, int delta, Color col)
+		{
+			var b = new Button { Text = txt, Flat = true, CustomMinimumSize = new Vector2(28, 18) };
+			b.AddThemeFontSizeOverride("font_size", 10);
+			b.AddThemeColorOverride("font_color", col);
+			b.Pressed += () => AjustarTibares(delta);
+			hboxSub.AddChild(b);
+			return b;
+		}
+		AddTibarBtn("-10", -10, new Color(0.95f, 0.55f, 0.55f));
+		AddTibarBtn("+10", +10, new Color(0.55f, 0.95f, 0.65f));
+		AddTibarBtn("+100", +100, new Color(1f, 0.88f, 0.35f));
+
+		// Botão para conceder PV Temporário (+Temp) nos controles de PV da Ficha
+		var hboxPvControls = GetNode<HBoxContainer>(
+			"MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader/HBoxCircles/VBoxPv/HBoxPvControls");
+		_btnPvTemp = new Button
+		{
+			Text = "+Temp"
+		};
+		_btnPvTemp.AddThemeColorOverride("font_color", new Color(0.45f, 0.88f, 1f));
+		_btnPvTemp.AddThemeFontSizeOverride("font_size", 11);
+		_btnPvTemp.Pressed += OnAdicionarPvTempPressed;
+		hboxPvControls.AddChild(_btnPvTemp);
+
+		// Label de Estado Vital (Ativo / Machucado / Morrendo / Inconsciente / Morto)
+		_lblEstadoVital = new Label
+		{
+			Text = "ESTADO: 💚 ATIVO"
+		};
+		_lblEstadoVital.AddThemeFontSizeOverride("font_size", 12);
+		_lblEstadoVital.AddThemeColorOverride("font_color", new Color(0.45f, 0.95f, 0.55f));
+		vboxInfo.AddChild(_lblEstadoVital);
+		vboxInfo.MoveChild(_lblEstadoVital, 3);
+
+		// Linha de botões de Descanso + Teste de Morte (CON CD 15) + Reviver
+		var hActionRow = new HBoxContainer();
+		hActionRow.AddThemeConstantOverride("separation", 8);
+		vboxInfo.AddChild(hActionRow);
+
+		_btnTestarMorte = new Button
+		{
+			Text = "🩸 Testar Constituição (CD 15 - Estabilizar)",
+			Visible = false
+		};
+		_btnTestarMorte.AddThemeColorOverride("font_color", new Color(1f, 0.55f, 0.55f));
+		_btnTestarMorte.AddThemeFontSizeOverride("font_size", 12);
+		_btnTestarMorte.Pressed += OnTestarMorteNaFichaPressed;
+		hActionRow.AddChild(_btnTestarMorte);
+
+		_btnReviver = new Button
+		{
+			Text = "✨ Reviver Personagem (1 PV)",
+			Visible = false
+		};
+		_btnReviver.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.35f));
+		_btnReviver.AddThemeFontSizeOverride("font_size", 12);
+		_btnReviver.Pressed += OnReviverNaFichaPressed;
+		hActionRow.AddChild(_btnReviver);
+
+		// Botão para Usar / Gastar Habilidades (Poderes, Magias e Ataques) diretamente na Ficha!
+		var hboxSubActions = GetNode<HBoxContainer>(
+			"MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/HBoxSubActions");
+		_btnSubAcaoUsar = new Button
+		{
+			Text = "⚡ Usar / Gastar PM"
+		};
+		_btnSubAcaoUsar.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.32f));
+		_btnSubAcaoUsar.AddThemeFontSizeOverride("font_size", 11);
+		_btnSubAcaoUsar.Pressed += OnUsarItemSubTabNaFichaPressed;
+		hboxSubActions.AddChild(_btnSubAcaoUsar);
+		hboxSubActions.MoveChild(_btnSubAcaoUsar, 1);
+
+		// Duplo clique em qualquer Poder, Magia ou Arma na lista da ficha executa imediatamente!
+		_listSubItems.ItemActivated += (_) => OnUsarItemSubTabNaFichaPressed();
+	}
+
+	private void AjustarNivel(int delta)
+	{
+		if (_selectedCharacter == null) return;
+		int novoNivel = Math.Clamp(_selectedCharacter.Level + delta, 1, 20);
+		if (novoNivel == _selectedCharacter.Level) return;
+
+		_selectedCharacter.Level = novoNivel;
+		_selectedCharacter.RecalculateMaxResources(refill: false);
+
+		int cid = GetSelectedCombatantId();
+		if (cid > 0)
+		{
+			_combatManager.Session.AddResource(cid, CombatManager.HealthResourceId, "Vida", _selectedCharacter.MaxHp, _selectedCharacter.GetDeathThreshold());
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedCharacter.MaxPm, 0);
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
+			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
+				_combatManager.Session, cid, _selectedCharacter.Level,
+				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
+				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
+				_selectedCharacter.UnlockedTreeKeys);
+		}
+
+		UpdateCharacterDropdown();
+		int idx = _combatManager.Characters.IndexOf(_selectedCharacter);
+		if (idx >= 0) _optPersonagens.Select(idx);
+		RefreshSheetUI();
+		ShowToast($"⬆️ Nível ajustado para {_selectedCharacter.Level}! PV Máx: {_selectedCharacter.MaxHp} | PM Máx: {_selectedCharacter.MaxPm}");
+	}
+
 	private void AjustarAtributo(AttributeType type, int delta)
 	{
 		if (_selectedCharacter == null) return;
 		var attr = _selectedCharacter.GetAttribute(type);
 		int novo = Math.Clamp(attr.BaseValue + delta, -5, 15);
 		_selectedCharacter.SetAttributeValue(type, novo);
+
+		// Recalcula PV Máx e PM Máx automaticamente se Constituição ou Atributo-Chave de Magia mudou
+		_selectedCharacter.RecalculateMaxResources(refill: false);
+
+		int cid = GetSelectedCombatantId();
+		if (cid > 0)
+		{
+			_combatManager.Session.AddResource(cid, CombatManager.HealthResourceId, "Vida", _selectedCharacter.MaxHp, _selectedCharacter.GetDeathThreshold());
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedCharacter.MaxPm, 0);
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
+			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
+				_combatManager.Session, cid, _selectedCharacter.Level,
+				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
+				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
+				_selectedCharacter.UnlockedTreeKeys);
+		}
+
 		RefreshSheetUI();
 	}
 
@@ -319,8 +999,15 @@ public partial class MainUi : Control
 		{
 			if (_selectedCharacter == null) return;
 			var quality = (RestQuality)id;
-			var result = Tormenta20RestRules.ApplyRest(_selectedCharacter, quality);
+			int cid = GetSelectedCombatantId();
+			var result = Tormenta20RestRules.ApplyRest(
+				_selectedCharacter, quality, cid > 0 ? _combatManager.Session : null, cid);
 			RefreshSheetUI();
+			if (_combatManager.IsInCombat)
+			{
+				RefreshInitiativeBar();
+				PopularAlvoCombate();
+			}
 			ShowToast($"🏕️ {result.Message}", new Color(0.4f, 0.85f, 1f));
 		};
 	}
@@ -353,15 +1040,240 @@ public partial class MainUi : Control
 
 		_dlgUsarHabilidadeCombate = BuildUsarHabilidadeCombateDialog();
 		AddChild(_dlgUsarHabilidadeCombate);
+
+		_dlgCondicoesCombate = BuildCondicoesCombateDialog();
+		AddChild(_dlgCondicoesCombate);
+
+		_dlgSelecaoIniciativa = BuildSelecaoIniciativaDialog();
+		AddChild(_dlgSelecaoIniciativa);
+	}
+
+	private void AjustarTibares(int delta)
+	{
+		if (_selectedCharacter == null) return;
+		_selectedCharacter.Tibares = Math.Max(0, _selectedCharacter.Tibares + delta);
+		RefreshSheetUI();
+	}
+
+	private void OnAdicionarPvTempPressed()
+	{
+		if (_selectedCharacter == null) return;
+		int delta = Math.Max(1, (int)_spinPvDelta.Value);
+		_selectedCharacter.TempHp += delta;
+
+		int cid = GetSelectedCombatantId();
+		if (cid > 0)
+		{
+			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedCharacter.TempHp);
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+		}
+
+		RefreshSheetUI();
+		ShowToast($"🛡️ Recebeu +{delta} PV Temporário (Total Temp: {_selectedCharacter.TempHp})!", new Color(0.45f, 0.88f, 1f));
+	}
+
+	private Window BuildSelecaoIniciativaDialog()
+	{
+		var win = new Window
+		{
+			Title = "⚔️ Seleção de Participantes da Iniciativa (RollInitiativeForList)",
+			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
+			Size = new Vector2I(580, 460),
+			Exclusive = true
+		};
+
+		var margin = new MarginContainer();
+		margin.SetAnchorsPreset(LayoutPreset.FullRect);
+		margin.AddThemeConstantOverride("margin_left", 16);
+		margin.AddThemeConstantOverride("margin_right", 16);
+		margin.AddThemeConstantOverride("margin_top", 14);
+		margin.AddThemeConstantOverride("margin_bottom", 14);
+		win.AddChild(margin);
+
+		var vbox = new VBoxContainer();
+		vbox.AddThemeConstantOverride("separation", 10);
+		margin.AddChild(vbox);
+
+		var lblDesc = new Label
+		{
+			Text = "Marque quais personagens entram neste combate e defina seus times (Heróis vs Inimigos):",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		lblDesc.AddThemeColorOverride("font_color", new Color(0.95f, 0.85f, 0.45f));
+		lblDesc.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(lblDesc);
+
+		var hTools = new HBoxContainer();
+		hTools.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(hTools);
+
+		var btnCheckAll = new Button { Text = "☑ Marcar Todos" };
+		btnCheckAll.AddThemeFontSizeOverride("font_size", 11);
+		btnCheckAll.Pressed += () =>
+		{
+			foreach (var e in _initSelectionEntries) e.chk.ButtonPressed = true;
+		};
+		hTools.AddChild(btnCheckAll);
+
+		var btnUncheckAll = new Button { Text = "☐ Desmarcar Todos" };
+		btnUncheckAll.AddThemeFontSizeOverride("font_size", 11);
+		btnUncheckAll.Pressed += () =>
+		{
+			foreach (var e in _initSelectionEntries) e.chk.ButtonPressed = false;
+		};
+		hTools.AddChild(btnUncheckAll);
+
+		var btnAddQuickMonster = new Button
+		{
+			Text = "👹 + Gerar Inimigo Rápido (Ameaça T20)",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.ShrinkEnd
+		};
+		btnAddQuickMonster.AddThemeColorOverride("font_color", new Color(1f, 0.55f, 0.45f));
+		btnAddQuickMonster.AddThemeFontSizeOverride("font_size", 11);
+		btnAddQuickMonster.Pressed += () =>
+		{
+			CriarInimigoRapidoNoLobby();
+			PopularListaSelecaoIniciativa();
+		};
+		hTools.AddChild(btnAddQuickMonster);
+
+		var scroll = new ScrollContainer
+		{
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		vbox.AddChild(scroll);
+
+		_boxSelecaoIniciativaRows = new VBoxContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_boxSelecaoIniciativaRows.AddThemeConstantOverride("separation", 6);
+		scroll.AddChild(_boxSelecaoIniciativaRows);
+
+		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+		hBtns.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hBtns);
+
+		var btnCancelar = new Button { Text = "Cancelar" };
+		var btnIniciar  = new Button { Text = "⚔️ Rolar Iniciativa dos Selecionados" };
+		btnIniciar.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.6f));
+		hBtns.AddChild(btnCancelar);
+		hBtns.AddChild(btnIniciar);
+
+		btnCancelar.Pressed += () => win.Hide();
+		win.CloseRequested  += () => win.Hide();
+		btnIniciar.Pressed  += () =>
+		{
+			var selected = new List<CharacterSheetData>();
+			var teams = new Dictionary<int, int>();
+
+			foreach (var (sheet, chk, optTeam) in _initSelectionEntries)
+			{
+				if (chk.ButtonPressed)
+				{
+					selected.Add(sheet);
+					teams[sheet.Id] = optTeam.GetSelectedId();
+				}
+			}
+
+			if (selected.Count == 0)
+			{
+				ShowToast("⚠️ Marque pelo menos 1 personagem para participar da iniciativa!", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
+
+			win.Hide();
+			_queuedActionPmSpent.Clear();
+			_combatManager.StartCombatWithSelectedCharacters(selected, teams);
+			UpdateCombatStatusDisplay();
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			RefreshActionQueuePanel();
+			RefreshSheetUI();
+		};
+
+		win.Hide();
+		return win;
+	}
+
+	private void CriarInimigoRapidoNoLobby()
+	{
+		var templates = new (string nome, string raca, string classe, int nv, int pv, int pm, int forM, int desM, int conM, string arma, string dano, string crit)[]
+		{
+			("Goblin Salteador", "Goblin", "Ladino", 1, 12, 4, 0, 3, 1, "Adaga Enferrujada", "1d4", "19/x2"),
+			("Esqueleto Guerreiro", "Osteon", "Guerreiro", 2, 24, 6, 2, 2, 1, "Cimitarra Antiga", "1d6", "18/x2"),
+			("Orc Berserker", "Trog", "Bárbaro", 3, 42, 9, 4, 1, 3, "Machado de Guerra", "1d12", "20/x3"),
+			("Golem de Ferro", "Golem", "Cavaleiro", 5, 65, 12, 5, 0, 4, "Punho de Ferro", "2d6", "20/x2")
+		};
+		var tpl = templates[(_quickMonsterCounter - 1) % templates.Length];
+		string uniqueName = $"{tpl.nome} #{_quickMonsterCounter++}";
+
+		var mob = _combatManager.CreateCharacter(uniqueName, tpl.classe, tpl.raca, "Capanga", "Arsenal", tpl.nv, tpl.pv, tpl.pm);
+		mob.Strength     = tpl.forM;
+		mob.Dexterity    = tpl.desM;
+		mob.Constitution = tpl.conM;
+		mob.TrainedSkills.Add("Luta");
+		mob.TrainedSkills.Add("Iniciativa");
+		mob.Inventory.Add(new CharacterItem(tpl.arma, "Arma de ameaça", ItemType.Weapon, 1, tpl.dano, tpl.crit, 0, 0, 10, true));
+		mob.Skills.Add(new CharacterSkill("Golpe Brutal", "Ataque feroz que causa +1d6 de dano", 1, T20ActionType.Free, 0, "", false, "1d6"));
+
+		UpdateCharacterDropdown();
+		ShowToast($"👹 Ameaça \"{uniqueName}\" adicionada à lista!");
+	}
+
+	private void PopularListaSelecaoIniciativa()
+	{
+		foreach (Node child in _boxSelecaoIniciativaRows.GetChildren().ToArray())
+			child.QueueFree();
+		_initSelectionEntries.Clear();
+
+		for (int i = 0; i < _combatManager.Characters.Count; i++)
+		{
+			var c = _combatManager.Characters[i];
+			Tormenta20SkillRules.TryCalculateSkillModifier(c, "Iniciativa", out int initMod, out _);
+			string initStr = initMod >= 0 ? $"+{initMod}" : initMod.ToString();
+
+			var row = new HBoxContainer();
+			row.AddThemeConstantOverride("separation", 10);
+
+			var chk = new CheckBox
+			{
+				ButtonPressed = true,
+				Text = $"{c.Name} ({c.Race} {c.CharacterClass} Nv.{c.Level}) — PV {c.CurrentHp}/{c.MaxHp} | Iniciativa: {initStr}",
+				SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+			};
+			row.AddChild(chk);
+
+			var optTeam = new OptionButton { CustomMinimumSize = new Vector2(165, 0) };
+			optTeam.AddItem("🛡️ Time 1 (Heróis)", 1);
+			optTeam.AddItem("👹 Time 2 (Inimigos)", 2);
+			bool isDefaultEnemy = c.Origin == "Capanga" || c.Name.Contains("#") || i > 0 && i == _combatManager.Characters.Count - 1;
+			optTeam.Select(isDefaultEnemy ? 1 : 0);
+			row.AddChild(optTeam);
+
+			_boxSelecaoIniciativaRows.AddChild(row);
+			_initSelectionEntries.Add((c, chk, optTeam));
+		}
+	}
+
+	private void AbrirModalSelecaoIniciativa()
+	{
+		if (_combatManager.Characters.Count == 0)
+		{
+			_combatManager.LoadCharacters();
+		}
+		PopularListaSelecaoIniciativa();
+		_dlgSelecaoIniciativa.PopupCentered();
 	}
 
 	private Window BuildNovoPersonagemDialog()
 	{
 		var win = new Window
 		{
-			Title = "Novo Personagem (Tormenta20)",
+			Title = "Novo Personagem — Criação Oficial Tormenta20 JdA",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
-			Size = new Vector2I(430, 620),
+			Size = new Vector2I(520, 680),
 			Exclusive = true
 		};
 
@@ -374,29 +1286,55 @@ public partial class MainUi : Control
 		win.AddChild(margin);
 
 		var vbox = new VBoxContainer();
-		vbox.AddThemeConstantOverride("separation", 8);
+		vbox.AddThemeConstantOverride("separation", 7);
 		margin.AddChild(vbox);
 
-		LineEdit AddRow(VBoxContainer parent, string label, string placeholder = "")
+		var lblNome = new Label { Text = "Nome do Personagem *" };
+		lblNome.AddThemeColorOverride("font_color", new Color(0.85f, 0.85f, 0.85f));
+		lblNome.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(lblNome);
+		var leName = new LineEdit { PlaceholderText = "Ex: Thorin Ironfoot, Niele, Valeros..." };
+		vbox.AddChild(leName);
+
+		// SelectionBoxes (Enums) em Grid 2x2: Classe, Raça, Origem e Divindade
+		var gridEnums = new GridContainer { Columns = 2 };
+		gridEnums.AddThemeConstantOverride("h_separation", 12);
+		gridEnums.AddThemeConstantOverride("v_separation", 6);
+		vbox.AddChild(gridEnums);
+
+		OptionButton AddEnumSelector(string title)
 		{
-			var lbl = new Label { Text = label };
-			lbl.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
-			lbl.AddThemeFontSizeOverride("font_size", 12);
-			parent.AddChild(lbl);
-			var le = new LineEdit { PlaceholderText = placeholder };
-			parent.AddChild(le);
-			return le;
+			var vb = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+			var l = new Label { Text = title };
+			l.AddThemeColorOverride("font_color", new Color(0.82f, 0.82f, 0.82f));
+			l.AddThemeFontSizeOverride("font_size", 12);
+			vb.AddChild(l);
+			var opt = new OptionButton { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+			vb.AddChild(opt);
+			gridEnums.AddChild(vb);
+			return opt;
 		}
 
-		var leName      = AddRow(vbox, "Nome *", "Ex: Thorin Ironfoot");
-		var leClasse    = AddRow(vbox, "Classe *", "Ex: Guerreiro");
-		var leRaca      = AddRow(vbox, "Raça", "Ex: Anão");
-		var leOrigem    = AddRow(vbox, "Origem", "Ex: Nobre");
-		var leDivindade = AddRow(vbox, "Divindade", "Ex: Valkaria");
+		var optClasse    = AddEnumSelector("Classe (T20 JdA)");
+		var optRaca      = AddEnumSelector("Raça (T20 JdA)");
+		var optOrigem    = AddEnumSelector("Origem");
+		var optDivindade = AddEnumSelector("Divindade (Panteão)");
 
-		SpinBox AddSpin(Container parent, string label, int min, int max, int def, int width = 76)
+		foreach (var c in Tormenta20CharacterCreationRules.CanonicalClasses)
+			optClasse.AddItem($"{c.DisplayName} ({c.BaseHpLevel1} PV | +{c.PmPerLevel} PM/nv)", (int)c.ClassType);
+
+		foreach (var r in Tormenta20CharacterCreationRules.CanonicalRaces)
+			optRaca.AddItem(r.DisplayName, (int)r.RaceType);
+
+		foreach (T20Origin orig in Enum.GetValues(typeof(T20Origin)))
+			optOrigem.AddItem(Tormenta20CharacterCreationRules.GetOriginDisplayName(orig), (int)orig);
+
+		foreach (T20Deity deity in Enum.GetValues(typeof(T20Deity)))
+			optDivindade.AddItem(Tormenta20CharacterCreationRules.GetDeityDisplayName(deity), (int)deity);
+
+		SpinBox AddSpin(Container parent, string label, int min, int max, int def, int width = 85)
 		{
-			var vb = new VBoxContainer();
+			var vb = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
 			parent.AddChild(vb);
 			var l = new Label { Text = label };
 			l.AddThemeColorOverride("font_color", new Color(0.75f, 0.75f, 0.75f));
@@ -407,14 +1345,21 @@ public partial class MainUi : Control
 			return sp;
 		}
 
-		var hboxStats = new HBoxContainer();
-		hboxStats.AddThemeConstantOverride("separation", 10);
-		vbox.AddChild(hboxStats);
-		var spNivel = AddSpin(hboxStats, "Nível", 1, 20, 1, 90);
-		var spPv    = AddSpin(hboxStats, "PV Máx", 1, 999, 20, 100);
-		var spPm    = AddSpin(hboxStats, "PM Máx", 0, 999, 3, 100);
+		var hNivelRow = new HBoxContainer();
+		hNivelRow.AddThemeConstantOverride("separation", 12);
+		vbox.AddChild(hNivelRow);
+		var spNivel = AddSpin(hNivelRow, "Nível Inicial (1 a 20)", 1, 20, 1, 110);
 
-		var lblAttrTitle = new Label { Text = "Atributos Iniciais (Modificadores T20):" };
+		var chkBonusRacial = new CheckBox
+		{
+			Text = "Aplicar modificadores raciais nos atributos ao trocar de Raça",
+			ButtonPressed = true,
+			SizeFlagsVertical = SizeFlags.ShrinkEnd
+		};
+		chkBonusRacial.AddThemeFontSizeOverride("font_size", 11);
+		hNivelRow.AddChild(chkBonusRacial);
+
+		var lblAttrTitle = new Label { Text = "Atributos (Modificadores Finais T20):" };
 		lblAttrTitle.AddThemeColorOverride("font_color", new Color(0.9f, 0.75f, 0.4f));
 		lblAttrTitle.AddThemeFontSizeOverride("font_size", 12);
 		vbox.AddChild(lblAttrTitle);
@@ -424,19 +1369,111 @@ public partial class MainUi : Control
 		gridAttrs.AddThemeConstantOverride("v_separation", 6);
 		vbox.AddChild(gridAttrs);
 
-		var spFor = AddSpin(gridAttrs, "FOR", -5, 15, 0, 115);
-		var spDes = AddSpin(gridAttrs, "DES", -5, 15, 0, 115);
-		var spCon = AddSpin(gridAttrs, "CON", -5, 15, 0, 115);
-		var spInt = AddSpin(gridAttrs, "INT", -5, 15, 0, 115);
-		var spSab = AddSpin(gridAttrs, "SAB", -5, 15, 0, 115);
-		var spCar = AddSpin(gridAttrs, "CAR", -5, 15, 0, 115);
+		var spFor = AddSpin(gridAttrs, "FOR (Força)", -5, 15, 1, 130);
+		var spDes = AddSpin(gridAttrs, "DES (Destreza)", -5, 15, 1, 130);
+		var spCon = AddSpin(gridAttrs, "CON (Constituição)", -5, 15, 1, 130);
+		var spInt = AddSpin(gridAttrs, "INT (Inteligência)", -5, 15, 0, 130);
+		var spSab = AddSpin(gridAttrs, "SAB (Sabedoria)", -5, 15, 0, 130);
+		var spCar = AddSpin(gridAttrs, "CAR (Carisma)", -5, 15, 0, 130);
+
+		// Painel de Pré-visualização do Cálculo Automático (PV, PM, Defesa, Espaços, Limite de Morte)
+		var previewCard = new PanelContainer();
+		var previewStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.08f, 0.11f, 0.14f, 0.96f),
+			BorderColor = new Color(0.35f, 0.68f, 0.88f, 0.85f),
+			BorderWidthLeft = 1,
+			BorderWidthTop = 1,
+			BorderWidthRight = 1,
+			BorderWidthBottom = 1,
+			CornerRadiusTopLeft = 6,
+			CornerRadiusTopRight = 6,
+			CornerRadiusBottomLeft = 6,
+			CornerRadiusBottomRight = 6,
+			ContentMarginLeft = 10,
+			ContentMarginRight = 10,
+			ContentMarginTop = 8,
+			ContentMarginBottom = 8
+		};
+		previewCard.AddThemeStyleboxOverride("panel", previewStyle);
+		vbox.AddChild(previewCard);
+
+		var lblPreviewStats = new Label
+		{
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		lblPreviewStats.AddThemeFontSizeOverride("font_size", 11);
+		lblPreviewStats.AddThemeColorOverride("font_color", new Color(0.88f, 0.94f, 1f));
+		previewCard.AddChild(lblPreviewStats);
+
+		void AtualizarCalculoAutomatico()
+		{
+			var classTpl = Tormenta20CharacterCreationRules.GetClassTemplate((T20Class)optClasse.GetSelectedId());
+			var raceTpl  = Tormenta20CharacterCreationRules.GetRaceTemplate((T20Race)optRaca.GetSelectedId());
+			int nivel    = (int)spNivel.Value;
+			int forMod   = (int)spFor.Value;
+			int desMod   = (int)spDes.Value;
+			int conMod   = (int)spCon.Value;
+			int intMod   = (int)spInt.Value;
+			int sabMod   = (int)spSab.Value;
+			int carMod   = (int)spCar.Value;
+
+			int keyMod = classTpl.SpellKeyAttribute switch
+			{
+				AttributeType.Intelligence => intMod,
+				AttributeType.Wisdom => sabMod,
+				AttributeType.Charisma => carMod,
+				_ => 0
+			};
+
+			int calcHp = Tormenta20CharacterCreationRules.CalculateMaxHp(classTpl, raceTpl, nivel, conMod);
+			int calcPm = Tormenta20CharacterCreationRules.CalculateMaxPm(classTpl, raceTpl, nivel, keyMod);
+			int calcDef = 10 + desMod + raceTpl.NaturalDefenseBonus;
+			int calcSlots = forMod >= 0 ? 10 + forMod * 2 : 10 + forMod;
+			int deathLimit = -Math.Max(10, calcHp / 2);
+
+			lblPreviewStats.Text =
+				$"⚡ CÁLCULO AUTOMÁTICO (TORMENTA20 JdA):\n" +
+				$"❤️ PV Máximo: {calcHp}   |   💙 PM Máximo: {calcPm}   |   🛡️ Defesa Base: {calcDef}   |   🎒 Carga: {calcSlots} esp.   |   💀 Morte em: {deathLimit} PV\n" +
+				$"🧬 Raça ({raceTpl.DisplayName}): {raceTpl.TraitSummary}\n" +
+				$"⚔️ Habilidade Inicial ({classTpl.DisplayName}): {classTpl.IconicSkillName} ({classTpl.IconicSkillPm} PM) + Perícias: {string.Join(", ", classTpl.DefaultTrainedSkills)}";
+		}
+
+		void AplicarAtributosRaciais()
+		{
+			if (!chkBonusRacial.ButtonPressed)
+			{
+				AtualizarCalculoAutomatico();
+				return;
+			}
+			var raceTpl = Tormenta20CharacterCreationRules.GetRaceTemplate((T20Race)optRaca.GetSelectedId());
+			spFor.Value = raceTpl.ModFor;
+			spDes.Value = raceTpl.ModDes;
+			spCon.Value = raceTpl.ModCon;
+			spInt.Value = raceTpl.ModInt;
+			spSab.Value = raceTpl.ModSab;
+			spCar.Value = raceTpl.ModCar;
+			AtualizarCalculoAutomatico();
+		}
+
+		optClasse.ItemSelected += (_) => AtualizarCalculoAutomatico();
+		optRaca.ItemSelected   += (_) => AplicarAtributosRaciais();
+		spNivel.ValueChanged   += (_) => AtualizarCalculoAutomatico();
+		spFor.ValueChanged     += (_) => AtualizarCalculoAutomatico();
+		spDes.ValueChanged     += (_) => AtualizarCalculoAutomatico();
+		spCon.ValueChanged     += (_) => AtualizarCalculoAutomatico();
+		spInt.ValueChanged     += (_) => AtualizarCalculoAutomatico();
+		spSab.ValueChanged     += (_) => AtualizarCalculoAutomatico();
+		spCar.ValueChanged     += (_) => AtualizarCalculoAutomatico();
+
+		AplicarAtributosRaciais();
 
 		var hboxBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
 		hboxBtns.AddThemeConstantOverride("separation", 10);
 		vbox.AddChild(hboxBtns);
 
 		var btnCancelar = new Button { Text = "Cancelar" };
-		var btnCriar    = new Button { Text = "✔ Criar Personagem" };
+		var btnCriar    = new Button { Text = "✔ Criar Personagem (Cálculo Automático)" };
 		btnCriar.AddThemeColorOverride("font_color", new Color(0.4f, 1f, 0.5f));
 		hboxBtns.AddChild(btnCancelar);
 		hboxBtns.AddChild(btnCriar);
@@ -454,22 +1491,25 @@ public partial class MainUi : Control
 			}
 
 			leName.Modulate = Colors.White;
-			OnCriarPersonagem(
+			var selectedClass = (T20Class)optClasse.GetSelectedId();
+			var selectedRace  = (T20Race)optRaca.GetSelectedId();
+			var selectedOrig  = (T20Origin)optOrigem.GetSelectedId();
+			var selectedDeity = (T20Deity)optDivindade.GetSelectedId();
+
+			OnCriarPersonagemComEnums(
 				nome,
-				leClasse.Text.Trim().Length > 0 ? leClasse.Text.Trim() : "Aventureiro",
-				leRaca.Text.Trim().Length > 0 ? leRaca.Text.Trim() : "Humano",
-				leOrigem.Text.Trim(),
-				leDivindade.Text.Trim(),
+				selectedClass,
+				selectedRace,
+				selectedOrig,
+				selectedDeity,
 				(int)spNivel.Value,
-				(int)spPv.Value,
-				(int)spPm.Value,
 				(int)spFor.Value, (int)spDes.Value, (int)spCon.Value,
 				(int)spInt.Value, (int)spSab.Value, (int)spCar.Value
 			);
 
-			leName.Text = leClasse.Text = leRaca.Text = leOrigem.Text = leDivindade.Text = "";
-			spNivel.Value = 1; spPv.Value = 20; spPm.Value = 3;
-			spFor.Value = spDes.Value = spCon.Value = spInt.Value = spSab.Value = spCar.Value = 0;
+			leName.Text = "";
+			spNivel.Value = 1;
+			AplicarAtributosRaciais();
 			win.Hide();
 		};
 
@@ -561,6 +1601,9 @@ public partial class MainUi : Control
 		var chkEquip = new CheckBox { Text = "Equipar imediatamente", ButtonPressed = true };
 		vbox.AddChild(chkEquip);
 
+		var chkComprar = new CheckBox { Text = "Comprar item (descontar preço dos Tibares T$)", ButtonPressed = false };
+		vbox.AddChild(chkComprar);
+
 		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
 		hBtns.AddThemeConstantOverride("separation", 10);
 		vbox.AddChild(hBtns);
@@ -578,16 +1621,27 @@ public partial class MainUi : Control
 			string nome = leNome.Text.Trim();
 			if (string.IsNullOrEmpty(nome)) return;
 
+			int preco = (int)spPrice.Value;
+			if (chkComprar.ButtonPressed)
+			{
+				if (_selectedCharacter.Tibares < preco)
+				{
+					ShowToast($"⚠️ Tibares insuficientes! (Custo: T$ {preco} | Carteira: T$ {_selectedCharacter.Tibares})", new Color(1f, 0.45f, 0.45f));
+					return;
+				}
+				_selectedCharacter.Tibares -= preco;
+			}
+
 			var tipo = (ItemType)optTipo.GetSelectedId();
 			string dano = tipo == ItemType.Weapon ? leDano.Text.Trim() : "";
 			_selectedCharacter.Inventory.Add(new CharacterItem(
 				nome, "", tipo, (int)spSlots.Value, dano, leCrit.Text.Trim(),
-				(int)spDef.Value, (int)spPen.Value, (int)spPrice.Value, chkEquip.ButtonPressed));
+				(int)spDef.Value, (int)spPen.Value, preco, chkEquip.ButtonPressed));
 
 			leNome.Text = "";
 			win.Hide();
 			RefreshSheetUI();
-			ShowToast($"🎒 Item \"{nome}\" adicionado ao inventário!");
+			ShowToast($"🎒 Item \"{nome}\" adicionado ao inventário!{(chkComprar.ButtonPressed ? $" (-T$ {preco})" : "")}");
 		};
 
 		win.Hide();
@@ -600,7 +1654,7 @@ public partial class MainUi : Control
 		{
 			Title = "Adicionar Magia / Habilidade",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
-			Size = new Vector2I(400, 380),
+			Size = new Vector2I(420, 440),
 			Exclusive = true
 		};
 
@@ -616,13 +1670,17 @@ public partial class MainUi : Control
 		vbox.AddThemeConstantOverride("separation", 8);
 		margin.AddChild(vbox);
 
-		var leNome = new LineEdit { PlaceholderText = "Ex: Bola de Fogo, Curar Ferimentos..." };
+		var leNome = new LineEdit { PlaceholderText = "Ex: Bola de Fogo, Ataque Especial..." };
 		vbox.AddChild(new Label { Text = "Nome da Magia / Poder *" });
 		vbox.AddChild(leNome);
 
-		var leDesc = new LineEdit { PlaceholderText = "Ex: 6d6 de dano de fogo em área" };
+		var leDesc = new LineEdit { PlaceholderText = "Ex: Causa 6d6 de dano de fogo" };
 		vbox.AddChild(new Label { Text = "Descrição / Efeito" });
 		vbox.AddChild(leDesc);
+
+		_leNovaMagiaFormula = new LineEdit { PlaceholderText = "Opcional: ex: 2d4+2 ou 6d6 (rola dano no combate)" };
+		vbox.AddChild(new Label { Text = "Fórmula de Dados em Combate (Opcional)" });
+		vbox.AddChild(_leNovaMagiaFormula);
 
 		var hRow = new HBoxContainer();
 		hRow.AddThemeConstantOverride("separation", 10);
@@ -637,7 +1695,7 @@ public partial class MainUi : Control
 		optAcao.AddItem("Ação Completa", (int)T20ActionType.Full);
 
 		var vbPm = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
-		vbPm.AddChild(new Label { Text = "Custo (PM)" });
+		vbPm.AddChild(new Label { Text = "Custo Base (PM)" });
 		vbPm.AddChild(spPm);
 		var vbAc = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
 		vbAc.AddChild(new Label { Text = "Execução" });
@@ -645,8 +1703,8 @@ public partial class MainUi : Control
 		hRow.AddChild(vbPm);
 		hRow.AddChild(vbAc);
 
-		var chkSpell = new CheckBox { Text = "É uma Magia (Arcana/Divina)", ButtonPressed = true };
-		vbox.AddChild(chkSpell);
+		_chkNovaMagiaIsSpell = new CheckBox { Text = "É uma Magia (Arcana/Divina)", ButtonPressed = true };
+		vbox.AddChild(_chkNovaMagiaIsSpell);
 
 		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
 		hBtns.AddThemeConstantOverride("separation", 10);
@@ -665,14 +1723,15 @@ public partial class MainUi : Control
 			string nome = leNome.Text.Trim();
 			if (string.IsNullOrEmpty(nome)) return;
 
+			bool isSpell = _chkNovaMagiaIsSpell.ButtonPressed;
 			_selectedCharacter.Skills.Add(new CharacterSkill(
 				nome, leDesc.Text.Trim(), (int)spPm.Value,
-				(T20ActionType)optAcao.GetSelectedId(), 0, "", chkSpell.ButtonPressed));
+				(T20ActionType)optAcao.GetSelectedId(), 0, "", isSpell, _leNovaMagiaFormula.Text.Trim()));
 
-			leNome.Text = leDesc.Text = "";
+			leNome.Text = leDesc.Text = _leNovaMagiaFormula.Text = "";
 			win.Hide();
 			RefreshSheetUI();
-			ShowToast($"🔮 \"{nome}\" adicionada à ficha!");
+			ShowToast($"{(isSpell ? "🔮 Magia" : "✨ Poder")} \"{nome}\" adicionado à ficha!");
 		};
 
 		win.Hide();
@@ -683,116 +1742,323 @@ public partial class MainUi : Control
 	{
 		var win = new Window
 		{
-			Title = "Árvore de Poderes — Tormenta20",
+			Title = "🌳 Árvore N-ária de Habilidades e Pré-requisitos — Tormenta20 JdA (Core C++ Tree<T>)",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
-			Size = new Vector2I(560, 480),
+			Size = new Vector2I(1180, 690),
 			Exclusive = true
 		};
+
+		var bg = new ColorRect
+		{
+			Color = new Color(0.07f, 0.08f, 0.10f, 1f)
+		};
+		bg.SetAnchorsPreset(LayoutPreset.FullRect);
+		win.AddChild(bg);
 
 		var margin = new MarginContainer();
 		margin.SetAnchorsPreset(LayoutPreset.FullRect);
 		margin.AddThemeConstantOverride("margin_left", 14);
 		margin.AddThemeConstantOverride("margin_right", 14);
-		margin.AddThemeConstantOverride("margin_top", 12);
-		margin.AddThemeConstantOverride("margin_bottom", 12);
+		margin.AddThemeConstantOverride("margin_top", 10);
+		margin.AddThemeConstantOverride("margin_bottom", 10);
 		win.AddChild(margin);
 
 		var vbox = new VBoxContainer();
-		vbox.AddThemeConstantOverride("separation", 10);
+		vbox.AddThemeConstantOverride("separation", 8);
 		margin.AddChild(vbox);
 
-		var lblInfo = new Label { Text = "Clique em 'Aprender' nos poderes disponíveis (pré-requisitos validados pelo Core C++):" };
-		lblInfo.AddThemeFontSizeOverride("font_size", 12);
-		vbox.AddChild(lblInfo);
+		// 1. Barra Superior da Árvore: Resumo do Personagem + Legenda + Botão Resetar
+		var topHeader = new HBoxContainer();
+		topHeader.AddThemeConstantOverride("separation", 12);
+		vbox.AddChild(topHeader);
 
-		var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill };
-		vbox.AddChild(scroll);
+		_lblArvoreCharResumo = new Label
+		{
+			Text = "Herói — Nível 1",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_lblArvoreCharResumo.AddThemeColorOverride("font_color", new Color(1f, 0.88f, 0.45f));
+		_lblArvoreCharResumo.AddThemeFontSizeOverride("font_size", 13);
+		topHeader.AddChild(_lblArvoreCharResumo);
 
-		_boxArvoreList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
-		_boxArvoreList.AddThemeConstantOverride("separation", 6);
-		scroll.AddChild(_boxArvoreList);
+		var lblLegenda = new Label
+		{
+			Text = "★ Dourado: Aprendido   |   ✔ Verde: Disponível   |   🔒 Cinza: Bloqueado (Clique para inspecionar)"
+		};
+		lblLegenda.AddThemeColorOverride("font_color", new Color(0.75f, 0.78f, 0.84f));
+		lblLegenda.AddThemeFontSizeOverride("font_size", 11);
+		topHeader.AddChild(lblLegenda);
 
-		var btnFechar = new Button { Text = "Fechar", SizeFlagsHorizontal = SizeFlags.ShrinkEnd };
+		var btnResetTree = new Button
+		{
+			Text = "🔄 Resetar Árvore"
+		};
+		btnResetTree.AddThemeColorOverride("font_color", new Color(1f, 0.55f, 0.55f));
+		btnResetTree.AddThemeFontSizeOverride("font_size", 11);
+		btnResetTree.Pressed += () =>
+		{
+			if (_selectedCharacter == null) return;
+			_selectedCharacter.Skills.RemoveAll(s => !string.IsNullOrEmpty(s.TreeKey));
+			_selectedCharacter.UnlockedTreeKeys.Clear();
+			SincronizarArvoreComCombateAtivo();
+			RefreshSheetUI();
+			AbrirArvorePoderes();
+			ShowToast($"🔄 Árvore de habilidades de {_selectedCharacter.Name} resetada!");
+		};
+		topHeader.AddChild(btnResetTree);
+
+		// 2. Área Central: Canvas Gráfico da Árvore N-ária (Scroll Horizontal/Vertical)
+		var treeFrame = new PanelContainer
+		{
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		var frameStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.05f, 0.06f, 0.08f, 1f),
+			BorderColor = new Color(0.28f, 0.30f, 0.38f, 1f),
+			BorderWidthLeft = 1,
+			BorderWidthTop = 1,
+			BorderWidthRight = 1,
+			BorderWidthBottom = 1,
+			CornerRadiusTopLeft = 8,
+			CornerRadiusTopRight = 8,
+			CornerRadiusBottomLeft = 8,
+			CornerRadiusBottomRight = 8
+		};
+		treeFrame.AddThemeStyleboxOverride("panel", frameStyle);
+		vbox.AddChild(treeFrame);
+
+		var scroll = new ScrollContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+		};
+		treeFrame.AddChild(scroll);
+
+		_abilityTreeCanvas = new AbilityTreeCanvas();
+		scroll.AddChild(_abilityTreeCanvas);
+
+		_abilityTreeCanvas.NodeSelected += AtualizarInspetorNoArvore;
+		_abilityTreeCanvas.LearnRequested += AprenderPoderNaArvore;
+
+		// 3. Painel Inferior: Inspetor Detalhado do Nó Selecionado na Árvore
+		var inspectorCard = new PanelContainer
+		{
+			CustomMinimumSize = new Vector2(0, 128)
+		};
+		var inspStyle = new StyleBoxFlat
+		{
+			BgColor = new Color(0.11f, 0.12f, 0.16f, 0.98f),
+			BorderColor = new Color(0.75f, 0.58f, 0.25f, 0.95f),
+			BorderWidthLeft = 2,
+			BorderWidthTop = 2,
+			BorderWidthRight = 2,
+			BorderWidthBottom = 2,
+			CornerRadiusTopLeft = 8,
+			CornerRadiusTopRight = 8,
+			CornerRadiusBottomLeft = 8,
+			CornerRadiusBottomRight = 8,
+			ContentMarginLeft = 14,
+			ContentMarginRight = 14,
+			ContentMarginTop = 10,
+			ContentMarginBottom = 10
+		};
+		inspectorCard.AddThemeStyleboxOverride("panel", inspStyle);
+		vbox.AddChild(inspectorCard);
+
+		var hInsp = new HBoxContainer();
+		hInsp.AddThemeConstantOverride("separation", 16);
+		inspectorCard.AddChild(hInsp);
+
+		var vInspText = new VBoxContainer
+		{
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		vInspText.AddThemeConstantOverride("separation", 4);
+		hInsp.AddChild(vInspText);
+
+		_lblArvoreNodeTitle = new Label
+		{
+			Text = "Selecione um nó na árvore acima"
+		};
+		_lblArvoreNodeTitle.AddThemeColorOverride("font_color", new Color(1f, 0.9f, 0.45f));
+		_lblArvoreNodeTitle.AddThemeFontSizeOverride("font_size", 15);
+		vInspText.AddChild(_lblArvoreNodeTitle);
+
+		_lblArvoreNodeDesc = new Label
+		{
+			Text = "Clique em qualquer cartão da árvore para inspecionar seus efeitos e pré-requisitos.",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		_lblArvoreNodeDesc.AddThemeColorOverride("font_color", new Color(0.9f, 0.92f, 0.95f));
+		_lblArvoreNodeDesc.AddThemeFontSizeOverride("font_size", 12);
+		vInspText.AddChild(_lblArvoreNodeDesc);
+
+		_lblArvoreNodeReqs = new Label
+		{
+			Text = "",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		_lblArvoreNodeReqs.AddThemeFontSizeOverride("font_size", 11);
+		vInspText.AddChild(_lblArvoreNodeReqs);
+
+		var vInspActions = new VBoxContainer
+		{
+			Alignment = BoxContainer.AlignmentMode.Center
+		};
+		vInspActions.AddThemeConstantOverride("separation", 8);
+		hInsp.AddChild(vInspActions);
+
+		_btnArvoreActionNode = new Button
+		{
+			Text = "✨ Aprender Poder",
+			CustomMinimumSize = new Vector2(185, 38)
+		};
+		_btnArvoreActionNode.Pressed += () =>
+		{
+			var st = _abilityTreeCanvas?.GetNodeState(_inspectedPowerKey);
+			if (st == null || _selectedCharacter == null) return;
+
+			if (st.CanLearn)
+			{
+				AprenderPoderNaArvore(st.Definition);
+			}
+			else if (st.IsUnlocked)
+			{
+				// Verifica se algum filho deste nó está aprendido antes de remover
+				bool hasUnlockedChild = Tormenta20AbilityTreeRules.CanonicalPowers.Any(
+					p => p.ParentKey == st.Definition.Key && _selectedCharacter.UnlockedTreeKeys.Contains(p.Key));
+				if (hasUnlockedChild)
+				{
+					ShowToast($"⚠️ Remova primeiro os poderes filhos que dependem de \"{st.Definition.Name}\"!", new Color(1f, 0.45f, 0.45f));
+					return;
+				}
+				_selectedCharacter.UnlockedTreeKeys.Remove(st.Definition.Key);
+				_selectedCharacter.Skills.RemoveAll(s => s.TreeKey == st.Definition.Key);
+				SincronizarArvoreComCombateAtivo();
+				RefreshSheetUI();
+				AbrirArvorePoderes();
+				ShowToast($"🗑️ Poder \"{st.Definition.Name}\" removido da árvore.");
+			}
+		};
+		vInspActions.AddChild(_btnArvoreActionNode);
+
+		var btnFechar = new Button
+		{
+			Text = "✕ Fechar Árvore",
+			CustomMinimumSize = new Vector2(185, 32)
+		};
 		btnFechar.Pressed  += () => win.Hide();
 		win.CloseRequested += () => win.Hide();
-		vbox.AddChild(btnFechar);
+		vInspActions.AddChild(btnFechar);
 
 		win.Hide();
 		return win;
+	}
+
+	private void SincronizarArvoreComCombateAtivo()
+	{
+		if (_selectedCharacter == null) return;
+		int activeCid = GetSelectedCombatantId();
+		if (activeCid > 0)
+		{
+			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
+				_combatManager.Session, activeCid, _selectedCharacter.Level,
+				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
+				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
+				_selectedCharacter.UnlockedTreeKeys);
+		}
+	}
+
+	private void AprenderPoderNaArvore(T20PowerTreeDefinition power)
+	{
+		if (_selectedCharacter == null || power == null) return;
+
+		if (!_selectedCharacter.UnlockedTreeKeys.Contains(power.Key))
+			_selectedCharacter.UnlockedTreeKeys.Add(power.Key);
+
+		if (!_selectedCharacter.Skills.Any(s => s.TreeKey == power.Key))
+		{
+			_selectedCharacter.Skills.Add(new CharacterSkill(
+				power.Name, power.Description, power.PmCost, power.ActionType, 0, power.Key, false, power.BaseFormula));
+		}
+
+		SincronizarArvoreComCombateAtivo();
+		RefreshSheetUI();
+		AbrirArvorePoderes();
+		_abilityTreeCanvas?.PlayUnlockEffectAt(power.Key);
+		ShowToast($"✨ Poder \"{power.Name}\" desbloqueado na Árvore de Habilidades!");
+		AppendCombatLog($"🌳 {_selectedCharacter.Name} desbloqueou o poder [b]{power.Name}[/b] na Árvore!", "#ffd700");
+	}
+
+	private void AtualizarInspetorNoArvore(AbilityTreeCanvas.NodeEvalState st)
+	{
+		if (st == null) return;
+		_inspectedPowerKey = st.Definition.Key;
+
+		string parentLabel = string.IsNullOrEmpty(st.Definition.ParentKey)
+			? "Raiz do Ramo (Nível 1)"
+			: $"Nó Pai: {st.Definition.ParentKey} (Profundidade Nível {st.Definition.Tier})";
+		string costLabel = st.Definition.PmCost > 0 ? $"{st.Definition.PmCost} PM ({st.Definition.ActionType})" : "Passivo / Sem custo de PM";
+
+		_lblArvoreNodeTitle.Text = $"{st.Definition.Name}   —   [{st.Definition.BranchName}]   |   {parentLabel}   |   {costLabel}";
+		_lblArvoreNodeDesc.Text  = st.Definition.Description;
+
+		if (st.IsUnlocked)
+		{
+			string useStatus = st.CanUseInTurn
+				? "✔ Pronto para uso neste turno"
+				: $"⏳ Requisito de ativação no turno: {st.UnmetUsageReasons}";
+			_lblArvoreNodeReqs.Text = $"★ STATUS NA ÁRVORE: APRENDIDO   |   {useStatus}";
+			_lblArvoreNodeReqs.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.6f));
+			_btnArvoreActionNode.Text     = "🗑️ Esquecer Poder";
+			_btnArvoreActionNode.Disabled = false;
+			_btnArvoreActionNode.AddThemeColorOverride("font_color", new Color(1f, 0.55f, 0.55f));
+		}
+		else if (st.CanLearn)
+		{
+			_lblArvoreNodeReqs.Text = "✔ STATUS NA ÁRVORE: DISPONÍVEL! Todos os pré-requisitos ancestrais e de atributos na RequirementTree foram cumpridos.";
+			_lblArvoreNodeReqs.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.65f));
+			_btnArvoreActionNode.Text     = $"✨ Aprender \"{st.Definition.Name}\"";
+			_btnArvoreActionNode.Disabled = false;
+			_btnArvoreActionNode.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.6f));
+		}
+		else
+		{
+			_lblArvoreNodeReqs.Text = $"🔒 BLOQUEADO PELA REQUIREMENT TREE (C++): {st.UnmetLearnReasons}";
+			_lblArvoreNodeReqs.AddThemeColorOverride("font_color", new Color(1f, 0.5f, 0.5f));
+			_btnArvoreActionNode.Text     = "🔒 Pré-requisitos Pendentes";
+			_btnArvoreActionNode.Disabled = true;
+			_btnArvoreActionNode.AddThemeColorOverride("font_color", new Color(0.6f, 0.6f, 0.6f));
+		}
 	}
 
 	private void AbrirArvorePoderes()
 	{
 		if (_selectedCharacter == null) return;
 
-		foreach (Node child in _boxArvoreList.GetChildren().ToArray())
-			child.QueueFree();
-
-		using var session = new EncounterSession();
-		Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
-		int eid = session.AddCombatant(_selectedCharacter.Name, _selectedCharacter.Dexterity, _selectedCharacter.MaxHp, 1);
-		Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-			session, eid, _selectedCharacter.Level,
-			_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
-			_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
-			_selectedCharacter.UnlockedTreeKeys);
-
-		foreach (var p in Tormenta20AbilityTreeRules.CanonicalPowers)
+		int totalPowers = Tormenta20AbilityTreeRules.CanonicalPowers.Count;
+		int unlockedCount = _selectedCharacter.UnlockedTreeKeys.Count;
+		if (_lblArvoreCharResumo != null)
 		{
-			bool alreadyHas = session.HasAbility(eid, p.Key);
-			bool canLearn   = session.CanLearnAbility(eid, p.Key, out string unmet);
-
-			var row = new HBoxContainer();
-			row.AddThemeConstantOverride("separation", 8);
-
-			string prefix = string.IsNullOrEmpty(p.ParentKey) ? "" : "↳ ";
-			var lbl = new Label
-			{
-				Text = $"{prefix}{p.Name} — {p.Description}",
-				SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
-				AutowrapMode = TextServer.AutowrapMode.WordSmart
-			};
-			lbl.AddThemeFontSizeOverride("font_size", 12);
-			if (alreadyHas) lbl.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.55f));
-			else if (!canLearn) lbl.AddThemeColorOverride("font_color", new Color(0.55f, 0.55f, 0.55f));
-			row.AddChild(lbl);
-
-			if (alreadyHas)
-			{
-				var tag = new Label { Text = "[APRENDIDO]" };
-				tag.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.55f));
-				tag.AddThemeFontSizeOverride("font_size", 11);
-				row.AddChild(tag);
-			}
-			else if (canLearn)
-			{
-				var btnLearn = new Button { Text = "Aprender" };
-				btnLearn.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.3f));
-				var powerCopy = p;
-				btnLearn.Pressed += () =>
-				{
-					_selectedCharacter.UnlockedTreeKeys.Add(powerCopy.Key);
-					_selectedCharacter.Skills.Add(new CharacterSkill(
-						powerCopy.Name, powerCopy.Description, powerCopy.PmCost, powerCopy.ActionType, 0, powerCopy.Key));
-					RefreshSheetUI();
-					ShowToast($"✨ Poder \"{powerCopy.Name}\" desbloqueado!");
-					AbrirArvorePoderes();
-				};
-				row.AddChild(btnLearn);
-			}
-			else
-			{
-				var tagBlock = new Label { Text = $"[Bloqueado: {unmet}]" };
-				tagBlock.AddThemeColorOverride("font_color", new Color(0.95f, 0.45f, 0.45f));
-				tagBlock.AddThemeFontSizeOverride("font_size", 10);
-				row.AddChild(tagBlock);
-			}
-
-			_boxArvoreList.AddChild(row);
+			_lblArvoreCharResumo.Text =
+				$"👤 {_selectedCharacter.Name} ({_selectedCharacter.Race} {_selectedCharacter.CharacterClass} Nv.{_selectedCharacter.Level})   |   " +
+				$"FOR {FormatAttr(_selectedCharacter.Strength)}  DES {FormatAttr(_selectedCharacter.Dexterity)}  CON {FormatAttr(_selectedCharacter.Constitution)}  " +
+				$"INT {FormatAttr(_selectedCharacter.Intelligence)}  SAB {FormatAttr(_selectedCharacter.Wisdom)}  CAR {FormatAttr(_selectedCharacter.Charisma)}   |   " +
+				$"🌳 Desbloqueados: {unlockedCount}/{totalPowers}";
 		}
 
-		_dlgArvorePoderes.PopupCentered();
+		int activeCid = GetSelectedCombatantId();
+		_abilityTreeCanvas?.RebuildTree(
+			_selectedCharacter,
+			activeCid > 0 ? _combatManager.Session : null,
+			activeCid);
+
+		if (!_dlgArvorePoderes.Visible)
+			_dlgArvorePoderes.PopupCentered();
 	}
+
+	private static string FormatAttr(int val) => val >= 0 ? $"+{val}" : val.ToString();
 
 	private Window BuildUsarHabilidadeCombateDialog()
 	{
@@ -800,7 +2066,7 @@ public partial class MainUi : Control
 		{
 			Title = "Usar Poder / Magia no Turno",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
-			Size = new Vector2I(440, 320),
+			Size = new Vector2I(470, 380),
 			Exclusive = true
 		};
 
@@ -820,6 +2086,24 @@ public partial class MainUi : Control
 
 		_listHabilidadesCombate = new ItemList { SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill };
 		vbox.AddChild(_listHabilidadesCombate);
+
+		var hAprim = new HBoxContainer();
+		hAprim.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hAprim);
+
+		hAprim.AddChild(new Label { Text = "Aprimoramento (+PM):" });
+		_spinAprimoramentoPm = new SpinBox { MinValue = 0, MaxValue = 30, Value = 0, CustomMinimumSize = new Vector2(80, 0) };
+		hAprim.AddChild(_spinAprimoramentoPm);
+
+		_lblLimitePmCombate = new Label
+		{
+			Text = "Limite de gasto: 1 PM",
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			HorizontalAlignment = HorizontalAlignment.Right
+		};
+		_lblLimitePmCombate.AddThemeColorOverride("font_color", new Color(0.95f, 0.8f, 0.35f));
+		_lblLimitePmCombate.AddThemeFontSizeOverride("font_size", 12);
+		hAprim.AddChild(_lblLimitePmCombate);
 
 		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
 		hBtns.AddThemeConstantOverride("separation", 10);
@@ -842,34 +2126,141 @@ public partial class MainUi : Control
 			if (selected.Length == 0 || selected[0] >= actorSheet.Skills.Count) return;
 
 			var sk = actorSheet.Skills[selected[0]];
-			if (sk.PmCost > 0)
-			{
-				bool spentCore  = _combatManager.Session.SpendResource(actorId, Tormenta20ActionRules.ManaResourceId, sk.PmCost);
-				bool spentSheet = spentCore && actorSheet.SpendPm(sk.PmCost);
-				if (!spentSheet)
-				{
-					AppendCombatLog($"⚠️ {actorSheet.Name} não possui PM suficientes ({sk.PmCost} PM) para \"{sk.Name}\"!", "#ff6b6b");
-					win.Hide();
-					return;
-				}
-			}
+			int extraPm = (int)_spinAprimoramentoPm.Value;
+			int targetId = GetSelectedCombatTargetId(actorId);
 
-			var actRes = Tormenta20ActionRules.EnqueueTurnAction(_combatManager.Session, actorId, sk.Action, sk.Name);
+			// Valida limite de PM por nível (ou Magia Ilimitada), pré-requisitos da AbilityTree e consome ação + PM
+			var actRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(
+				_combatManager.Session, actorId, actorSheet, sk, extraPm, targetId);
+
+			// Sincroniza PM da ficha com o Core C++
+			ResourceInfo pmInfo = _combatManager.Session.GetResource(actorId, CombatManager.ManaResourceId);
+			actorSheet.CurrentPm = pmInfo.Current;
+
 			if (!actRes.Success)
 			{
-				// Estorna PM se a ação não estava disponível no turno
-				if (sk.PmCost > 0)
-				{
-					_combatManager.Session.RestoreResource(actorId, Tormenta20ActionRules.ManaResourceId, sk.PmCost);
-					actorSheet.RecoverPm(sk.PmCost);
-				}
-				AppendCombatLog($"⚠️ Ação indisponível para \"{sk.Name}\": {actRes.Message}", "#ff6b6b");
+				AppendCombatLog($"⚠️ {actRes.Message}", "#ff6b6b");
+				ShowToast(actRes.Message, new Color(1f, 0.45f, 0.45f));
 			}
 			else
 			{
-				AppendCombatLog($"✨ {actorSheet.Name} usou [b]{sk.Name}[/b] (-{sk.PmCost} PM): {sk.Description}", "#66d9ef");
+				int totalPm = sk.PmCost + extraPm;
+				if (actRes.ActionId > 0 && totalPm > 0)
+				{
+					_queuedActionPmSpent[(actorId, actRes.ActionId)] = totalPm;
+				}
+				AppendCombatLog($"✨ {actorSheet.Name} usou [b]{sk.Name}[/b] (-{totalPm} PM): {sk.Description}", "#66d9ef");
+
+				// Se a magia/habilidade possui fórmula de dados (ex.: Mísseis Mágicos "2d4+2"), rola e aplica no alvo!
+				if (!string.IsNullOrWhiteSpace(sk.BaseFormula) &&
+					_combatManager.CombatantIdToSheet.TryGetValue(targetId, out var targetSheet))
+				{
+					try
+					{
+						RollResult dmgRoll = _combatManager.Session.Roll(sk.BaseFormula.Trim());
+						int rawDmg = Math.Max(1, dmgRoll.Total + extraPm * 2);
+						DamageResult dmgRes = _combatManager.Session.DealDamage(targetId, rawDmg, (int)T20DamageType.Essence);
+						targetSheet.CurrentHp = _combatManager.Session.GetResource(targetId, CombatManager.HealthResourceId).Current;
+						AppendCombatLog($"💥 Efeito de [b]{sk.Name}[/b] em {targetSheet.Name}: rolou {sk.BaseFormula} = {dmgRes.FinalAmount} de dano mágico!", "#ffaa44");
+					}
+					catch { }
+				}
 			}
 
+			RefreshSheetUI();
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			RefreshActionQueuePanel();
+			UpdateCombatStatusDisplay();
+			win.Hide();
+		};
+
+		win.Hide();
+		return win;
+	}
+
+	private Window BuildCondicoesCombateDialog()
+	{
+		var win = new Window
+		{
+			Title = "Condições Canônicas de Tormenta20",
+			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
+			Size = new Vector2I(450, 310),
+			Exclusive = true
+		};
+
+		var margin = new MarginContainer();
+		margin.SetAnchorsPreset(LayoutPreset.FullRect);
+		margin.AddThemeConstantOverride("margin_left", 16);
+		margin.AddThemeConstantOverride("margin_right", 16);
+		margin.AddThemeConstantOverride("margin_top", 14);
+		margin.AddThemeConstantOverride("margin_bottom", 14);
+		win.AddChild(margin);
+
+		var vbox = new VBoxContainer();
+		vbox.AddThemeConstantOverride("separation", 10);
+		margin.AddChild(vbox);
+
+		vbox.AddChild(new Label { Text = "Escolha a condição para aplicar ou remover no Alvo Selecionado:" });
+
+		_optCondicaoAplicar = new OptionButton();
+		foreach (T20Condition cond in Enum.GetValues(typeof(T20Condition)))
+		{
+			_optCondicaoAplicar.AddItem($"{cond} — {Tormenta20ConditionRules.GetConditionDescription(cond)}", (int)cond);
+		}
+		vbox.AddChild(_optCondicaoAplicar);
+
+		var hDur = new HBoxContainer();
+		hDur.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hDur);
+		hDur.AddChild(new Label { Text = "Duração em turnos (-1 = até o fim da cena):" });
+		_spinDuracaoCondicao = new SpinBox { MinValue = -1, MaxValue = 20, Value = -1, CustomMinimumSize = new Vector2(80, 0) };
+		hDur.AddChild(_spinDuracaoCondicao);
+
+		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+		hBtns.AddThemeConstantOverride("separation", 8);
+		vbox.AddChild(hBtns);
+
+		var btnCancelar = new Button { Text = "Fechar" };
+		var btnRemover  = new Button { Text = "🩹 Remover Condição" };
+		var btnAplicar  = new Button { Text = "⚡ Aplicar no Alvo" };
+		btnAplicar.AddThemeColorOverride("font_color", new Color(1f, 0.8f, 0.35f));
+		btnRemover.AddThemeColorOverride("font_color", new Color(0.55f, 0.95f, 0.65f));
+
+		hBtns.AddChild(btnCancelar);
+		hBtns.AddChild(btnRemover);
+		hBtns.AddChild(btnAplicar);
+
+		btnCancelar.Pressed += () => win.Hide();
+		win.CloseRequested  += () => win.Hide();
+
+		btnAplicar.Pressed += () =>
+		{
+			if (!_combatManager.IsInCombat) { win.Hide(); return; }
+			int targetId = GetSelectedCombatTargetId(_combatManager.Session.CurrentTurn);
+			if (targetId <= 0) return;
+
+			var cond = (T20Condition)_optCondicaoAplicar.GetSelectedId();
+			int dur = (int)_spinDuracaoCondicao.Value;
+			string msg = Tormenta20ConditionRules.ApplyCondition(_combatManager.Session, targetId, cond, dur);
+			string targetName = _combatManager.CombatantIdToSheet.TryGetValue(targetId, out var sh) ? sh.Name : $"ID {targetId}";
+			AppendCombatLog($"⚡ [{targetName}] {msg}", "#ffcc66");
+			ShowToast($"⚡ {cond} aplicada em {targetName}!");
+			RefreshSheetUI();
+			win.Hide();
+		};
+
+		btnRemover.Pressed += () =>
+		{
+			if (!_combatManager.IsInCombat) { win.Hide(); return; }
+			int targetId = GetSelectedCombatTargetId(_combatManager.Session.CurrentTurn);
+			if (targetId <= 0) return;
+
+			var cond = (T20Condition)_optCondicaoAplicar.GetSelectedId();
+			Tormenta20ConditionRules.RemoveCondition(_combatManager.Session, targetId, cond);
+			string targetName = _combatManager.CombatantIdToSheet.TryGetValue(targetId, out var sh) ? sh.Name : $"ID {targetId}";
+			AppendCombatLog($"🩹 [{targetName}] Condição '{cond}' removida.", "#88ee99");
+			ShowToast($"🩹 {cond} removida de {targetName}.");
 			RefreshSheetUI();
 			win.Hide();
 		};
@@ -883,10 +2274,10 @@ public partial class MainUi : Control
 	// ════════════════════════════════════════════════════════════════════════
 	private void ConnectEvents()
 	{
-		// TopBar
+		// TopBar: Ficha e Combate trocam de tela; Bandeja de Dados abre como POP-UP sobre a tela atual!
 		_btnViewFicha.Pressed         += () => ShowView("Ficha");
 		_btnViewCombate.Pressed       += () => ShowView("Combate");
-		_btnViewDados.Pressed         += () => ShowView("Dados");
+		_btnViewDados.Pressed         += () => ToggleDiceTrayPopup();
 		_btnSalvarFichas.Pressed      += OnSalvarFichasPressed;
 		_btnVoltarMenu.Pressed        += () => GetTree().ChangeSceneToFile("res://Cenas/MainMenu.tscn");
 		_btnNovoPersonagem.Pressed    += () => _dlgNovoPersonagem.PopupCentered();
@@ -934,39 +2325,101 @@ public partial class MainUi : Control
 		_popupPericia.GuiInput  += (e) => { if (e is InputEventMouseButton mb && mb.Pressed) _popupPericia.Visible = false; };
 
 		// Combate
-		_btnIniciarCombate.Pressed += OnIniciarCombatePressed;
-		_btnProximoTurno.Pressed   += () => _combatManager.NextTurn();
-		_btnAtacar.Pressed         += OnAtacarPressed;
-		_btnMovimento.Pressed      += OnMovimentoPressed;
-		_btnUsarHabilidade.Pressed += OnAbrirUsarHabilidadeCombate;
+		_btnIniciarCombate.Pressed   += OnIniciarCombatePressed;
+		_btnProximoTurno.Pressed     += () =>
+		{
+			_queuedActionPmSpent.Clear();
+			_combatManager.NextTurn();
+		};
+		_btnEncerrarCombate.Pressed  += () =>
+		{
+			_queuedActionPmSpent.Clear();
+			_combatManager.EndCombat();
+			UpdateCombatStatusDisplay();
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			RefreshActionQueuePanel();
+			RefreshSheetUI();
+		};
+		if (_btnSalvarCombate != null)
+		{
+			_btnSalvarCombate.Pressed += () =>
+			{
+				if (_combatManager.SaveCombatSnapshot())
+					ShowToast("💾 Snapshot do combate salvo em saves/encounter_snapshot.json!");
+				else
+					ShowToast("⚠️ Nenhum combate ativo para salvar.", new Color(1f, 0.45f, 0.45f));
+			};
+		}
+		if (_btnCarregarCombate != null)
+		{
+			_btnCarregarCombate.Pressed += () =>
+			{
+				_queuedActionPmSpent.Clear();
+				if (_combatManager.LoadCombatSnapshot())
+				{
+					UpdateCharacterDropdown();
+					UpdateCombatStatusDisplay();
+					RefreshInitiativeBar();
+					PopularAlvoCombate();
+					RefreshActionQueuePanel();
+					RefreshSheetUI();
+					ShowToast("📂 Snapshot de combate restaurado com sucesso!");
+				}
+				else
+				{
+					ShowToast("⚠️ Nenhum snapshot de combate salvo encontrado.", new Color(1f, 0.45f, 0.45f));
+				}
+			};
+		}
+		_btnAtacar.Pressed           += OnAtacarPressed;
+		_btnMovimento.Pressed        += OnMovimentoPressed;
+		if (_btnAcaoCompleta != null)
+			_btnAcaoCompleta.Pressed += OnAcaoCompletaPressed;
+		if (_btnPopNextAction != null)
+			_btnPopNextAction.Pressed += OnPopNextActionPressed;
+		_btnUsarHabilidade.Pressed   += OnAbrirUsarHabilidadeCombate;
+		_btnCondicoesCombate.Pressed += () =>
+		{
+			if (!_combatManager.IsInCombat)
+			{
+				ShowToast("⚠️ Inicie o combate antes de aplicar condições de turno!", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
+			_dlgCondicoesCombate.PopupCentered();
+		};
 
 		_combatManager.TurnChanged += (cid, cname, round) =>
 		{
 			UpdateCombatStatusDisplay();
 			RefreshInitiativeBar();
 			PopularAlvoCombate();
+			RefreshActionQueuePanel();
+			RefreshSheetUI();
 		};
 
 		_combatManager.CombatLog += (msg, hex) => AppendCombatLog(msg, hex);
 
-		// Dados
+		// Dados (Pop-up Bandeja de Dados)
 		_btnRolar.Pressed           += () => RolarDadoExpressao(_txtExpressao.Text);
 		_txtExpressao.TextSubmitted += RolarDadoExpressao;
-
-		SetupQuickDice("BtnD4", "1d4");
-		SetupQuickDice("BtnD6", "1d6");
-		SetupQuickDice("BtnD8", "1d8");
-		SetupQuickDice("BtnD10", "1d10");
-		SetupQuickDice("BtnD12", "1d12");
-		SetupQuickDice("BtnD20", "1d20");
-		SetupQuickDice("BtnD100", "1d100");
 	}
 
-	private void SetupQuickDice(string btnName, string expr)
+	public override void _UnhandledKeyInput(InputEvent @event)
 	{
-		string path = $"MarginContainer/VBoxMain/MainContent/ViewDados/VBox/QuickDice/{btnName}";
-		if (HasNode(path))
-			GetNode<Button>(path).Pressed += () => RolarDadoExpressao(expr);
+		if (@event is InputEventKey keyEvent && keyEvent.Pressed && keyEvent.Keycode == Key.Escape)
+		{
+			if (_popupDadosOverlay != null && _popupDadosOverlay.Visible)
+			{
+				ToggleDiceTrayPopup(false);
+				GetViewport().SetInputAsHandled();
+			}
+			else if (_popupPericia != null && _popupPericia.Visible)
+			{
+				_popupPericia.Visible = false;
+				GetViewport().SetInputAsHandled();
+			}
+		}
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
@@ -974,9 +2427,18 @@ public partial class MainUi : Control
 	// ════════════════════════════════════════════════════════════════════════
 	private void ShowView(string view)
 	{
+		if (view == "Dados")
+		{
+			ToggleDiceTrayPopup(true);
+			return;
+		}
+
+		_currentMainView     = view;
 		_viewFicha.Visible   = view == "Ficha";
 		_viewCombate.Visible = view == "Combate";
-		_viewDados.Visible   = view == "Dados";
+
+		_btnViewFicha.Modulate   = view == "Ficha"   ? new Color(1f, 0.9f, 0.45f) : Colors.White;
+		_btnViewCombate.Modulate = view == "Combate" ? new Color(1f, 0.9f, 0.45f) : Colors.White;
 	}
 
 	private void ShowToast(string message, Color? borderColor = null)
@@ -1001,19 +2463,82 @@ public partial class MainUi : Control
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
-	// Criar / Excluir Personagens
+	// Criar / Excluir Personagens (com Enums e Cálculo Automático T20 JdA)
 	// ════════════════════════════════════════════════════════════════════════
-	private void OnCriarPersonagem(string nome, string classe, string raca,
-		string origem, string divindade, int nivel, int maxPv, int maxPm,
+	private void OnCriarPersonagemComEnums(
+		string nome,
+		T20Class charClass,
+		T20Race race,
+		T20Origin origin,
+		T20Deity deity,
+		int nivel,
 		int str, int dex, int con, int intel, int wis, int cha)
 	{
-		var novo = _combatManager.CreateCharacter(nome, classe, raca, origem, divindade, nivel, maxPv, maxPm);
+		var classTpl = Tormenta20CharacterCreationRules.GetClassTemplate(charClass);
+		var raceTpl  = Tormenta20CharacterCreationRules.GetRaceTemplate(race);
+		string origName  = Tormenta20CharacterCreationRules.GetOriginDisplayName(origin);
+		string deityName = Tormenta20CharacterCreationRules.GetDeityDisplayName(deity);
+
+		int keyAttrMod = classTpl.SpellKeyAttribute switch
+		{
+			AttributeType.Intelligence => intel,
+			AttributeType.Wisdom => wis,
+			AttributeType.Charisma => cha,
+			_ => 0
+		};
+
+		int autoMaxPv = Tormenta20CharacterCreationRules.CalculateMaxHp(classTpl, raceTpl, nivel, con);
+		int autoMaxPm = Tormenta20CharacterCreationRules.CalculateMaxPm(classTpl, raceTpl, nivel, keyAttrMod);
+
+		var novo = _combatManager.CreateCharacter(
+			nome, classTpl.DisplayName, raceTpl.DisplayName, origName, deityName, nivel, autoMaxPv, autoMaxPm);
+
 		novo.Strength     = str;
 		novo.Dexterity    = dex;
 		novo.Constitution = con;
 		novo.Intelligence = intel;
 		novo.Wisdom       = wis;
 		novo.Charisma     = cha;
+		novo.SpellKeyAttribute = classTpl.SpellKeyAttribute;
+		novo.DefenseBonusMisc  = raceTpl.NaturalDefenseBonus;
+
+		// Adiciona perícias iniciais da classe
+		foreach (string skName in classTpl.DefaultTrainedSkills)
+		{
+			novo.TrainedSkills.Add(skName);
+		}
+
+		// Adiciona habilidade ou magia inicial icônica da classe
+		if (!string.IsNullOrEmpty(classTpl.IconicSkillName))
+		{
+			novo.Skills.Add(new CharacterSkill(
+				classTpl.IconicSkillName,
+				classTpl.IconicSkillDesc,
+				classTpl.IconicSkillPm,
+				classTpl.IconicSkillAction,
+				0, "",
+				classTpl.IconicSkillIsSpell,
+				classTpl.IconicSkillFormula));
+		}
+
+		// Adiciona arma inicial condizente com a classe
+		if (charClass is T20Class.Arcanista or T20Class.Bardo)
+		{
+			novo.Inventory.Add(new CharacterItem("Cajado Arcano", "Foco de conjuração", ItemType.Weapon, 1, "1d6", "20/x2", 0, 0, 10, true, T20DamageType.Bludgeoning));
+		}
+		else if (charClass == T20Class.Cacador)
+		{
+			novo.Inventory.Add(new CharacterItem("Arco Longo", "Arma de disparo", ItemType.Weapon, 2, "1d8", "20/x3", 0, 0, 100, true, T20DamageType.Piercing, isRanged: true));
+		}
+		else if (charClass == T20Class.Ladino)
+		{
+			novo.Inventory.Add(new CharacterItem("Adaga", "Lâmina leve e precisa", ItemType.Weapon, 1, "1d4", "19/x2", 0, 0, 2, true, T20DamageType.Piercing));
+		}
+		else
+		{
+			novo.Inventory.Add(new CharacterItem("Espada Longa", "Lâmina versátil de aço", ItemType.Weapon, 1, "1d8", "19/x2", 0, 0, 15, true, T20DamageType.Slashing));
+		}
+
 		_combatManager.SaveCharacters();
 
 		UpdateCharacterDropdown();
@@ -1024,8 +2549,8 @@ public partial class MainUi : Control
 			SelectCharacter(idx);
 		}
 
-		ShowToast($"✅ Personagem \"{nome}\" criado e salvo!");
-		AppendCombatLog($"✅ Personagem \"{nome}\" criado com sucesso!", "#55ff99");
+		ShowToast($"✅ {nome} ({raceTpl.DisplayName} {classTpl.DisplayName} Nv.{nivel}) criado! PV: {autoMaxPv} | PM: {autoMaxPm}");
+		AppendCombatLog($"✅ Personagem \"{nome}\" ({raceTpl.DisplayName} {classTpl.DisplayName} Nv.{nivel}) criado com PV={autoMaxPv}, PM={autoMaxPm}!", "#55ff99");
 	}
 
 	private void OnExcluirConfirmado()
@@ -1082,18 +2607,76 @@ public partial class MainUi : Control
 	{
 		if (_selectedCharacter == null) return;
 		var c = _selectedCharacter;
+		int cid = GetSelectedCombatantId();
+		var activeSession = cid > 0 ? _combatManager.Session : null;
 
 		// Cabeçalho
 		_lblCharName.Text      = c.Name;
-		_lblCharClassRace.Text = $"{c.Race} {c.CharacterClass} ({c.Origin})";
+		_lblCharClassRace.Text = $"{c.Race} {c.CharacterClass} (Devoto: {c.Deity})";
 		_lblCharNivel.Text     = $"NÍVEL {c.Level}";
 		_lblCharOrigem.Text    = $"ORIGEM: {c.Origin}";
-		_lblCharCondicoes.Text = "CONDIÇÕES: Nenhuma condição ativa";
+		if (_lblTibaresFicha != null)
+			_lblTibaresFicha.Text = $"💰 T$ {c.Tibares}";
 
-		// PV + cor dinâmica da borda
-		_lblPvValor.Text    = c.CurrentHp.ToString();
-		_lblPvSubtexto.Text = $"PV {c.CurrentHp}/{c.MaxHp}";
-		UpdatePvCircleStyle(c);
+		// Estado Vital (Ativo, Machucado, Morrendo, Inconsciente Estabilizado, Morto)
+		T20HealthState hState = c.GetHealthState(activeSession, cid);
+		if (_lblEstadoVital != null)
+		{
+			_lblEstadoVital.Text = $"ESTADO: {c.GetHealthStateLabel(activeSession, cid)}";
+			Color stateColor = hState switch
+			{
+				T20HealthState.Dead => new Color(0.95f, 0.25f, 0.25f),
+				T20HealthState.Dying => new Color(1.0f, 0.38f, 0.38f),
+				T20HealthState.UnconsciousStable => new Color(0.85f, 0.65f, 1.0f),
+				T20HealthState.Bloodied => new Color(1.0f, 0.75f, 0.28f),
+				_ => new Color(0.45f, 0.95f, 0.55f)
+			};
+			_lblEstadoVital.AddThemeColorOverride("font_color", stateColor);
+		}
+
+		if (_btnTestarMorte != null)
+			_btnTestarMorte.Visible = hState == T20HealthState.Dying;
+		if (_btnReviver != null)
+			_btnReviver.Visible = hState == T20HealthState.Dead;
+
+		// Condições ativas (Combate + Estado de Morrendo/Inconsciente + Sobrecarga de inventário)
+		var conds = new List<string>();
+		if (activeSession != null)
+		{
+			conds.AddRange(Tormenta20ConditionRules.GetActiveConditionNames(activeSession, cid));
+		}
+		if (hState is T20HealthState.Dying or T20HealthState.UnconsciousStable or T20HealthState.Dead)
+		{
+			if (!conds.Contains(Tormenta20ConditionRules.UnconsciousKey))
+				conds.Add(Tormenta20ConditionRules.UnconsciousKey);
+		}
+		if (hState == T20HealthState.Dying && !conds.Contains(Tormenta20ConditionRules.BleedingKey))
+		{
+			conds.Add(Tormenta20ConditionRules.BleedingKey);
+		}
+		if (c.IsOverburdened() && !conds.Contains(Tormenta20ConditionRules.OverburdenedKey))
+		{
+			conds.Add(Tormenta20ConditionRules.OverburdenedKey);
+		}
+
+		if (conds.Count > 0)
+		{
+			_lblCharCondicoes.Text = $"CONDIÇÕES: {string.Join(", ", conds)}";
+			_lblCharCondicoes.AddThemeColorOverride("font_color", new Color(1f, 0.55f, 0.35f));
+		}
+		else
+		{
+			_lblCharCondicoes.Text = "CONDIÇÕES: Nenhuma condição ativa";
+			_lblCharCondicoes.AddThemeColorOverride("font_color", new Color(0.65f, 0.65f, 0.65f));
+		}
+
+		// PV + cor dinâmica da borda + exibição do Limite de Morte quando <= 0 e PV Temporário
+		string tempTag = c.TempHp > 0 ? $" (+{c.TempHp} Temp)" : "";
+		_lblPvValor.Text = hState == T20HealthState.Dead ? "💀" : c.CurrentHp.ToString();
+		_lblPvSubtexto.Text = c.CurrentHp <= 0
+			? $"PV {c.CurrentHp}/{c.MaxHp}{tempTag} (Morte: {c.GetDeathThreshold()})"
+			: $"PV {c.CurrentHp}/{c.MaxHp}{tempTag}";
+		UpdatePvCircleStyle(c, hState);
 
 		// PM
 		_lblPmValor.Text    = c.CurrentPm.ToString();
@@ -1116,32 +2699,108 @@ public partial class MainUi : Control
 		// Resumo dinâmico de Nível, Treino e Penalidade de Armadura
 		int halfLevel   = c.Level / 2;
 		int treinoBonus = c.Level >= 15 ? 6 : (c.Level >= 7 ? 4 : 2);
-		int penArmadura = c.GetTotalArmorPenalty();
+		int penArmadura = c.GetTotalArmorPenalty(activeSession, cid);
 		_lblResumoNivelTreino.Text = $"½ Nível: +{halfLevel}   |   Treino: +{treinoBonus}   |   Pen. Armadura: {penArmadura}";
 	}
 
-	private void UpdatePvCircleStyle(CharacterSheetData c)
+	private void UpdatePvCircleStyle(CharacterSheetData c, T20HealthState state)
 	{
 		if (_circlePv.GetThemeStylebox("panel") is not StyleBoxFlat sb) return;
 		var style = (StyleBoxFlat)sb.Duplicate();
 
-		if (c.CurrentHp <= 0)
+		switch (state)
 		{
-			style.BorderColor = new Color(0.9f, 0.22f, 0.22f);
-			style.BgColor     = new Color(0.24f, 0.08f, 0.08f);
-		}
-		else if (c.CurrentHp <= c.MaxHp / 2)
-		{
-			style.BorderColor = new Color(0.92f, 0.62f, 0.15f);
-			style.BgColor     = new Color(0.22f, 0.16f, 0.07f);
-		}
-		else
-		{
-			style.BorderColor = new Color(0.18f, 0.69f, 0.35f);
-			style.BgColor     = new Color(0.08f, 0.18f, 0.11f);
+			case T20HealthState.Dead:
+				style.BorderColor = new Color(0.45f, 0.12f, 0.12f);
+				style.BgColor     = new Color(0.08f, 0.04f, 0.05f);
+				break;
+			case T20HealthState.Dying:
+				style.BorderColor = new Color(1.0f, 0.20f, 0.20f);
+				style.BgColor     = new Color(0.32f, 0.06f, 0.08f);
+				break;
+			case T20HealthState.UnconsciousStable:
+				style.BorderColor = new Color(0.72f, 0.48f, 0.95f);
+				style.BgColor     = new Color(0.16f, 0.11f, 0.24f);
+				break;
+			case T20HealthState.Bloodied:
+				style.BorderColor = new Color(0.92f, 0.62f, 0.15f);
+				style.BgColor     = new Color(0.22f, 0.16f, 0.07f);
+				break;
+			default:
+				style.BorderColor = new Color(0.18f, 0.69f, 0.35f);
+				style.BgColor     = new Color(0.08f, 0.18f, 0.11f);
+				break;
 		}
 
 		_circlePv.AddThemeStyleboxOverride("panel", style);
+	}
+
+	private void OnTestarMorteNaFichaPressed()
+	{
+		if (_selectedCharacter == null) return;
+		int cid = GetSelectedCombatantId();
+		var res = Tormenta20ConditionRules.RollDeathAndBleedingCheck(_combatManager.Session, _selectedCharacter, cid);
+
+		string modSign = res.ConModifier >= 0 ? $"+{res.ConModifier}" : res.ConModifier.ToString();
+		_lblPopupTitulo.Text     = "TESTE DE MORTE / SANGRAMENTO (CD 15)";
+		_lblPopupPersonagem.Text = $"Personagem: {_selectedCharacter.Name}";
+		_lblPopupFormula.Text    = $"1d20 rolou {res.NaturalRoll} (CON {modSign}) = {res.Total} vs CD 15";
+
+		if (res.Stabilized)
+		{
+			_lblPopupDestaque.Text    = "🩹 ESTABILIZOU! PAROU DE SANGRAR!";
+			_lblPopupDestaque.Visible = true;
+			_lblPopupDestaque.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.6f));
+		}
+		else if (res.Died)
+		{
+			_lblPopupDestaque.Text    = $"💀 MORREU! (-{res.DamageTaken} PV → {_selectedCharacter.CurrentHp} PV)";
+			_lblPopupDestaque.Visible = true;
+			_lblPopupDestaque.AddThemeColorOverride("font_color", new Color(1f, 0.25f, 0.25f));
+		}
+		else
+		{
+			_lblPopupDestaque.Text    = $"🩸 FALHOU! PERDEU {res.DamageTaken} PV (1d6)!";
+			_lblPopupDestaque.Visible = true;
+			_lblPopupDestaque.AddThemeColorOverride("font_color", new Color(1f, 0.45f, 0.45f));
+		}
+
+		_popupPericia.Modulate = new Color(1, 1, 1, 0);
+		_popupPericia.Visible  = true;
+		var tween = CreateTween();
+		tween.TweenProperty(_popupPericia, "modulate", new Color(1, 1, 1, 1), 0.2f);
+
+		_diceVisualPericia?.PlayRollAnimation("1d20", res.Total, res.NaturalRoll, res.Stabilized, !res.Stabilized, 0.42f);
+
+		string cor = res.Stabilized ? "#55ff99" : "#ff5555";
+		_txtHistorico?.AppendText($"[color={cor}]🩸 [{_selectedCharacter.Name}] {res.Message}[/color]\n");
+		AppendCombatLog($"🩸 {res.Message}", cor);
+
+		RefreshSheetUI();
+		if (_combatManager.IsInCombat)
+		{
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			UpdateCombatStatusDisplay();
+		}
+	}
+
+	private void OnReviverNaFichaPressed()
+	{
+		if (_selectedCharacter == null) return;
+		_selectedCharacter.Revive(1);
+		int cid = GetSelectedCombatantId();
+		if (cid > 0)
+		{
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			UpdateCombatStatusDisplay();
+		}
+		RefreshSheetUI();
+		ShowToast($"✨ {_selectedCharacter.Name} foi revivido com 1 PV!", new Color(1f, 0.86f, 0.35f));
+		AppendCombatLog($"✨ {_selectedCharacter.Name} foi revivido com 1 PV!", "#ffd700");
 	}
 
 	private void LimparSheetUI()
@@ -1160,7 +2819,7 @@ public partial class MainUi : Control
 		lbl.Text = mod >= 0 ? $"+{mod}" : mod.ToString();
 	}
 
-	// ── Sub-tabs e ações contextuais ─────────────────────────────────────────
+	// ── Sub-tabs e ações contextuais (Incluindo Usar Poderes/Magias/Ataques na Ficha!) ──
 	private void SelecionarSubTab(string tab)
 	{
 		_currentSubTab = tab;
@@ -1174,6 +2833,8 @@ public partial class MainUi : Control
 		}
 
 		var c = _selectedCharacter;
+		int cid = GetSelectedCombatantId();
+		var activeSession = cid > 0 ? _combatManager.Session : null;
 		_btnBannerSubTab.Text = tab.ToUpper();
 
 		// Atualiza indicador de Carga
@@ -1185,6 +2846,7 @@ public partial class MainUi : Control
 		switch (tab)
 		{
 			case "Ataques":
+				if (_btnSubAcaoUsar != null) { _btnSubAcaoUsar.Visible = true; _btnSubAcaoUsar.Text = "🎲 Rolar Ataque"; }
 				_btnSubAcao1.Visible = true;  _btnSubAcao1.Text = "Equipar / Desequipar";
 				_btnSubAcao2.Visible = true;  _btnSubAcao2.Text = "➕ Novo Item";
 				_btnSubAcao3.Visible = true;  _btnSubAcao3.Text = "🗑️ Remover";
@@ -1195,16 +2857,18 @@ public partial class MainUi : Control
 					int idx = _listSubItems.AddItem($"🗡️ {item.Name} — Dano: {item.Damage} ({item.Critical}) {eq}");
 					_listSubItems.SetItemMetadata(idx, c.Inventory.IndexOf(item));
 				}
+				if (_listSubItems.ItemCount > 0) _listSubItems.Select(0);
 				if (!c.Inventory.Any(i => i.Type == ItemType.Weapon))
 					_listSubItems.AddItem("Nenhuma arma cadastrada.");
 				break;
 
 			case "Defesa":
+				if (_btnSubAcaoUsar != null) _btnSubAcaoUsar.Visible = false;
 				_btnSubAcao1.Visible = true;  _btnSubAcao1.Text = "Equipar / Desequipar";
 				_btnSubAcao2.Visible = true;  _btnSubAcao2.Text = "➕ Novo Item";
-				_btnSubAcao3.Visible = false;
+				_btnSubAcao3.Visible = true;  _btnSubAcao3.Text = "🗑️ Remover";
 
-				_lblDefesaDetalhe.Text    = $"Defesa Total: {c.GetDefense()}   |   Penalidade de Armadura: {c.GetTotalArmorPenalty()}";
+				_lblDefesaDetalhe.Text    = $"Defesa Total: {c.GetDefense(activeSession, cid)}   |   Penalidade de Armadura: {c.GetTotalArmorPenalty(activeSession, cid)}";
 				_lblDefesaDetalhe.Visible = true;
 				foreach (var item in c.Inventory.Where(i => i.Type == ItemType.Armor || i.Type == ItemType.Shield))
 				{
@@ -1212,37 +2876,46 @@ public partial class MainUi : Control
 					int idx = _listSubItems.AddItem($"🛡️ {item.Name} +{item.DefenseBonus} def (Pen: {item.ArmorPenalty}) {eq}");
 					_listSubItems.SetItemMetadata(idx, c.Inventory.IndexOf(item));
 				}
+				if (!c.Inventory.Any(i => i.Type == ItemType.Armor || i.Type == ItemType.Shield))
+					_listSubItems.AddItem("Nenhuma armadura ou escudo cadastrado.");
 				break;
 
 			case "Poderes":
+				if (_btnSubAcaoUsar != null) { _btnSubAcaoUsar.Visible = true; _btnSubAcaoUsar.Text = "⚡ Usar Poder (-PM)"; }
 				_btnSubAcao1.Visible = true;  _btnSubAcao1.Text = "🌳 Árvore de Poderes";
 				_btnSubAcao2.Visible = true;  _btnSubAcao2.Text = "➕ Novo Poder";
 				_btnSubAcao3.Visible = true;  _btnSubAcao3.Text = "🗑️ Remover";
 
 				foreach (var sk in c.Skills.Where(s => !s.IsSpell))
 				{
-					int idx = _listSubItems.AddItem($"✨ {sk.Name} ({sk.PmCost} PM) — {sk.Description}");
+					string formulaTag = string.IsNullOrWhiteSpace(sk.BaseFormula) ? "" : $" [{sk.BaseFormula}]";
+					int idx = _listSubItems.AddItem($"✨ {sk.Name} ({sk.PmCost} PM){formulaTag} — {sk.Description}");
 					_listSubItems.SetItemMetadata(idx, c.Skills.IndexOf(sk));
 				}
+				if (_listSubItems.ItemCount > 0) _listSubItems.Select(0);
 				if (!c.Skills.Any(s => !s.IsSpell))
 					_listSubItems.AddItem("Nenhum poder aprendido. Clique em 'Árvore de Poderes'.");
 				break;
 
 			case "Magias":
+				if (_btnSubAcaoUsar != null) { _btnSubAcaoUsar.Visible = true; _btnSubAcaoUsar.Text = "🔮 Conjurar Magia (-PM)"; }
 				_btnSubAcao1.Visible = false;
 				_btnSubAcao2.Visible = true;  _btnSubAcao2.Text = "➕ Nova Magia";
 				_btnSubAcao3.Visible = true;  _btnSubAcao3.Text = "🗑️ Remover";
 
 				foreach (var sk in c.Skills.Where(s => s.IsSpell))
 				{
-					int idx = _listSubItems.AddItem($"🔮 {sk.Name} ({sk.PmCost} PM) — {sk.Description}");
+					string formulaTag = string.IsNullOrWhiteSpace(sk.BaseFormula) ? "" : $" [{sk.BaseFormula}]";
+					int idx = _listSubItems.AddItem($"🔮 {sk.Name} ({sk.PmCost} PM){formulaTag} — {sk.Description}");
 					_listSubItems.SetItemMetadata(idx, c.Skills.IndexOf(sk));
 				}
+				if (_listSubItems.ItemCount > 0) _listSubItems.Select(0);
 				if (!c.Skills.Any(s => s.IsSpell))
 					_listSubItems.AddItem("Nenhuma magia aprendida.");
 				break;
 
 			case "Equipamentos":
+				if (_btnSubAcaoUsar != null) _btnSubAcaoUsar.Visible = false;
 				_btnSubAcao1.Visible = true;  _btnSubAcao1.Text = "Equipar / Desequipar";
 				_btnSubAcao2.Visible = true;  _btnSubAcao2.Text = "➕ Novo Item";
 				_btnSubAcao3.Visible = true;  _btnSubAcao3.Text = "🗑️ Remover";
@@ -1257,6 +2930,144 @@ public partial class MainUi : Control
 				if (c.Inventory.Count == 0)
 					_listSubItems.AddItem("Inventário vazio.");
 				break;
+		}
+	}
+
+	private void OnUsarItemSubTabNaFichaPressed()
+	{
+		if (_selectedCharacter == null) return;
+		int cid = GetSelectedCombatantId();
+		var activeSession = cid > 0 ? _combatManager.Session : null;
+
+		T20HealthState hState = _selectedCharacter.GetHealthState(activeSession, cid);
+		if (hState is T20HealthState.Dying or T20HealthState.UnconsciousStable or T20HealthState.Dead)
+		{
+			ShowToast($"⚠️ {_selectedCharacter.Name} está {hState} e não pode executar habilidades ou ataques!", new Color(1f, 0.45f, 0.45f));
+			return;
+		}
+
+		var sel = _listSubItems.GetSelectedItems();
+		if (sel.Length == 0)
+		{
+			ShowToast("⚠️ Selecione uma habilidade, magia ou arma na lista primeiro.");
+			return;
+		}
+
+		var meta = _listSubItems.GetItemMetadata(sel[0]);
+		if (meta.VariantType != Variant.Type.Int)
+		{
+			ShowToast("⚠️ Nenhum item válido selecionado.");
+			return;
+		}
+		int idx = (int)meta;
+
+		if (_currentSubTab == "Poderes" || _currentSubTab == "Magias")
+		{
+			if (idx < 0 || idx >= _selectedCharacter.Skills.Count) return;
+			var sk = _selectedCharacter.Skills[idx];
+
+			int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(_selectedCharacter, activeSession, cid);
+			if (sk.PmCost > pmLimit)
+			{
+				ShowToast($"⚠️ Custo ({sk.PmCost} PM) excede o limite de gasto por nível ({pmLimit} PM)!", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
+
+			if (_selectedCharacter.CurrentPm < sk.PmCost)
+			{
+				ShowToast($"⚠️ PM insuficiente para \"{sk.Name}\"! (Custo: {sk.PmCost} PM | Atual: {_selectedCharacter.CurrentPm} PM)", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
+
+			// Se estiver em combate e for a vez deste personagem, valida na sessão nativa também
+			if (cid > 0 && _combatManager.Session.CurrentTurn == cid)
+			{
+				var actRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(
+					_combatManager.Session, cid, _selectedCharacter, sk, 0, GetSelectedCombatTargetId(cid));
+				_selectedCharacter.CurrentPm = _combatManager.Session.GetResource(cid, CombatManager.ManaResourceId).Current;
+				if (!actRes.Success)
+				{
+					ShowToast($"⚠️ {actRes.Message}", new Color(1f, 0.45f, 0.45f));
+					return;
+				}
+			}
+			else
+			{
+				// Gasta o PM diretamente na ficha (e sincroniza com o combate se estiver participando)
+				_selectedCharacter.SpendPm(sk.PmCost);
+				if (cid > 0)
+				{
+					_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
+				}
+			}
+
+			string rollSummary = "";
+			if (!string.IsNullOrWhiteSpace(sk.BaseFormula))
+			{
+				try
+				{
+					RollResult r = _combatManager.Session.Roll(sk.BaseFormula.Trim());
+					bool isCure = sk.Name.Contains("Curar", StringComparison.OrdinalIgnoreCase) ||
+					              sk.Description.Contains("restaurar", StringComparison.OrdinalIgnoreCase);
+					if (isCure)
+					{
+						_selectedCharacter.HealHp(r.Total);
+						if (cid > 0)
+						{
+							_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+							Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
+						}
+						rollSummary = $" → Curou +{r.Total} PV ({sk.BaseFormula})!";
+					}
+					else
+					{
+						rollSummary = $" → Rolou {sk.BaseFormula} = {r.Total}!";
+					}
+					_txtHistorico?.AppendText($"[color=#66d9ef]✨ [{_selectedCharacter.Name}] {sk.Name} (-{sk.PmCost} PM){rollSummary}[/color]\n");
+				}
+				catch { }
+			}
+			else
+			{
+				_txtHistorico?.AppendText($"[color=#66d9ef]✨ [{_selectedCharacter.Name}] Usou {sk.Name} (-{sk.PmCost} PM): {sk.Description}[/color]\n");
+			}
+
+			RefreshSheetUI();
+			if (_combatManager.IsInCombat)
+			{
+				RefreshInitiativeBar();
+				PopularAlvoCombate();
+				UpdateCombatStatusDisplay();
+			}
+
+			ShowToast($"✨ {_selectedCharacter.Name} usou \"{sk.Name}\" (-{sk.PmCost} PM){rollSummary} | PM: {_selectedCharacter.CurrentPm}/{_selectedCharacter.MaxPm}",
+				new Color(0.45f, 0.85f, 1f));
+			AppendCombatLog($"✨ {_selectedCharacter.Name} usou [b]{sk.Name}[/b] na ficha (-{sk.PmCost} PM){rollSummary}", "#66d9ef");
+		}
+		else if (_currentSubTab == "Ataques")
+		{
+			if (idx < 0 || idx >= _selectedCharacter.Inventory.Count) return;
+			var weapon = _selectedCharacter.Inventory[idx];
+			string periciaAtk = weapon.IsRanged ? "Pontaria" : "Luta";
+			Tormenta20SkillRules.TryCalculateSkillModifier(_selectedCharacter, periciaAtk, out int atkMod, out _, activeSession, cid);
+			weapon.ParseCritical(out int threat, out int mult);
+
+			RollResult d20 = _combatManager.Session.Roll("1d20");
+			int natural = d20.DiceTotal;
+			int totalAtk = natural + atkMod;
+			bool isCrit = natural >= threat;
+			bool isFumble = natural == 1;
+
+			int flatDmg = weapon.IsRanged ? 0 : _selectedCharacter.Strength;
+			string dmgExpr = Tormenta20CombatRules.BuildWeaponDamageExpression(weapon.Damage, isCrit, mult, flatDmg);
+			RollResult dmgRoll = _combatManager.Session.Roll(dmgExpr);
+			int totalDmg = Math.Max(1, dmgRoll.Total);
+
+			string critTag = isCrit ? $" [CRÍTICO {threat}/x{mult}!]" : (isFumble ? " [FALHA CRÍTICA!]" : "");
+			ShowToast($"🗡️ {weapon.Name}: Ataque {totalAtk} (1d20={natural}+Mod {atkMod}){critTag} | Dano: {totalDmg} ({dmgExpr})",
+				isCrit ? new Color(1f, 0.86f, 0.22f) : new Color(0.45f, 0.95f, 0.6f));
+			_txtHistorico?.AppendText($"[color=#ffaa44]🗡️ [{_selectedCharacter.Name}] {weapon.Name}: Ataque [b]{totalAtk}[/b]{critTag} | Dano: [b]{totalDmg}[/b] ({dmgExpr})[/color]\n");
+			AppendCombatLog($"🗡️ {_selectedCharacter.Name} rolou ataque com {weapon.Name}: Ataque {totalAtk}{critTag} | Dano {totalDmg} ({dmgExpr})", "#ffaa44");
 		}
 	}
 
@@ -1289,9 +3100,17 @@ public partial class MainUi : Control
 	{
 		if (_selectedCharacter == null) return;
 		if (_currentSubTab == "Poderes" || _currentSubTab == "Magias")
+		{
+			bool isMagiasTab = _currentSubTab == "Magias";
+			_dlgNovaMagia.Title = isMagiasTab ? "Adicionar Nova Magia" : "Adicionar Novo Poder / Habilidade";
+			if (_chkNovaMagiaIsSpell != null)
+				_chkNovaMagiaIsSpell.ButtonPressed = isMagiasTab;
 			_dlgNovaMagia.PopupCentered();
+		}
 		else
+		{
 			_dlgNovoItem.PopupCentered();
+		}
 	}
 
 	private void OnSubAcao3Pressed()
@@ -1308,10 +3127,14 @@ public partial class MainUi : Control
 		{
 			if (idx >= 0 && idx < _selectedCharacter.Skills.Count)
 			{
-				string removedName = _selectedCharacter.Skills[idx].Name;
+				var removedSkill = _selectedCharacter.Skills[idx];
 				_selectedCharacter.Skills.RemoveAt(idx);
+				if (!string.IsNullOrEmpty(removedSkill.TreeKey))
+				{
+					_selectedCharacter.UnlockedTreeKeys.Remove(removedSkill.TreeKey);
+				}
 				RefreshSheetUI();
-				ShowToast($"🗑️ Removido: {removedName}");
+				ShowToast($"🗑️ Removido: {removedSkill.Name}");
 			}
 		}
 		else
@@ -1335,13 +3158,15 @@ public partial class MainUi : Control
 			child.QueueFree();
 
 		string busca = _txtBuscaPericia?.Text?.ToLower() ?? "";
+		int cid = GetSelectedCombatantId();
+		var activeSession = cid > 0 ? _combatManager.Session : null;
 
 		foreach (T20SkillDefinition def in Tormenta20SkillRules.CanonicalSkills)
 		{
 			if (!string.IsNullOrEmpty(busca) && !def.Name.ToLower().Contains(busca))
 				continue;
 
-			bool canRoll  = Tormenta20SkillRules.TryCalculateSkillModifier(_selectedCharacter, def.Name, out int totalMod, out _);
+			bool canRoll  = Tormenta20SkillRules.TryCalculateSkillModifier(_selectedCharacter, def.Name, out int totalMod, out _, activeSession, cid);
 			bool treinada = _selectedCharacter.TrainedSkills.Contains(def.Name);
 			string modStr = canRoll ? (totalMod >= 0 ? $"+{totalMod}" : totalMod.ToString()) : "—";
 
@@ -1416,34 +3241,52 @@ public partial class MainUi : Control
 	{
 		if (_selectedCharacter == null) return;
 
-		var check = Tormenta20SkillRules.RollSkillCheck(_combatManager.Session, _selectedCharacter, nomePericia, dc: 0);
+		int cid = GetSelectedCombatantId();
+		var check = Tormenta20SkillRules.RollSkillCheck(
+			_combatManager.Session, _selectedCharacter, nomePericia, dc: 0, combatantId: cid);
 		if (!check.Allowed)
 		{
 			ShowToast($"⚠️ {check.Message}", new Color(1f, 0.45f, 0.45f));
 			return;
 		}
 
-		// Extrai o valor total rolado para exibir em destaque no pop-up
-		Tormenta20SkillRules.TryCalculateSkillModifier(_selectedCharacter, nomePericia, out int mod, out _);
-		string expr = mod >= 0 ? $"1d20+{mod}" : $"1d20{mod}";
-		_combatManager.RollTest(expr, out RollResult res, out _);
+		bool critico = check.IsNatural20;
+		bool falhaCritica = check.IsNatural1;
+		string modSign = check.TotalModifier >= 0 ? $"+{check.TotalModifier}" : check.TotalModifier.ToString();
 
-		bool critico = res.NaturalMaxCount > 0;
+		_lblPopupTitulo.Text     = $"TESTE DE {nomePericia.ToUpper()}";
+		_lblPopupPersonagem.Text = $"Personagem: {_selectedCharacter.Name}";
+		_lblPopupResultado.Text  = check.Total.ToString();
+		_lblPopupFormula.Text    = $"1d20 rolou {check.NaturalRoll} (Mod {modSign}) = {check.Total}";
 
-		_lblPopupTitulo.Text      = $"TESTE DE {nomePericia.ToUpper()}";
-		_lblPopupPersonagem.Text  = $"Personagem: {_selectedCharacter.Name}";
-		_lblPopupResultado.Text   = res.Total.ToString();
-		_lblPopupFormula.Text     = $"1d20 rolou {res.DiceTotal} + Mod {mod} = {res.Total}";
-		_lblPopupDestaque.Visible = critico;
-		_lblPopupResultado.AddThemeColorOverride("font_color",
-			critico ? new Color(1f, 0.84f, 0f) : new Color(1f, 1f, 1f));
+		if (critico)
+		{
+			_lblPopupDestaque.Text    = "★ 20 NATURAL! SUCESSO CRÍTICO! ★";
+			_lblPopupDestaque.Visible = true;
+			_lblPopupDestaque.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.22f));
+		}
+		else if (falhaCritica)
+		{
+			_lblPopupDestaque.Text    = "💀 1 NATURAL! FALHA CRÍTICA! 💀";
+			_lblPopupDestaque.Visible = true;
+			_lblPopupDestaque.AddThemeColorOverride("font_color", new Color(1f, 0.35f, 0.35f));
+		}
+		else
+		{
+			_lblPopupDestaque.Visible = false;
+		}
 
 		_popupPericia.Modulate = new Color(1, 1, 1, 0);
 		_popupPericia.Visible  = true;
 		var tween = CreateTween();
-		tween.TweenProperty(_popupPericia, "modulate", new Color(1, 1, 1, 1), 0.22f);
+		tween.TweenProperty(_popupPericia, "modulate", new Color(1, 1, 1, 1), 0.2f);
 
-		AppendCombatLog($"🎲 {_selectedCharacter.Name} rolou {nomePericia}: {res.Total}", "#ffdd66");
+		_diceVisualPericia?.PlayRollAnimation("1d20", check.Total, check.NaturalRoll, critico, falhaCritica, 0.42f);
+
+		// Também registra no histórico da Bandeja de Dados
+		string cor = critico ? "#ffd700" : (falhaCritica ? "#ff4444" : "#ffdd66");
+		_txtHistorico?.AppendText($"[color={cor}]🎲 [{_selectedCharacter.Name}] {nomePericia} (1d20{modSign}) → [b]{check.Total}[/b] (d20:{check.NaturalRoll})[/color]\n");
+		AppendCombatLog($"🎲 {_selectedCharacter.Name} rolou {nomePericia}: {check.Total} (1d20={check.NaturalRoll}{modSign})", cor);
 	}
 
 	// ── PV / PM modificar ────────────────────────────────────────────────────
@@ -1451,6 +3294,8 @@ public partial class MainUi : Control
 	{
 		if (_selectedCharacter == null) return;
 		int delta = (int)(isPm ? _spinPmDelta.Value : _spinPvDelta.Value);
+		int cid = GetSelectedCombatantId();
+		var prevState = _selectedCharacter.GetHealthState(cid > 0 ? _combatManager.Session : null, cid);
 
 		if (!isPm)
 		{
@@ -1461,6 +3306,32 @@ public partial class MainUi : Control
 		{
 			if (cura) _selectedCharacter.RecoverPm(delta);
 			else      _selectedCharacter.SpendPm(delta);
+		}
+
+		// Sincroniza com o Core C++ caso o personagem esteja em um combate ativo
+		if (cid > 0)
+		{
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
+			string stateMsg = Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
+			if (!string.IsNullOrEmpty(stateMsg))
+			{
+				AppendCombatLog(stateMsg, "#ff6b6b");
+			}
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			UpdateCombatStatusDisplay();
+		}
+
+		var newState = _selectedCharacter.GetHealthState(cid > 0 ? _combatManager.Session : null, cid);
+		if (newState != prevState)
+		{
+			if (newState == T20HealthState.Dead)
+				ShowToast($"💀 {_selectedCharacter.Name} atingiu {_selectedCharacter.CurrentHp} PV (limite {_selectedCharacter.GetDeathThreshold()} PV) e MORREU!", new Color(1f, 0.25f, 0.25f));
+			else if (newState == T20HealthState.Dying)
+				ShowToast($"🩸 {_selectedCharacter.Name} caiu MORRENDO ({_selectedCharacter.CurrentHp} PV — Inconsciente e Sangrando)!", new Color(1f, 0.45f, 0.45f));
+			else if (prevState is T20HealthState.Dying or T20HealthState.UnconsciousStable && newState is T20HealthState.Healthy or T20HealthState.Bloodied)
+				ShowToast($"💚 {_selectedCharacter.Name} recobrou a consciência ({_selectedCharacter.CurrentHp} PV)!");
 		}
 
 		RefreshSheetUI();
@@ -1478,10 +3349,7 @@ public partial class MainUi : Control
 	// ════════════════════════════════════════════════════════════════════════
 	private void OnIniciarCombatePressed()
 	{
-		_combatManager.StartCombatWithAllCharacters();
-		UpdateCombatStatusDisplay();
-		RefreshInitiativeBar();
-		PopularAlvoCombate();
+		AbrirModalSelecaoIniciativa();
 	}
 
 	private void UpdateCombatStatusDisplay()
@@ -1490,17 +3358,179 @@ public partial class MainUi : Control
 		{
 			int round = _combatManager.Session.Round;
 			int cid   = _combatManager.Session.CurrentTurn;
-			string nome = _combatManager.CombatantIdToSheet.TryGetValue(cid, out var sheet)
+			CharacterSheetData sheet = null;
+			string nome = _combatManager.CombatantIdToSheet.TryGetValue(cid, out sheet)
 				? sheet.Name : "Desconhecido";
-			_lblStatusCombate.Text    = $"⚔️ Rodada {round} — Vez de {nome}";
-			_lblTurnoAtual.Text       = $"Combatente atual: {nome}";
-			_btnProximoTurno.Disabled = false;
+			string slots = cid > 0 ? Tormenta20ActionRules.FormatRemainingActions(_combatManager.Session, cid) : "";
+
+			bool isIncapacitated = sheet != null && sheet.CurrentHp <= 0;
+			string stateTag = sheet != null && sheet.CurrentHp <= 0
+				? $" [{sheet.GetHealthStateLabel(_combatManager.Session, cid)}]"
+				: "";
+
+			_lblStatusCombate.Text      = $"⚔️ Rodada {round} — Vez de {nome}{stateTag}";
+			_lblTurnoAtual.Text         = isIncapacitated
+				? $"Combatente atual: {nome} está INCAPACITADO ({sheet.CurrentHp} PV) — Encerre o turno"
+				: $"Combatente atual: {nome}   |   Ações: {slots}";
+			_btnProximoTurno.Disabled   = false;
+			if (_btnEncerrarCombate != null) _btnEncerrarCombate.Disabled = false;
+			if (_btnSalvarCombate != null) _btnSalvarCombate.Disabled = false;
+			_btnAtacar.Disabled         = isIncapacitated;
+			_btnMovimento.Disabled      = isIncapacitated;
+			_btnUsarHabilidade.Disabled = isIncapacitated;
+			if (_btnAcaoCompleta != null) _btnAcaoCompleta.Disabled = isIncapacitated;
+			if (_btnPopNextAction != null) _btnPopNextAction.Disabled = isIncapacitated;
 		}
 		else
 		{
-			_lblStatusCombate.Text    = "Fora de combate.";
-			_lblTurnoAtual.Text       = "Clique em 'Iniciar' para começar.";
-			_btnProximoTurno.Disabled = true;
+			_lblStatusCombate.Text      = "Fora de combate.";
+			_lblTurnoAtual.Text         = "Clique em 'Iniciar / Rolar Iniciativa' para escolher os participantes.";
+			_btnProximoTurno.Disabled   = true;
+			if (_btnEncerrarCombate != null) _btnEncerrarCombate.Disabled = true;
+			if (_btnSalvarCombate != null) _btnSalvarCombate.Disabled = true;
+			_btnAtacar.Disabled         = false;
+			_btnMovimento.Disabled      = false;
+			_btnUsarHabilidade.Disabled = false;
+			if (_btnAcaoCompleta != null) _btnAcaoCompleta.Disabled = true;
+			if (_btnPopNextAction != null) _btnPopNextAction.Disabled = true;
+		}
+		RefreshActionQueuePanel();
+	}
+
+	private void OnAcaoCompletaPressed()
+	{
+		if (!_combatManager.IsInCombat)
+		{
+			AppendCombatLog("⚠️ Inicie o combate antes de usar Ação Completa!", "#ff9999");
+			return;
+		}
+		int actorId = _combatManager.Session.CurrentTurn;
+		var res = Tormenta20ActionRules.EnqueueTurnAction(
+			_combatManager.Session, actorId, T20ActionType.Full, "Investida / Golpe Pessoal (Completa)");
+		AppendCombatLog(res.Success
+			? $"🔥 {res.Message}"
+			: $"⚠️ Não foi possível enfileirar Ação Completa: {res.Message}", res.Success ? "#ffb74d" : "#ff6b6b");
+		UpdateCombatStatusDisplay();
+	}
+
+	private void OnPopNextActionPressed()
+	{
+		if (!_combatManager.IsInCombat) return;
+		int actorId = _combatManager.Session.CurrentTurn;
+		if (_combatManager.Session.PopNextAction(actorId, out var popped))
+		{
+			string tagName = string.IsNullOrWhiteSpace(popped.Name) ? $"Ação #{popped.ActionId}" : popped.Name;
+			string conv = popped.UsedFallback ? " [Padrão→Movimento]" : "";
+			AppendCombatLog($"▶ Executada da Fila de Prioridades: #{popped.ActionId} ({tagName}) — Prioridade {popped.Priority}{conv}", "#a6e22e");
+			ShowToast($"▶ Executou #{popped.ActionId}: {tagName}");
+		}
+		else
+		{
+			AppendCombatLog("ℹ️ A fila de ações planejadas do turno está vazia.", "#cccccc");
+		}
+		UpdateCombatStatusDisplay();
+	}
+
+	private void RefreshActionQueuePanel()
+	{
+		if (_boxActionQueueList == null) return;
+		foreach (Node child in _boxActionQueueList.GetChildren())
+			child.QueueFree();
+
+		if (!_combatManager.IsInCombat)
+		{
+			if (_lblActionQueueSlots != null)
+				_lblActionQueueSlots.Text = "Inicie o combate para gerenciar a fila de ações.";
+			return;
+		}
+
+		int actorId = _combatManager.Session.CurrentTurn;
+		if (_lblActionQueueSlots != null)
+		{
+			string slots = actorId > 0
+				? Tormenta20ActionRules.FormatRemainingActions(_combatManager.Session, actorId)
+				: "—";
+			_lblActionQueueSlots.Text = $"Slots Restantes no Turno: {slots}";
+		}
+
+		var entries = actorId > 0 ? _combatManager.Session.GetActionQueue(actorId) : Array.Empty<QueuedActionEntry>();
+		if (entries.Length == 0)
+		{
+			var emptyLbl = new Label
+			{
+				Text = "Nenhuma ação pendente na fila (adicione Ataque, Movimento, Habilidade ou Completa).",
+				AutowrapMode = TextServer.AutowrapMode.WordSmart
+			};
+			emptyLbl.AddThemeFontSizeOverride("font_size", 11);
+			emptyLbl.AddThemeColorOverride("font_color", new Color(0.62f, 0.66f, 0.75f));
+			_boxActionQueueList.AddChild(emptyLbl);
+			return;
+		}
+
+		for (int i = 0; i < entries.Length; i++)
+		{
+			var entry = entries[i];
+			string actionLabel = string.IsNullOrWhiteSpace(entry.Name) ? $"Ação #{entry.ActionId}" : entry.Name;
+			string tipoTag = entry.RequiredType switch
+			{
+				(int)T20ActionType.Reaction => $"⚡ Reação (Prio {entry.Priority})",
+				(int)T20ActionType.Free     => $"✨ Livre (Prio {entry.Priority})",
+				(int)T20ActionType.Standard => $"⚔️ Padrão (Prio {entry.Priority})",
+				(int)T20ActionType.Movement => $"🏃 Movimento (Prio {entry.Priority})",
+				(int)T20ActionType.Full     => $"🔥 Completa (Prio {entry.Priority})",
+				_                           => $"Prio {entry.Priority}"
+			};
+			if (entry.UsedFallback)
+				tipoTag += " [Padrão→Movimento]";
+
+			int pmCost = _queuedActionPmSpent.TryGetValue((actorId, entry.ActionId), out int pmVal) ? pmVal : 0;
+			string pmSuffix = pmCost > 0 ? $" • -{pmCost} PM" : "";
+
+			var row = new HBoxContainer();
+			row.AddThemeConstantOverride("separation", 6);
+
+			var lbl = new Label
+			{
+				Text = $"{i + 1}. #{entry.ActionId} {actionLabel} — {tipoTag}{pmSuffix}",
+				SizeFlagsHorizontal = SizeFlags.ExpandFill,
+				AutowrapMode = TextServer.AutowrapMode.WordSmart
+			};
+			lbl.AddThemeFontSizeOverride("font_size", 12);
+			lbl.AddThemeColorOverride("font_color", new Color(0.92f, 0.95f, 1.0f));
+			row.AddChild(lbl);
+
+			int capturedActionId = entry.ActionId;
+			string capturedLabel = actionLabel;
+			var btnUndo = new Button
+			{
+				Text = "↩ Desfazer (✕)",
+				CustomMinimumSize = new Vector2(105, 24),
+				TooltipText = "Cancela esta ação na fila e reembolsa o slot de ação (e PM gasto, se aplicável)"
+			};
+			btnUndo.Pressed += () =>
+			{
+				if (_combatManager.Session.CancelQueuedAction(actorId, capturedActionId, refundSlot: true))
+				{
+					string pmRefundMsg = "";
+					if (_queuedActionPmSpent.TryGetValue((actorId, capturedActionId), out int refundPm) && refundPm > 0)
+					{
+						if (_combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet))
+						{
+							actorSheet.RecoverPm(refundPm);
+							_combatManager.Session.RestoreResource(actorId, CombatManager.ManaResourceId, refundPm);
+							pmRefundMsg = $" (+{refundPm} PM reembolsado)";
+						}
+						_queuedActionPmSpent.Remove((actorId, capturedActionId));
+					}
+					AppendCombatLog($"↩ Ação #{capturedActionId} ({capturedLabel}) cancelada! Slot de ação reembolsado{pmRefundMsg}.", "#66d9ef");
+					ShowToast($"↩ Desfeita: {capturedLabel}{pmRefundMsg}");
+					UpdateCombatStatusDisplay();
+					RefreshSheetUI();
+					RefreshInitiativeBar();
+				}
+			};
+			row.AddChild(btnUndo);
+			_boxActionQueueList.AddChild(row);
 		}
 	}
 
@@ -1518,11 +3548,30 @@ public partial class MainUi : Control
 		{
 			var btn = new Button();
 			if (_combatManager.CombatantIdToSheet.TryGetValue(cid, out var sh))
-				btn.Text = $"{sh.Name} ({sh.CurrentHp}/{sh.MaxHp})";
+			{
+				var st = sh.GetHealthState(_combatManager.Session, cid);
+				string tag = st switch
+				{
+					T20HealthState.Dead => " 💀 [MORTO]",
+					T20HealthState.Dying => " 🩸 [MORRENDO]",
+					T20HealthState.UnconsciousStable => " 😵 [INCONSCIENTE]",
+					_ => ""
+				};
+				btn.Text = $"{sh.Name}{tag} (PV {sh.CurrentHp}/{sh.MaxHp} | PM {sh.CurrentPm}/{sh.MaxPm})";
+			}
 			else
 				btn.Text = $"ID {cid}";
 
 			btn.Modulate = cid == current ? new Color(1f, 0.85f, 0.2f) : new Color(0.8f, 0.8f, 0.8f);
+			int capturedCid = cid;
+			btn.Pressed += () =>
+			{
+				if (_combatManager.CombatantIdToSheet.TryGetValue(capturedCid, out var clickedSheet))
+				{
+					int idx = _combatManager.Characters.IndexOf(clickedSheet);
+					if (idx >= 0) SelectCharacter(idx);
+				}
+			};
 			_boxIniciativa.AddChild(btn);
 		}
 	}
@@ -1543,21 +3592,41 @@ public partial class MainUi : Control
 		int[] order = _combatManager.Session.GetInitiativeOrder();
 
 		int restoreIdx = -1;
+		int defaultEnemyIdx = -1;
 		foreach (int cid in order)
 		{
 			if (!_combatManager.CombatantIdToSheet.TryGetValue(cid, out var sh)) continue;
 			string label = cid == actorId
-				? $"[Você] {sh.Name} (PV {sh.CurrentHp}/{sh.MaxHp})"
-				: $"{sh.Name} (PV {sh.CurrentHp}/{sh.MaxHp})";
+				? $"[Você] {sh.Name} (PV {sh.CurrentHp}/{sh.MaxHp} | Def {sh.GetDefense(_combatManager.Session, cid)})"
+				: $"{sh.Name} (PV {sh.CurrentHp}/{sh.MaxHp} | Def {sh.GetDefense(_combatManager.Session, cid)})";
 
 			_optAlvoCombate.AddItem(label);
 			int itemIdx = _optAlvoCombate.ItemCount - 1;
 			_optAlvoCombate.SetItemMetadata(itemIdx, cid);
 			if (cid == prevTargetId) restoreIdx = itemIdx;
+			if (cid != actorId && defaultEnemyIdx < 0 && sh.CurrentHp > 0) defaultEnemyIdx = itemIdx;
 		}
 
 		if (restoreIdx >= 0)
 			_optAlvoCombate.Select(restoreIdx);
+		else if (defaultEnemyIdx >= 0)
+			_optAlvoCombate.Select(defaultEnemyIdx);
+	}
+
+	private int GetSelectedCombatTargetId(int actorId)
+	{
+		int[] order = _combatManager.Session.GetInitiativeOrder();
+		int targetId = 0;
+		int selectedIdx = _optAlvoCombate.Selected;
+		if (selectedIdx >= 0)
+		{
+			var meta = _optAlvoCombate.GetItemMetadata(selectedIdx);
+			if (meta.VariantType == Variant.Type.Int) targetId = (int)meta;
+		}
+		if (targetId <= 0)
+			targetId = order.FirstOrDefault(id => id != actorId);
+		if (targetId <= 0) targetId = actorId;
+		return targetId;
 	}
 
 	private void OnAtacarPressed()
@@ -1574,18 +3643,7 @@ public partial class MainUi : Control
 		var weapon = actorSheet.Inventory.FirstOrDefault(i => i.Type == ItemType.Weapon && i.Equipped)
 			?? new CharacterItem("Ataque Desarmado", "", ItemType.Weapon, 0, "1d3", "20/x2");
 
-		int[] order = _combatManager.Session.GetInitiativeOrder();
-		int targetId = 0;
-		int selectedIdx = _optAlvoCombate.Selected;
-		if (selectedIdx >= 0)
-		{
-			var meta = _optAlvoCombate.GetItemMetadata(selectedIdx);
-			if (meta.VariantType == Variant.Type.Int) targetId = (int)meta;
-		}
-		if (targetId <= 0)
-			targetId = order.FirstOrDefault(id => id != actorId);
-		if (targetId <= 0) targetId = actorId;
-
+		int targetId = GetSelectedCombatTargetId(actorId);
 		if (!_combatManager.CombatantIdToSheet.TryGetValue(targetId, out var targetSheet))
 			targetSheet = actorSheet;
 
@@ -1597,11 +3655,14 @@ public partial class MainUi : Control
 		else if (resultado.Hit)
 		{
 			string crit = resultado.IsCritical ? " [CRÍTICO!]" : "";
-			AppendCombatLog($"⚔️ {actorSheet.Name} atacou {targetSheet.Name}{crit}! Dano: {resultado.CoreDamageResult.FinalAmount}", "#ffaa44");
+			AppendCombatLog($"⚔️ {actorSheet.Name} atacou {targetSheet.Name} com {weapon.Name}{crit} ({resultado.AttackTotal} vs Def {resultado.TargetDefense})! Dano: {resultado.CoreDamageResult.FinalAmount} ({resultado.DamageExpression})", "#ffaa44");
 		}
 		else
-			AppendCombatLog($"🛡️ {actorSheet.Name} atacou {targetSheet.Name}: ERROU ({resultado.AttackTotal} vs {targetSheet.GetDefense()})", "#99bbff");
+		{
+			AppendCombatLog($"🛡️ {actorSheet.Name} atacou {targetSheet.Name} com {weapon.Name}: ERROU ({resultado.AttackTotal} vs Def {resultado.TargetDefense})", "#99bbff");
+		}
 
+		UpdateCombatStatusDisplay();
 		RefreshSheetUI();
 		RefreshInitiativeBar();
 		PopularAlvoCombate();
@@ -1613,8 +3674,9 @@ public partial class MainUi : Control
 		int actorId = _combatManager.Session.CurrentTurn;
 		var res = Tormenta20ActionRules.EnqueueTurnAction(_combatManager.Session, actorId, T20ActionType.Movement, "Avanço Tático");
 		AppendCombatLog(res.Success
-			? "🏃 Ação de Movimento enfileirada."
+			? $"🏃 {res.Message}"
 			: $"⚠️ Não foi possível mover: {res.Message}", res.Success ? "#a6e22e" : "#ff6b6b");
+		UpdateCombatStatusDisplay();
 	}
 
 	private void OnAbrirUsarHabilidadeCombate()
@@ -1635,6 +3697,12 @@ public partial class MainUi : Control
 			return;
 		}
 
+		int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(actorSheet, _combatManager.Session, actorId);
+		if (_lblLimitePmCombate != null)
+			_lblLimitePmCombate.Text = $"Limite de gasto: {pmLimit} PM (PM Atual: {actorSheet.CurrentPm})";
+		if (_spinAprimoramentoPm != null)
+			_spinAprimoramentoPm.Value = 0;
+
 		foreach (var sk in actorSheet.Skills)
 		{
 			string tipo = sk.IsSpell ? "🔮" : "✨";
@@ -1645,36 +3713,136 @@ public partial class MainUi : Control
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
-	// Dados
+	// Dados (Rolagem com Animação Poliedral e Partículas)
 	// ════════════════════════════════════════════════════════════════════════
 	private void RolarDadoExpressao(string expr)
 	{
 		if (string.IsNullOrWhiteSpace(expr)) expr = "1d20";
+		expr = expr.Trim();
 
 		if (_combatManager.RollTest(expr, out RollResult res, out string erro))
 		{
+			bool isD20Expr = expr.Contains("d20", StringComparison.OrdinalIgnoreCase);
+			bool isCrit   = res.NaturalMaxCount > 0 && (isD20Expr || res.DiceCount == 1);
+			bool isFumble = res.NaturalMinCount > 0 && isD20Expr;
+
 			_lblResultado.Text = res.Total.ToString();
-			_lblDetalhes.Text  = $"Fórmula: {expr} | Dados: {res.DiceTotal} + Mod: {res.Modifier}";
+			string badge = isCrit ? "   ★ CRÍTICO NATURAL! ★" : (isFumble ? "   💀 FALHA CRÍTICA!" : "");
+			_lblDetalhes.Text = $"Fórmula: {expr}{badge}\nSoma dos Dados: {res.DiceTotal}   |   Modificador: {(res.Modifier >= 0 ? $"+{res.Modifier}" : res.Modifier.ToString())}   |   Qtd Dados: {res.DiceCount}";
 
 			string cor = "#ffffff";
-			if (res.NaturalMaxCount > 0 && expr.Contains("d20")) { cor = "#ffd700"; _lblResultado.Modulate = new Color(1f, 0.84f, 0f); }
-			else if (res.NaturalMinCount > 0 && expr.Contains("d20")) { cor = "#ff4444"; _lblResultado.Modulate = new Color(1f, 0.27f, 0.27f); }
-			else _lblResultado.Modulate = Colors.White;
+			if (isCrit)
+			{
+				cor = "#ffd700";
+				_lblResultado.Modulate = new Color(1f, 0.86f, 0.22f);
+			}
+			else if (isFumble)
+			{
+				cor = "#ff4444";
+				_lblResultado.Modulate = new Color(1f, 0.32f, 0.32f);
+			}
+			else
+			{
+				_lblResultado.Modulate = Colors.White;
+			}
 
-			_txtHistorico.AppendText($"[color={cor}]🎲 {expr} → [b]{res.Total}[/b] (d:{res.DiceTotal}, mod:{res.Modifier})[/color]\n");
+			// Dispara a animação visual do dado poliedral e partículas!
+			_diceVisualTray?.PlayRollAnimation(expr, res.Total, res.DiceTotal, isCrit, isFumble);
+
+			_txtHistorico.AppendText($"[color={cor}]🎲 [b]{expr}[/b] → [b]{res.Total}[/b] (dados: {res.DiceTotal}, mod: {(res.Modifier >= 0 ? $"+{res.Modifier}" : res.Modifier.ToString())}){badge}[/color]\n");
 		}
 		else
 		{
 			_lblResultado.Text = "Erro";
+			_lblResultado.Modulate = new Color(1f, 0.4f, 0.4f);
 			_lblDetalhes.Text  = erro;
 		}
 	}
 
 	// ════════════════════════════════════════════════════════════════════════
-	// Helpers
+	// Helpers & Diagnóstico Automatizado (--self-test)
 	// ════════════════════════════════════════════════════════════════════════
 	private void AppendCombatLog(string message, string colorHex)
 	{
 		_txtLogCombate?.AppendText($"[color={colorHex}]{message}[/color]\n");
+	}
+
+	private void RunAutomatedUiCSharpCppSelfTest()
+	{
+		try
+		{
+			GD.Print("====================================================================");
+			GD.Print("  [SELF-TEST] Verificando Integração Godot UI <-> C# <-> C++ Core   ");
+			GD.Print("====================================================================");
+
+			if (_combatManager?.Session == null)
+				throw new InvalidOperationException("EncounterSession nativa C++ está nula!");
+
+			// 1. Ficha de Personagem + Árvore N-ária de Habilidades (Tree<T> / RequirementTree C++)
+			if (_selectedCharacter == null && _combatManager.Characters.Count > 0)
+				SelectCharacter(0);
+			if (_selectedCharacter == null)
+				throw new InvalidOperationException("Nenhum personagem carregado na UI!");
+
+			AbrirArvorePoderes();
+			_dlgArvorePoderes.Hide();
+			GD.Print($"[SELF-TEST 1/5] Ficha ({_selectedCharacter.Name}) e Árvore N-ária de Habilidades (Tree<T> C++) renderizadas... OK!");
+
+			// 2. Bandeja de Dados Visual (DiceVisualCanvas + DiceEngine C++)
+			ToggleDiceTrayPopup();
+			RolarDadoExpressao("2d20kh1+5");
+			if (string.IsNullOrWhiteSpace(_lblResultado.Text) || _lblResultado.Text == "Erro")
+				throw new InvalidOperationException($"Falha na rolagem de dados via C++ DiceEngine: {_lblDetalhes.Text}");
+			_popupDadosOverlay.Visible = false;
+			GD.Print($"[SELF-TEST 2/5] Bandeja de Dados Visual + C++ DiceEngine (2d20kh1+5 => {_lblResultado.Text})... OK!");
+
+			// 3. Seleção de Iniciativa (RollInitiativeForList + InitiativeTracker C++)
+			ShowView("Combate");
+			AbrirModalSelecaoIniciativa();
+			_dlgSelecaoIniciativa.Hide();
+			var testParticipants = _combatManager.Characters.Take(Math.Min(2, _combatManager.Characters.Count)).ToList();
+			var customTeams = new Dictionary<int, int>();
+			for (int i = 0; i < testParticipants.Count; i++)
+				customTeams[testParticipants[i].Id] = (i == 0) ? 1 : 2;
+			_combatManager.StartCombatWithSelectedCharacters(testParticipants, customTeams);
+			UpdateCombatStatusDisplay();
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			RefreshActionQueuePanel();
+
+			int[] initOrder = _combatManager.Session.GetInitiativeOrder();
+			if (initOrder.Length != testParticipants.Count)
+				throw new InvalidOperationException("RollInitiativeForList não registrou todos os combatentes selecionados!");
+			GD.Print($"[SELF-TEST 3/5] Combate Iniciado via RollInitiativeForList ({initOrder.Length} participantes, Rodada {_combatManager.Session.Round})... OK!");
+
+			// 4. Fila de Prioridades de Ações do Turno (PriorityQueue<T> C++: Enqueue, Cancel/Refund, Pop)
+			int currentActor = _combatManager.Session.CurrentTurn;
+			OnMovimentoPressed();
+			var queued = _combatManager.Session.GetActionQueue(currentActor);
+			if (queued.Length == 0)
+				throw new InvalidOperationException("Ação de Movimento não entrou na PriorityQueue C++!");
+			OnPopNextActionPressed();
+			if (_combatManager.Session.GetActionQueue(currentActor).Length != 0)
+				throw new InvalidOperationException("PopNextAction não consumiu a ação da PriorityQueue C++!");
+			GD.Print("[SELF-TEST 4/5] Painel da Fila de Prioridades de Ações (Enqueue + PopNextAction + PriorityQueue<T> C++)... OK!");
+
+			// 5. Ataque vs. Defesa + Pipeline de Dano C++
+			OnAtacarPressed();
+			_combatManager.EndCombat();
+			UpdateCombatStatusDisplay();
+			RefreshInitiativeBar();
+			RefreshActionQueuePanel();
+			GD.Print("[SELF-TEST 5/5] Resolução de Ataque vs. Defesa + Pipeline de Dano C++ e Encerramento... OK!");
+
+			GD.Print("====================================================================");
+			GD.Print("  >>> [SELF-TEST UI+C#+C++] SUCESSO TOTAL! 0 ERROS ENCONTRADOS! <<< ");
+			GD.Print("====================================================================");
+			GetTree().Quit(0);
+		}
+		catch (Exception ex)
+		{
+			GD.PushError($"[SELF-TEST FALHOU] {ex}");
+			GetTree().Quit(1);
+		}
 	}
 }

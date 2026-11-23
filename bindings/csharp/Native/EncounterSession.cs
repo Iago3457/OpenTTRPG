@@ -26,6 +26,16 @@ namespace OpenTTRPG.Native
             return ptr == IntPtr.Zero ? string.Empty : (Marshal.PtrToStringUTF8(ptr) ?? string.Empty);
         }
 
+        public void SetAutoSkipDefeated(bool enabled)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_encounter_set_auto_skip_defeated(_handle, enabled ? 1 : 0);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao configurar auto-skip de derrotados: {GetLastError()}");
+            }
+        }
+
         // ----- Combatentes e Iniciativa -----
 
         public int AddCombatant(string name, int initiativeModifier, int maxHealth, int team = 0)

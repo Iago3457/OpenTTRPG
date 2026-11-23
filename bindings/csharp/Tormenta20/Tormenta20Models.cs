@@ -240,6 +240,7 @@ namespace OpenTTRPG.Tormenta20
         public int DefenseBonusMisc { get; set; }
         public int Tibares { get; set; } = 50;
         public AttributeType SpellKeyAttribute { get; set; } = AttributeType.Intelligence;
+        public bool IsBleedingOut { get; set; }
 
         public int LastInitiativeRoll { get; set; }
 
@@ -409,6 +410,59 @@ namespace OpenTTRPG.Tormenta20
             return 10 + (Dexterity + dexPenaltyFromConditions) + armorBonus + DefenseBonusMisc + powerBonus + conditionMod;
         }
 
+        /// <summary>
+        /// Limite de PV negativo para morte em Tormenta20 Jogo do Ano:
+        /// -max(10, metade dos PV máximos).
+        /// </summary>
+        public int GetDeathThreshold() => -Math.Max(10, MaxHp / 2);
+
+        /// <summary>
+        /// Retorna o estado vital atual do personagem segundo as regras de Ferimentos e Morte de Tormenta20.
+        /// </summary>
+        public T20HealthState GetHealthState(EncounterSession? session = null, int combatantId = 0)
+        {
+            int deathThreshold = GetDeathThreshold();
+            if (CurrentHp <= deathThreshold)
+            {
+                return T20HealthState.Dead;
+            }
+
+            if (CurrentHp <= 0)
+            {
+                bool bleedingInSession = session != null && combatantId > 0 &&
+                                         session.HasCondition(combatantId, Tormenta20ConditionRules.BleedingKey);
+                if (IsBleedingOut || bleedingInSession)
+                {
+                    return T20HealthState.Dying;
+                }
+                return T20HealthState.UnconsciousStable;
+            }
+
+            if (CurrentHp <= MaxHp / 2)
+            {
+                return T20HealthState.Bloodied;
+            }
+
+            return T20HealthState.Healthy;
+        }
+
+        public string GetHealthStateLabel(EncounterSession? session = null, int combatantId = 0)
+        {
+            return GetHealthState(session, combatantId) switch
+            {
+                T20HealthState.Dead => $"💀 MORTO (Limite {GetDeathThreshold()} PV atingido)",
+                T20HealthState.Dying => $"🩸 MORRENDO (Inconsciente e Sangrando | Morte em {GetDeathThreshold()} PV)",
+                T20HealthState.UnconsciousStable => $"😵 INCONSCIENTE (Estabilizado | Morte em {GetDeathThreshold()} PV)",
+                T20HealthState.Bloodied => "🩹 MACHUCADO",
+                _ => "💚 ATIVO"
+            };
+        }
+
+        public void RecalculateMaxResources(bool refill = false)
+        {
+            Tormenta20CharacterCreationRules.RecalculateSheetResources(this, refill);
+        }
+
         public bool SpendPm(int amount)
         {
             if (amount < 0 || amount > CurrentPm) return false;
@@ -435,13 +489,34 @@ namespace OpenTTRPG.Tormenta20
                 damage -= TempHp;
                 TempHp = 0;
             }
-            CurrentHp = Math.Max(0, CurrentHp - damage);
+
+            int deathThreshold = GetDeathThreshold();
+            CurrentHp = Math.Max(deathThreshold, CurrentHp - damage);
+            if (CurrentHp <= deathThreshold)
+            {
+                IsBleedingOut = false;
+            }
+            else if (CurrentHp <= 0)
+            {
+                IsBleedingOut = true;
+            }
         }
 
         public void HealHp(int amount)
         {
             if (amount <= 0) return;
+            if (CurrentHp <= GetDeathThreshold()) return; // Morto não recupera PV com cura comum (use Revive)
             CurrentHp = Math.Min(MaxHp, CurrentHp + amount);
+            if (CurrentHp > 0)
+            {
+                IsBleedingOut = false;
+            }
+        }
+
+        public void Revive(int restoredHp = 1)
+        {
+            CurrentHp = Math.Clamp(restoredHp, 1, MaxHp);
+            IsBleedingOut = false;
         }
 
         public string FormatSummary(EncounterSession? session = null, int combatantId = 0)
@@ -449,7 +524,7 @@ namespace OpenTTRPG.Tormenta20
             string overburdenTag = IsOverburdened() ? " [SOBRECARREGADO!]" : "";
             int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(this, session, combatantId);
             return $"  {Name} ({Race} {CharacterClass} Nv.{Level} | Origem: {Origin} | Devoto: {Deity} | T$ {Tibares})\n" +
-                   $"  PV: {CurrentHp}/{MaxHp} | PM: {CurrentPm}/{MaxPm} (Limite Gasto: {pmLimit} PM) | Defesa: {GetDefense(session, combatantId)}\n" +
+                   $"  Estado: {GetHealthStateLabel(session, combatantId)} | PV: {CurrentHp}/{MaxHp} (Morte: {GetDeathThreshold()}) | PM: {CurrentPm}/{MaxPm} (Limite Gasto: {pmLimit} PM) | Defesa: {GetDefense(session, combatantId)}\n" +
                    $"  Carga: {GetCurrentSlots()}/{GetMaxSlots()} espaços{overburdenTag} | Penalidade Armadura: {GetTotalArmorPenalty(session, combatantId)}\n" +
                    $"  FOR: {FormatSigned(Strength)} | DES: {FormatSigned(Dexterity)} | CON: {FormatSigned(Constitution)} | " +
                    $"INT: {FormatSigned(Intelligence)} | SAB: {FormatSigned(Wisdom)} | CAR: {FormatSigned(Charisma)}";

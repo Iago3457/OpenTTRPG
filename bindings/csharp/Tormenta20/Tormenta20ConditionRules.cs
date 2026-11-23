@@ -4,8 +4,20 @@ using OpenTTRPG.Native;
 
 namespace OpenTTRPG.Tormenta20
 {
+    public sealed class T20BleedingCheckResult
+    {
+        public int NaturalRoll { get; set; }
+        public int ConModifier { get; set; }
+        public int Total { get; set; }
+        public bool Stabilized { get; set; }
+        public int DamageTaken { get; set; }
+        public bool Died { get; set; }
+        public T20HealthState NewHealthState { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
     /// <summary>
-    /// Catálogo e Regras das 13 Condições Canônicas de Tormenta20 (Edição Jogo do Ano),
+    /// Catálogo e Regras das Condições Canônicas e do Estado de Morrendo de Tormenta20 (Edição Jogo do Ano),
     /// integradas ao ConditionTracker, ActionEconomy e Stats do Core C++.
     /// </summary>
     public static class Tormenta20ConditionRules
@@ -18,6 +30,7 @@ namespace OpenTTRPG.Tormenta20
         public const string NauseatedKey = "Enjoado";
         public const string WeakenedKey = "Fraco";
         public const string ImmobileKey = "Imovel";
+        public const string UnconsciousKey = "Inconsciente";
         public const string SlowedKey = "Lento";
         public const string DazzledKey = "Ofuscado";
         public const string BleedingKey = "Sangrando";
@@ -34,6 +47,7 @@ namespace OpenTTRPG.Tormenta20
             T20Condition.Enjoado => NauseatedKey,
             T20Condition.Fraco => WeakenedKey,
             T20Condition.Imovel => ImmobileKey,
+            T20Condition.Inconsciente => UnconsciousKey,
             T20Condition.Lento => SlowedKey,
             T20Condition.Ofuscado => DazzledKey,
             T20Condition.Sangrando => BleedingKey,
@@ -52,6 +66,7 @@ namespace OpenTTRPG.Tormenta20
             T20Condition.Enjoado => "Só pode realizar uma Ação Padrão OU de Movimento por turno",
             T20Condition.Fraco => "-2 em Força, Destreza e Constituição e perícias desses atributos",
             T20Condition.Imovel => "Deslocamento reduzido a 0m (não pode se movimentar)",
+            T20Condition.Inconsciente => "Indefeso (-10 na Defesa) e não pode realizar ações",
             T20Condition.Lento => "Deslocamento reduzido à metade e ações limitadas (1 Padrão ou Movimento)",
             T20Condition.Ofuscado => "-2 em testes de ataque e de Percepção",
             T20Condition.Sangrando => "No início do turno, testa CON (CD 15) ou sofre 1d6 de dano",
@@ -76,7 +91,9 @@ namespace OpenTTRPG.Tormenta20
             }
 
             string key = GetConditionKey(condition);
-            TickTiming timing = condition == T20Condition.Sangrando ? TickTiming.Manual : TickTiming.TurnEnd;
+            TickTiming timing = (condition == T20Condition.Sangrando || condition == T20Condition.Inconsciente)
+                ? TickTiming.Manual
+                : TickTiming.TurnEnd;
             session.AddCondition(combatantId, key, durationTurns, 1, timing, StackPolicy.Refresh, sourceId);
 
             if (condition == T20Condition.Cego)
@@ -85,7 +102,12 @@ namespace OpenTTRPG.Tormenta20
                 session.AddCondition(combatantId, SlowedKey, durationTurns, 1, TickTiming.TurnEnd, StackPolicy.Refresh, sourceId);
             }
 
-            if (condition == T20Condition.Enjoado || condition == T20Condition.Lento || condition == T20Condition.Cego)
+            if (condition == T20Condition.Inconsciente)
+            {
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 0, refillCurrent: true);
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: true);
+            }
+            else if (condition == T20Condition.Enjoado || condition == T20Condition.Lento || condition == T20Condition.Cego)
             {
                 Tormenta20ActionRules.ApplySlowedCondition(session, combatantId);
             }
@@ -106,12 +128,13 @@ namespace OpenTTRPG.Tormenta20
             string key = GetConditionKey(condition);
             session.RemoveCondition(combatantId, key);
 
+            bool stillUnconscious = session.HasCondition(combatantId, UnconsciousKey);
             bool stillSlowedOrNauseated = session.HasCondition(combatantId, SlowedKey) ||
                                           session.HasCondition(combatantId, NauseatedKey) ||
                                           session.HasCondition(combatantId, BlindedKey);
             bool stillImmobile = session.HasCondition(combatantId, ImmobileKey);
 
-            if (!stillSlowedOrNauseated && !stillImmobile)
+            if (!stillUnconscious && !stillSlowedOrNauseated && !stillImmobile)
             {
                 session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 1, refillCurrent: true);
                 session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 1, refillCurrent: true);
@@ -120,11 +143,175 @@ namespace OpenTTRPG.Tormenta20
             SyncConditionStats(session, combatantId);
         }
 
+        /// <summary>
+        /// Sincroniza as condições de Ferimentos e Morte de Tormenta20 (Inconsciente, Sangrando/Morrendo e Morto)
+        /// entre a ficha do personagem e o combatente no Core C++.
+        /// </summary>
+        public static string SyncDyingAndUnconsciousState(EncounterSession session, int combatantId, CharacterSheetData sheet)
+        {
+            if (session == null || combatantId <= 0 || sheet == null) return string.Empty;
+
+            int deathThreshold = sheet.GetDeathThreshold();
+
+            if (sheet.CurrentHp <= deathThreshold)
+            {
+                sheet.IsBleedingOut = false;
+                session.RemoveCondition(combatantId, BleedingKey);
+                ApplyCondition(session, combatantId, T20Condition.Inconsciente);
+                session.SetForcedOut(combatantId, true);
+                return $"💀 [MORTE] {sheet.Name} atingiu {sheet.CurrentHp} PV (limite de morte {deathThreshold} PV) e MORREU!";
+            }
+
+            if (sheet.CurrentHp <= 0)
+            {
+                session.SetForcedOut(combatantId, false);
+                ApplyCondition(session, combatantId, T20Condition.Inconsciente);
+                if (sheet.IsBleedingOut)
+                {
+                    ApplyCondition(session, combatantId, T20Condition.Sangrando);
+                    return $"🩸 [MORRENDO] {sheet.Name} caiu a {sheet.CurrentHp} PV! Está Inconsciente e Sangrando (Teste CON CD 15 no início do turno; morre em {deathThreshold} PV).";
+                }
+                else
+                {
+                    session.RemoveCondition(combatantId, BleedingKey);
+                    return $"😵 [INCONSCIENTE] {sheet.Name} está Inconsciente e Estabilizado ({sheet.CurrentHp} PV).";
+                }
+            }
+
+            // PV > 0: Consciente!
+            sheet.IsBleedingOut = false;
+            session.SetForcedOut(combatantId, false);
+            if (session.HasCondition(combatantId, UnconsciousKey))
+            {
+                RemoveCondition(session, combatantId, T20Condition.Inconsciente);
+            }
+            if (session.HasCondition(combatantId, BleedingKey))
+            {
+                RemoveCondition(session, combatantId, T20Condition.Sangrando);
+            }
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Executa o Teste de Constituição (CD 15) contra Sangramento / Estado de Morrendo segundo Tormenta20 JdA.
+        /// Funciona tanto durante o combate (sincronizado com o Core) quanto diretamente na Ficha do Personagem.
+        /// </summary>
+        public static T20BleedingCheckResult RollDeathAndBleedingCheck(
+            EncounterSession session,
+            CharacterSheetData? sheet,
+            int combatantId = 0)
+        {
+            if (session == null) throw new ArgumentNullException(nameof(session));
+
+            int conMod = sheet != null
+                ? sheet.Constitution
+                : (combatantId > 0 ? session.GetStat(combatantId, "CON", 0) : 0);
+
+            if (combatantId > 0)
+            {
+                conMod += GetAttributeModifier(session, combatantId, AttributeType.Constitution);
+            }
+
+            RollResult check = session.Roll("1d20");
+            int natural = check.DiceTotal;
+            int total = natural + conMod;
+            string name = sheet?.Name ?? (combatantId > 0 ? session.GetCombatantName(combatantId) : "Personagem");
+            string modStr = conMod >= 0 ? $"+{conMod}" : conMod.ToString();
+
+            bool passed = check.NaturalMaxCount > 0 || (check.NaturalMinCount == 0 && total >= 15);
+            if (passed)
+            {
+                if (sheet != null)
+                {
+                    sheet.IsBleedingOut = false;
+                }
+                if (combatantId > 0)
+                {
+                    session.RemoveCondition(combatantId, BleedingKey);
+                }
+
+                T20HealthState stateAfter = sheet?.GetHealthState(session, combatantId) ?? T20HealthState.Healthy;
+                string msg = (sheet != null && sheet.CurrentHp <= 0)
+                    ? $"[ESTABILIZOU!] {name} passou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15)! Estancou o sangramento e agora está Inconsciente e Estabilizado ({sheet.CurrentHp} PV)."
+                    : $"[SANGRAMENTO ESTANCADO!] {name} passou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15) e removeu a condição Sangrando!";
+
+                return new T20BleedingCheckResult
+                {
+                    NaturalRoll = natural,
+                    ConModifier = conMod,
+                    Total = total,
+                    Stabilized = true,
+                    DamageTaken = 0,
+                    Died = false,
+                    NewHealthState = stateAfter,
+                    Message = msg
+                };
+            }
+            else
+            {
+                RollResult bleedRoll = session.Roll("1d6");
+                int dmgTaken = bleedRoll.Total;
+
+                if (combatantId > 0)
+                {
+                    DamageResult dmg = session.DealDamage(combatantId, bleedRoll.Total, (int)T20DamageType.Untyped, DamageFlags.IgnoreReduction);
+                    dmgTaken = dmg.FinalAmount > 0 ? dmg.FinalAmount : bleedRoll.Total;
+                    if (sheet != null)
+                    {
+                        ResourceInfo hp = session.GetResource(combatantId, Tormenta20ActionRules.HealthResourceId);
+                        // Se o pool do Core estava limitado a 0 (ex.: combatente criado sem mínimo negativo), desconta na ficha até o limite de morte
+                        if (hp.Minimum == 0 && sheet.CurrentHp <= 0)
+                        {
+                            sheet.TakeDamage(bleedRoll.Total);
+                        }
+                        else
+                        {
+                            sheet.CurrentHp = hp.Current;
+                            if (sheet.CurrentHp <= sheet.GetDeathThreshold())
+                                sheet.IsBleedingOut = false;
+                        }
+                    }
+                }
+                else if (sheet != null)
+                {
+                    sheet.TakeDamage(bleedRoll.Total);
+                }
+
+                bool died = sheet != null && sheet.CurrentHp <= sheet.GetDeathThreshold();
+                if (died && combatantId > 0 && sheet != null)
+                {
+                    SyncDyingAndUnconsciousState(session, combatantId, sheet);
+                }
+
+                T20HealthState stateAfter = sheet?.GetHealthState(session, combatantId) ?? T20HealthState.Dying;
+                string msg = died
+                    ? $"💀 [MORTE!] {name} falhou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15), perdeu {dmgTaken} PV de sangramento e atingiu {sheet!.CurrentHp} PV (limite {sheet.GetDeathThreshold()} PV) — {name} MORREU!"
+                    : $"[SANGRANDO] {name} falhou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15) e perdeu {dmgTaken} PV de sangramento!" +
+                      (sheet != null ? $" (PV atual: {sheet.CurrentHp}/{sheet.MaxHp} | Morre em {sheet.GetDeathThreshold()} PV)" : "");
+
+                return new T20BleedingCheckResult
+                {
+                    NaturalRoll = natural,
+                    ConModifier = conMod,
+                    Total = total,
+                    Stabilized = false,
+                    DamageTaken = dmgTaken,
+                    Died = died,
+                    NewHealthState = stateAfter,
+                    Message = msg
+                };
+            }
+        }
+
         public static int GetDefenseModifier(EncounterSession session, int combatantId, bool againstRangedAttack = false)
         {
             int mod = 0;
 
-            if (session.HasCondition(combatantId, FlatFootedKey) || session.HasCondition(combatantId, BlindedKey))
+            if (session.HasCondition(combatantId, UnconsciousKey))
+            {
+                mod -= 10;
+            }
+            else if (session.HasCondition(combatantId, FlatFootedKey) || session.HasCondition(combatantId, BlindedKey))
             {
                 mod -= 5;
             }
@@ -208,31 +395,15 @@ namespace OpenTTRPG.Tormenta20
             var logs = new List<string>();
             if (session == null || combatantId <= 0) return logs;
 
-            if (session.HasCondition(combatantId, BleedingKey))
+            bool isBleeding = session.HasCondition(combatantId, BleedingKey) || (sheet != null && sheet.IsBleedingOut && sheet.CurrentHp <= 0);
+            if (isBleeding)
             {
-                int conMod = sheet != null ? sheet.Constitution : session.GetStat(combatantId, "CON", 0);
-                conMod += GetAttributeModifier(session, combatantId, AttributeType.Constitution);
-
-                RollResult check = session.Roll("1d20");
-                int total = check.DiceTotal + conMod;
-                string name = sheet?.Name ?? session.GetCombatantName(combatantId);
-
-                if (check.NaturalMaxCount > 0 || (check.NaturalMinCount == 0 && total >= 15))
-                {
-                    session.RemoveCondition(combatantId, BleedingKey);
-                    logs.Add($"[SANGRANDO] {name} passou no teste de Constituição ({total} vs CD 15) e estancou o sangramento!");
-                }
-                else
-                {
-                    RollResult bleedRoll = session.Roll("1d6");
-                    DamageResult dmg = session.DealDamage(combatantId, bleedRoll.Total, (int)T20DamageType.Untyped, DamageFlags.IgnoreReduction);
-                    if (sheet != null)
-                    {
-                        ResourceInfo hp = session.GetResource(combatantId, Tormenta20ActionRules.HealthResourceId);
-                        sheet.CurrentHp = hp.Current;
-                    }
-                    logs.Add($"[SANGRANDO] {name} falhou no teste de Constituição ({total} vs CD 15) e perdeu {dmg.FinalAmount} PV de sangramento!");
-                }
+                var res = RollDeathAndBleedingCheck(session, sheet, combatantId);
+                logs.Add(res.Message);
+            }
+            else if (sheet != null && sheet.CurrentHp <= 0 && sheet.CurrentHp > sheet.GetDeathThreshold())
+            {
+                logs.Add($"😵 [INCONSCIENTE] {sheet.Name} está Inconsciente e Estabilizado ({sheet.CurrentHp} PV) — não pode agir até receber cura acima de 0 PV.");
             }
 
             return logs;
@@ -258,4 +429,3 @@ namespace OpenTTRPG.Tormenta20
         }
     }
 }
-
