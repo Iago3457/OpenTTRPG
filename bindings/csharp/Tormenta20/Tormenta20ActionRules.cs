@@ -155,7 +155,7 @@ namespace OpenTTRPG.Tormenta20
                     ConsumedType = T20ActionType.Full,
                     UsedStandardAsMovement = false,
                     PmSpent = pmCost,
-                    Message = $"[FILA DE PRIORIDADES] '{actionName}' agendada como Ação Completa (consumiu 1 Padrão + 1 Movimento)."
+                    Message = $"'{actionName}' preparada como Ação Completa (1 Padrão + 1 Movimento)."
                 };
             }
 
@@ -197,7 +197,7 @@ namespace OpenTTRPG.Tormenta20
                 ConsumedType = consumedType,
                 UsedStandardAsMovement = downgraded,
                 PmSpent = pmCost,
-                Message = $"[FILA DE PRIORIDADES] '{actionName}' ({GetActionTypeName(requiredType)}) enfileirada com sucesso!{conversionNote}"
+                Message = $"'{actionName}' ({GetActionTypeName(requiredType)}) preparada!{conversionNote}"
             };
         }
 

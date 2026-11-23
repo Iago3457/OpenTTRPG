@@ -386,9 +386,20 @@ public partial class AbilityTreeCanvas : Control
 	private static string BuildNodeTooltip(NodeEvalState st)
 	{
 		string status = st.IsUnlocked ? "APRENDIDO" : (st.CanLearn ? "DISPONÍVEL PARA APRENDER" : "BLOQUEADO");
-		string parentInfo = string.IsNullOrEmpty(st.Definition.ParentKey)
-			? "Raiz do Ramo (Nível 1)"
-			: $"Nó Pai na Árvore: {st.Definition.ParentKey} (Nível {st.Definition.Tier})";
+		string parentInfo = "Poder Inicial (Nível 1)";
+		if (!string.IsNullOrEmpty(st.Definition.ParentKey))
+		{
+			string parentName = st.Definition.ParentKey;
+			foreach (var p in Tormenta20AbilityTreeRules.CanonicalPowers)
+			{
+				if (p.Key == st.Definition.ParentKey)
+				{
+					parentName = p.Name;
+					break;
+				}
+			}
+			parentInfo = $"Pré-requisito: {parentName} (Grau {st.Definition.Tier})";
+		}
 		string reqInfo = st.IsUnlocked
 			? "Todos os pré-requisitos cumpridos."
 			: (st.CanLearn ? "Pré-requisitos cumpridos! Clique para aprender." : $"Pendente: {st.UnmetLearnReasons}");

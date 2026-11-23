@@ -80,7 +80,7 @@ public partial class MainMenu : MarginContainer
 
 		var btnRecarregar = new Button
 		{
-			Text = "🔄 Recarregar Fichas Salvas (characters.json)"
+			Text = "🔄 Recarregar Fichas Salvas"
 		};
 		btnRecarregar.Pressed += () =>
 		{
@@ -91,7 +91,7 @@ public partial class MainMenu : MarginContainer
 
 		var lblInfo = new Label
 		{
-			Text = "Motor Core C++17 (AED1 UFSCar) + Regras Tormenta20 JdA em C#",
+			Text = "OpenTTRPG — Sistema Tormenta20 (Jogo do Ano)",
 			HorizontalAlignment = HorizontalAlignment.Center,
 			AutowrapMode = TextServer.AutowrapMode.WordSmart
 		};
