@@ -55,6 +55,8 @@ test_generic: dirs $(TEST_GENERIC_TARGET)
 
 test_asan: dirs
 	@echo "==> Compilando e auditando memória com AddressSanitizer (-fsanitize=address,leak)..."
+	$(CXX) $(ASAN_FLAGS) $(TEST_DIR)/test_data_structures.cpp $(CORE_SRCS) -o $(BIN_DIR)/test_ds_asan
+	@./$(BIN_DIR)/test_ds_asan
 	$(CXX) $(ASAN_FLAGS) $(TEST_DIR)/test_generic_core.cpp $(CORE_SRCS) -o $(TEST_ASAN_TARGET)
 	@./$(TEST_ASAN_TARGET)
 	@echo "==> Auditoria AddressSanitizer concluída: 0 memory leaks!"

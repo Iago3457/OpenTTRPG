@@ -402,7 +402,7 @@ public partial class MainUi : Control
 
 		var lblTitle = new Label
 		{
-			Text = "🎲 BANDEJA DE DADOS DE ARTON (POP-UP INTERATIVO)",
+			Text = "🎲 Bandeja de Dados",
 			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
 		};
 		lblTitle.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.72f));
@@ -630,7 +630,7 @@ public partial class MainUi : Control
 
 		_btnSalvarCombate = new Button
 		{
-			Text = "💾 Salvar Combate (JSON)",
+			Text = "💾 Salvar Combate",
 			Disabled = true
 		};
 		_btnSalvarCombate.AddThemeColorOverride("font_color", new Color(0.5f, 0.95f, 0.65f));
@@ -638,29 +638,29 @@ public partial class MainUi : Control
 
 		_btnCarregarCombate = new Button
 		{
-			Text = "📂 Restaurar Combate (JSON)"
+			Text = "📂 Restaurar Combate"
 		};
 		_btnCarregarCombate.AddThemeColorOverride("font_color", new Color(0.55f, 0.85f, 1f));
 		topBarCombate.AddChild(_btnCarregarCombate);
 
-		// Botões extras no painel esquerdo de ações de combate + Painel Visual da Fila de Prioridades (PriorityQueue)
+		// Botões extras no painel esquerdo de ações de combate + Painel Visual das Ações do Turno
 		var leftActions = GetNode<VBoxContainer>("MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions");
 
 		_btnAcaoCompleta = new Button
 		{
-			Text = "💥 Investida / Ação Completa (Padrão+Mov)"
+			Text = "💥 Ação Completa"
 		};
 		_btnAcaoCompleta.AddThemeColorOverride("font_color", new Color(1f, 0.65f, 0.45f));
 		leftActions.AddChild(_btnAcaoCompleta);
 
 		_btnCondicoesCombate = new Button
 		{
-			Text = "⚡ Aplicar / Remover Condição (T20)"
+			Text = "⚡ Condições"
 		};
 		_btnCondicoesCombate.AddThemeColorOverride("font_color", new Color(1f, 0.78f, 0.35f));
 		leftActions.AddChild(_btnCondicoesCombate);
 
-		// Painel da Fila de Prioridades de Ações do Turno (Livre [10] -> Movimento [20] -> Padrão [30] -> Completa [40])
+		// Painel de ações planejadas no turno
 		var queueCard = new PanelContainer
 		{
 			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
@@ -691,7 +691,7 @@ public partial class MainUi : Control
 
 		var lblQueueTitle = new Label
 		{
-			Text = "📋 Fila de Prioridades do Turno (AED1 PriorityQueue)",
+			Text = "📋 Ações do Turno",
 			AutowrapMode = TextServer.AutowrapMode.WordSmart
 		};
 		lblQueueTitle.AddThemeColorOverride("font_color", new Color(1f, 0.86f, 0.38f));
@@ -700,7 +700,7 @@ public partial class MainUi : Control
 
 		_lblActionQueueSlots = new Label
 		{
-			Text = "Slots: Padrão 1/1 | Movimento 1/1 | Livre ∞",
+			Text = "Disponível: 1 Padrão • 1 Movimento • Livres ∞",
 			AutowrapMode = TextServer.AutowrapMode.WordSmart
 		};
 		_lblActionQueueSlots.AddThemeColorOverride("font_color", new Color(0.75f, 0.85f, 0.95f));
@@ -723,7 +723,7 @@ public partial class MainUi : Control
 
 		_btnPopNextAction = new Button
 		{
-			Text = "▶ Executar 1ª Ação da Fila (Pop PriorityQueue)"
+			Text = "▶ Executar Próxima Ação"
 		};
 		_btnPopNextAction.AddThemeColorOverride("font_color", new Color(0.55f, 1f, 0.65f));
 		_btnPopNextAction.AddThemeFontSizeOverride("font_size", 11);
@@ -1077,7 +1077,7 @@ public partial class MainUi : Control
 	{
 		var win = new Window
 		{
-			Title = "⚔️ Seleção de Participantes da Iniciativa (RollInitiativeForList)",
+			Title = "⚔️ Selecionar Participantes do Combate",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
 			Size = new Vector2I(580, 460),
 			Exclusive = true
@@ -1742,7 +1742,7 @@ public partial class MainUi : Control
 	{
 		var win = new Window
 		{
-			Title = "🌳 Árvore N-ária de Habilidades e Pré-requisitos — Tormenta20 JdA (Core C++ Tree<T>)",
+			Title = "🌳 Árvore de Habilidades",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
 			Size = new Vector2I(1180, 690),
 			Exclusive = true
@@ -1879,7 +1879,7 @@ public partial class MainUi : Control
 
 		_lblArvoreNodeTitle = new Label
 		{
-			Text = "Selecione um nó na árvore acima"
+			Text = "Selecione um poder na árvore acima"
 		};
 		_lblArvoreNodeTitle.AddThemeColorOverride("font_color", new Color(1f, 0.9f, 0.45f));
 		_lblArvoreNodeTitle.AddThemeFontSizeOverride("font_size", 15);
@@ -1930,7 +1930,7 @@ public partial class MainUi : Control
 					p => p.ParentKey == st.Definition.Key && _selectedCharacter.UnlockedTreeKeys.Contains(p.Key));
 				if (hasUnlockedChild)
 				{
-					ShowToast($"⚠️ Remova primeiro os poderes filhos que dependem de \"{st.Definition.Name}\"!", new Color(1f, 0.45f, 0.45f));
+					ShowToast($"⚠️ Remova primeiro os poderes que dependem de \"{st.Definition.Name}\"!", new Color(1f, 0.45f, 0.45f));
 					return;
 				}
 				_selectedCharacter.UnlockedTreeKeys.Remove(st.Definition.Key);
@@ -1996,9 +1996,13 @@ public partial class MainUi : Control
 		if (st == null) return;
 		_inspectedPowerKey = st.Definition.Key;
 
-		string parentLabel = string.IsNullOrEmpty(st.Definition.ParentKey)
-			? "Raiz do Ramo (Nível 1)"
-			: $"Nó Pai: {st.Definition.ParentKey} (Profundidade Nível {st.Definition.Tier})";
+		string parentLabel = "Poder Inicial";
+		if (!string.IsNullOrEmpty(st.Definition.ParentKey))
+		{
+			string parentName = Tormenta20AbilityTreeRules.CanonicalPowers
+				.FirstOrDefault(p => p.Key == st.Definition.ParentKey)?.Name ?? st.Definition.ParentKey;
+			parentLabel = $"Pré-requisito: {parentName}";
+		}
 		string costLabel = st.Definition.PmCost > 0 ? $"{st.Definition.PmCost} PM ({st.Definition.ActionType})" : "Passivo / Sem custo de PM";
 
 		_lblArvoreNodeTitle.Text = $"{st.Definition.Name}   —   [{st.Definition.BranchName}]   |   {parentLabel}   |   {costLabel}";
@@ -2008,8 +2012,8 @@ public partial class MainUi : Control
 		{
 			string useStatus = st.CanUseInTurn
 				? "✔ Pronto para uso neste turno"
-				: $"⏳ Requisito de ativação no turno: {st.UnmetUsageReasons}";
-			_lblArvoreNodeReqs.Text = $"★ STATUS NA ÁRVORE: APRENDIDO   |   {useStatus}";
+				: $"⏳ Para usar neste turno: {st.UnmetUsageReasons}";
+			_lblArvoreNodeReqs.Text = $"★ Aprendido   |   {useStatus}";
 			_lblArvoreNodeReqs.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.6f));
 			_btnArvoreActionNode.Text     = "🗑️ Esquecer Poder";
 			_btnArvoreActionNode.Disabled = false;
@@ -2017,7 +2021,7 @@ public partial class MainUi : Control
 		}
 		else if (st.CanLearn)
 		{
-			_lblArvoreNodeReqs.Text = "✔ STATUS NA ÁRVORE: DISPONÍVEL! Todos os pré-requisitos ancestrais e de atributos na RequirementTree foram cumpridos.";
+			_lblArvoreNodeReqs.Text = "✔ Disponível para aprender! Todos os pré-requisitos foram cumpridos.";
 			_lblArvoreNodeReqs.AddThemeColorOverride("font_color", new Color(0.45f, 1f, 0.65f));
 			_btnArvoreActionNode.Text     = $"✨ Aprender \"{st.Definition.Name}\"";
 			_btnArvoreActionNode.Disabled = false;
@@ -2025,7 +2029,7 @@ public partial class MainUi : Control
 		}
 		else
 		{
-			_lblArvoreNodeReqs.Text = $"🔒 BLOQUEADO PELA REQUIREMENT TREE (C++): {st.UnmetLearnReasons}";
+			_lblArvoreNodeReqs.Text = $"🔒 Pré-requisitos pendentes: {st.UnmetLearnReasons}";
 			_lblArvoreNodeReqs.AddThemeColorOverride("font_color", new Color(1f, 0.5f, 0.5f));
 			_btnArvoreActionNode.Text     = "🔒 Pré-requisitos Pendentes";
 			_btnArvoreActionNode.Disabled = true;
@@ -2346,7 +2350,7 @@ public partial class MainUi : Control
 			_btnSalvarCombate.Pressed += () =>
 			{
 				if (_combatManager.SaveCombatSnapshot())
-					ShowToast("💾 Snapshot do combate salvo em saves/encounter_snapshot.json!");
+					ShowToast("💾 Combate salvo com sucesso!");
 				else
 					ShowToast("⚠️ Nenhum combate ativo para salvar.", new Color(1f, 0.45f, 0.45f));
 			};
@@ -2364,11 +2368,11 @@ public partial class MainUi : Control
 					PopularAlvoCombate();
 					RefreshActionQueuePanel();
 					RefreshSheetUI();
-					ShowToast("📂 Snapshot de combate restaurado com sucesso!");
+					ShowToast("📂 Combate restaurado com sucesso!");
 				}
 				else
 				{
-					ShowToast("⚠️ Nenhum snapshot de combate salvo encontrado.", new Color(1f, 0.45f, 0.45f));
+					ShowToast("⚠️ Nenhum combate salvo encontrado.", new Color(1f, 0.45f, 0.45f));
 				}
 			};
 		}
@@ -3419,14 +3423,14 @@ public partial class MainUi : Control
 		int actorId = _combatManager.Session.CurrentTurn;
 		if (_combatManager.Session.PopNextAction(actorId, out var popped))
 		{
-			string tagName = string.IsNullOrWhiteSpace(popped.Name) ? $"Ação #{popped.ActionId}" : popped.Name;
+			string tagName = string.IsNullOrWhiteSpace(popped.Name) ? "Ação" : popped.Name;
 			string conv = popped.UsedFallback ? " [Padrão→Movimento]" : "";
-			AppendCombatLog($"▶ Executada da Fila de Prioridades: #{popped.ActionId} ({tagName}) — Prioridade {popped.Priority}{conv}", "#a6e22e");
-			ShowToast($"▶ Executou #{popped.ActionId}: {tagName}");
+			AppendCombatLog($"▶ Ação executada: {tagName}{conv}", "#a6e22e");
+			ShowToast($"▶ Executou: {tagName}");
 		}
 		else
 		{
-			AppendCombatLog("ℹ️ A fila de ações planejadas do turno está vazia.", "#cccccc");
+			AppendCombatLog("ℹ️ Nenhuma ação planejada para este turno.", "#cccccc");
 		}
 		UpdateCombatStatusDisplay();
 	}
@@ -3440,7 +3444,7 @@ public partial class MainUi : Control
 		if (!_combatManager.IsInCombat)
 		{
 			if (_lblActionQueueSlots != null)
-				_lblActionQueueSlots.Text = "Inicie o combate para gerenciar a fila de ações.";
+				_lblActionQueueSlots.Text = "Inicie o combate para planejar ações.";
 			return;
 		}
 
@@ -3450,7 +3454,7 @@ public partial class MainUi : Control
 			string slots = actorId > 0
 				? Tormenta20ActionRules.FormatRemainingActions(_combatManager.Session, actorId)
 				: "—";
-			_lblActionQueueSlots.Text = $"Slots Restantes no Turno: {slots}";
+			_lblActionQueueSlots.Text = $"Disponível no Turno: {slots}";
 		}
 
 		var entries = actorId > 0 ? _combatManager.Session.GetActionQueue(actorId) : Array.Empty<QueuedActionEntry>();
@@ -3458,7 +3462,7 @@ public partial class MainUi : Control
 		{
 			var emptyLbl = new Label
 			{
-				Text = "Nenhuma ação pendente na fila (adicione Ataque, Movimento, Habilidade ou Completa).",
+				Text = "Nenhuma ação pendente neste turno.",
 				AutowrapMode = TextServer.AutowrapMode.WordSmart
 			};
 			emptyLbl.AddThemeFontSizeOverride("font_size", 11);
@@ -3470,15 +3474,15 @@ public partial class MainUi : Control
 		for (int i = 0; i < entries.Length; i++)
 		{
 			var entry = entries[i];
-			string actionLabel = string.IsNullOrWhiteSpace(entry.Name) ? $"Ação #{entry.ActionId}" : entry.Name;
+			string actionLabel = string.IsNullOrWhiteSpace(entry.Name) ? "Ação" : entry.Name;
 			string tipoTag = entry.RequiredType switch
 			{
-				(int)T20ActionType.Reaction => $"⚡ Reação (Prio {entry.Priority})",
-				(int)T20ActionType.Free     => $"✨ Livre (Prio {entry.Priority})",
-				(int)T20ActionType.Standard => $"⚔️ Padrão (Prio {entry.Priority})",
-				(int)T20ActionType.Movement => $"🏃 Movimento (Prio {entry.Priority})",
-				(int)T20ActionType.Full     => $"🔥 Completa (Prio {entry.Priority})",
-				_                           => $"Prio {entry.Priority}"
+				(int)T20ActionType.Reaction => "⚡ Reação",
+				(int)T20ActionType.Free     => "✨ Ação Livre",
+				(int)T20ActionType.Standard => "⚔️ Ação Padrão",
+				(int)T20ActionType.Movement => "🏃 Ação de Movimento",
+				(int)T20ActionType.Full     => "🔥 Ação Completa",
+				_                           => "Ação"
 			};
 			if (entry.UsedFallback)
 				tipoTag += " [Padrão→Movimento]";
@@ -3491,7 +3495,7 @@ public partial class MainUi : Control
 
 			var lbl = new Label
 			{
-				Text = $"{i + 1}. #{entry.ActionId} {actionLabel} — {tipoTag}{pmSuffix}",
+				Text = $"{i + 1}. {actionLabel} ({tipoTag}){pmSuffix}",
 				SizeFlagsHorizontal = SizeFlags.ExpandFill,
 				AutowrapMode = TextServer.AutowrapMode.WordSmart
 			};
@@ -3503,9 +3507,9 @@ public partial class MainUi : Control
 			string capturedLabel = actionLabel;
 			var btnUndo = new Button
 			{
-				Text = "↩ Desfazer (✕)",
-				CustomMinimumSize = new Vector2(105, 24),
-				TooltipText = "Cancela esta ação na fila e reembolsa o slot de ação (e PM gasto, se aplicável)"
+				Text = "↩ Desfazer",
+				CustomMinimumSize = new Vector2(96, 24),
+				TooltipText = "Cancela esta ação e devolve o uso da ação (e PM gasto, se houver)"
 			};
 			btnUndo.Pressed += () =>
 			{
@@ -3518,11 +3522,11 @@ public partial class MainUi : Control
 						{
 							actorSheet.RecoverPm(refundPm);
 							_combatManager.Session.RestoreResource(actorId, CombatManager.ManaResourceId, refundPm);
-							pmRefundMsg = $" (+{refundPm} PM reembolsado)";
+							pmRefundMsg = $" (+{refundPm} PM recuperado)";
 						}
 						_queuedActionPmSpent.Remove((actorId, capturedActionId));
 					}
-					AppendCombatLog($"↩ Ação #{capturedActionId} ({capturedLabel}) cancelada! Slot de ação reembolsado{pmRefundMsg}.", "#66d9ef");
+					AppendCombatLog($"↩ Ação \"{capturedLabel}\" cancelada{pmRefundMsg}.", "#66d9ef");
 					ShowToast($"↩ Desfeita: {capturedLabel}{pmRefundMsg}");
 					UpdateCombatStatusDisplay();
 					RefreshSheetUI();

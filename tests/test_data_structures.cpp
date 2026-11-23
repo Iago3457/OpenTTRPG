@@ -2,6 +2,8 @@
 #include "openttrpg/data_structures/Queue.hpp"
 #include "openttrpg/data_structures/PriorityQueue.hpp"
 #include "openttrpg/data_structures/Tree.hpp"
+#include "openttrpg/data_structures/SparseGrid.hpp"
+#include "openttrpg/data_structures/QuadTree.hpp"
 #include "openttrpg/core/Dice.hpp"
 #include "openttrpg/core/Resource.hpp"
 #include <iostream>
@@ -124,6 +126,114 @@ void testTree() {
     std::cout << "SUCESSO!\n";
 }
 
+void testSparseGrid() {
+    std::cout << "[TEST] Executando testes de SparseGrid (Matriz Esparsa Hash AED1)... ";
+    using namespace openttrpg::ds;
+
+    SparseGrid<int> grid(8);
+    assert(grid.is_empty());
+    assert(grid.size() == 0);
+
+    // Inserção e sobrescrita
+    grid.set(GridCoord{2, 3}, 10);
+    grid.set(GridCoord{5, 7}, 20);
+    grid.set(GridCoord{2, 3}, 99);
+    assert(grid.size() == 2);
+    assert(grid.contains(GridCoord{2, 3}));
+    assert(!grid.contains(GridCoord{0, 0}));
+    assert(*grid.get(GridCoord{2, 3}) == 99);
+    assert(*grid.get(GridCoord{5, 7}) == 20);
+
+    // Rehash dinâmico com várias coordenadas
+    for (int i = 0; i < 40; ++i) {
+        grid.set(GridCoord{i, i * 2}, i + 100);
+    }
+    assert(grid.size() == 42);
+    assert(*grid.get(GridCoord{35, 70}) == 135);
+
+    // Iteração
+    std::size_t visited = 0;
+    grid.for_each([&](GridCoord, const int&) { ++visited; });
+    assert(visited == 42);
+
+    // Cópia profunda e remoção
+    SparseGrid<int> copyGrid = grid;
+    assert(grid.remove(GridCoord{2, 3}));
+    assert(!grid.remove(GridCoord{2, 3}));
+    assert(grid.size() == 41);
+    assert(copyGrid.size() == 42);
+    assert(*copyGrid.get(GridCoord{2, 3}) == 99);
+
+    std::cout << "SUCESSO!\n";
+}
+
+void testQuadTree() {
+    std::cout << "[TEST] Executando testes de QuadTree (Árvore Quaternária Espacial AED1)... ";
+    using namespace openttrpg::ds;
+
+    QuadTree<int> qt(GridRect{0, 0, 32, 32}, /*leafCapacity=*/2, /*maxDepth=*/6);
+    assert(qt.is_empty());
+
+    // Inserir fora dos limites deve falhar com segurança
+    assert(!qt.insert(GridCoord{-1, 5}, 999));
+    assert(!qt.insert(GridCoord{32, 0}, 999));
+
+    // Inserir múltiplos pontos forçando várias subdivisões
+    int nextId = 1;
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            assert(qt.insert(GridCoord{x * 3, y * 3}, nextId++));
+        }
+    }
+    assert(qt.size() == 64);
+
+    // Múltiplos tokens na mesma célula (limite maxDepth evita loop infinito)
+    for (int k = 0; k < 6; ++k) {
+        assert(qt.insert(GridCoord{3, 3}, 1000 + k));
+    }
+    assert(qt.size() == 70);
+
+    // Busca por retângulo
+    LinkedList<QuadTree<int>::QuadEntry> rectRes;
+    qt.queryRect(GridRect{0, 0, 4, 4}, rectRes);
+    // Deve conter (0,0), (3,0), (0,3) e os 7 itens em (3,3) = 10 itens
+    assert(rectRes.size() == 10);
+
+    // Busca por raio de Chebyshev
+    LinkedList<QuadTree<int>::QuadEntry> radRes;
+    qt.queryRadius(GridCoord{12, 12}, 3, radRes);
+    assert(radRes.size() >= 1);
+    bool foundCenter = false;
+    radRes.for_each([&](const QuadTree<int>::QuadEntry& e, std::size_t) {
+        if (e.pos == GridCoord{12, 12}) {
+            foundCenter = true;
+        }
+    });
+    assert(foundCenter);
+
+    // Cópia profunda independente e movimentação (update)
+    QuadTree<int> qtCopy = qt;
+    assert(qt.update(GridCoord{0, 0}, GridCoord{30, 30}, 1));
+    LinkedList<QuadTree<int>::QuadEntry> oldSpot;
+    qt.queryRect(GridRect{0, 0, 1, 1}, oldSpot);
+    assert(oldSpot.size() == 0);
+
+    LinkedList<QuadTree<int>::QuadEntry> newSpot;
+    qt.queryRect(GridRect{30, 30, 1, 1}, newSpot);
+    assert(newSpot.size() == 1 && newSpot.get(0).value == 1);
+
+    // Cópia original permanece inalterada em (0,0)
+    LinkedList<QuadTree<int>::QuadEntry> copySpot;
+    qtCopy.queryRect(GridRect{0, 0, 1, 1}, copySpot);
+    assert(copySpot.size() == 1);
+
+    // Remoção
+    assert(qt.remove(1));
+    assert(qt.size() == 69);
+
+    std::cout << "SUCESSO!\n";
+}
+
 void testAgnosticCorePrimitives() {
     std::cout << "[TEST] Executando testes de ResourcePool e DiceEngine agnósticos... ";
     openttrpg::core::ResourcePool hp(20, 0);
@@ -151,6 +261,8 @@ int main() {
     testQueue();
     testPriorityQueue();
     testTree();
+    testSparseGrid();
+    testQuadTree();
     testAgnosticCorePrimitives();
     std::cout << "\n>>> TODOS OS TESTES DE ESTRUTURAS DE DADOS PASSARAM COM ÊXITO! <<<\n";
     return 0;

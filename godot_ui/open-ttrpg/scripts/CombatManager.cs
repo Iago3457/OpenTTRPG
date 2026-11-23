@@ -465,7 +465,7 @@ public partial class CombatManager : Node
 			}
 
 			Tormenta20Persistence.SaveEncounterSnapshotToFile(snap, GetCombatSnapshotPath());
-			LogCombat($"💾 Snapshot do combate salvo (Rodada {snap.Round})!", "#55ff99");
+			LogCombat($"💾 Combate salvo (Rodada {snap.Round}).", "#55ff99");
 			return true;
 		}
 		catch (Exception ex)
@@ -547,7 +547,7 @@ public partial class CombatManager : Node
 				safety++;
 			}
 
-			LogCombat($"📂 Snapshot de combate restaurado ({CombatantIdToSheet.Count} participantes)!", "#66d9ef");
+			LogCombat($"📂 Combate restaurado ({CombatantIdToSheet.Count} participantes).", "#66d9ef");
 			NotifyTurnChanged();
 			return true;
 		}

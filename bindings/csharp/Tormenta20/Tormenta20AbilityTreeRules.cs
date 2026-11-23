@@ -58,7 +58,7 @@ namespace OpenTTRPG.Tormenta20
                 T20ActionType.Free, 0, "1. Esgrima (DES)", tier: 1),
             new T20PowerTreeDefinition(
                 "ataque_preciso", "Ataque Preciso", "estilo_uma_arma",
-                "+2 na margem de ameaça e +1 no multiplicador de crítico (Requer nó pai: Estilo de Uma Arma)",
+                "+2 na margem de ameaça e +1 no multiplicador de crítico (Requer: Estilo de Uma Arma)",
                 T20ActionType.Free, 0, "1. Esgrima (DES)", tier: 2),
             new T20PowerTreeDefinition(
                 "finta_aprimorada", "Finta Aprimorada", "ataque_preciso",
@@ -74,15 +74,15 @@ namespace OpenTTRPG.Tormenta20
                 T20ActionType.Free, 0, "2. Brutalidade (FOR)", tier: 1),
             new T20PowerTreeDefinition(
                 "trespassar", "Trespassar", "ataque_poderoso",
-                "Gasta 1 PM para realizar um ataque extra após golpear (Requer nó pai: Ataque Poderoso | Uso no turno: 'Agredir (Ataque Padrão)')",
+                "Gasta 1 PM para realizar um ataque extra após golpear (Requer: Ataque Poderoso | Uso no turno após Agredir)",
                 T20ActionType.Free, 1, "2. Brutalidade (FOR)", tier: 2, baseFormula: "1d8"),
             new T20PowerTreeDefinition(
                 "quebrar_aprimorado", "Quebrar Aprimorado", "ataque_poderoso",
-                "+2 em ataques para quebrar e golpe extra ao destruir item (Requer nó pai: Ataque Poderoso e FOR >= 2)",
+                "+2 em ataques para quebrar e golpe extra ao destruir item (Requer: Ataque Poderoso e FOR >= 2)",
                 T20ActionType.Free, 1, "2. Brutalidade (FOR)", tier: 2),
             new T20PowerTreeDefinition(
                 "golpe_demolidor", "Golpe Demolidor", "trespassar",
-                "Gasta 2 PM para desferir um impacto devastador que causa +2d6 de dano extra (Requer: Ataque Poderoso -> Trespassar e Nível >= 8)",
+                "Gasta 2 PM para desferir um impacto devastador que causa +2d6 de dano extra (Requer: Ataque Poderoso → Trespassar e Nível >= 8)",
                 T20ActionType.Free, 2, "2. Brutalidade (FOR)", tier: 3, baseFormula: "2d6"),
 
             // =================================================================
@@ -94,11 +94,11 @@ namespace OpenTTRPG.Tormenta20
                 T20ActionType.Free, 0, "3. Bastião (CON)", tier: 1),
             new T20PowerTreeDefinition(
                 "inexpugnavel", "Inexpugnável", "encouracado",
-                "+2 em todos os testes de resistência vestindo armadura pesada (Requer nó pai: Encouraçado e Nível >= 6)",
+                "+2 em todos os testes de resistência vestindo armadura pesada (Requer: Encouraçado e Nível >= 6)",
                 T20ActionType.Free, 0, "3. Bastião (CON)", tier: 2),
             new T20PowerTreeDefinition(
                 "fanatico", "Fanático", "inexpugnavel",
-                "Armadura pesada não reduz seu deslocamento (Requer cadeia ancestral: Encouraçado -> Inexpugnável e Nível >= 12)",
+                "Armadura pesada não reduz seu deslocamento (Requer: Encouraçado → Inexpugnável e Nível >= 12)",
                 T20ActionType.Free, 0, "3. Bastião (CON)", tier: 3),
 
             // =================================================================
@@ -110,7 +110,7 @@ namespace OpenTTRPG.Tormenta20
                 T20ActionType.Free, 0, "4. Arcanismo (INT/CAR)", tier: 1),
             new T20PowerTreeDefinition(
                 "surto_arcano", "Surto Arcano", "magia_ilimitada",
-                "Descarga de 3d6 de essência pura (Requer nó pai: Magia Ilimitada | Uso no turno: 'Foco_Arcano' ativo OU ter usado 'Mísseis Mágicos')",
+                "Descarga de 3d6 de essência pura (Requer: Magia Ilimitada | Ativar com Foco Arcano ou Mísseis Mágicos no turno)",
                 T20ActionType.Free, 2, "4. Arcanismo (INT/CAR)", tier: 2, baseFormula: "3d6"),
             new T20PowerTreeDefinition(
                 "magia_acelerada", "Magia Acelerada", "magia_ilimitada",
