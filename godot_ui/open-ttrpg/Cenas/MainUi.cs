@@ -3789,7 +3789,7 @@ public partial class MainUi : Control
 			GD.Print($"[SELF-TEST 1/5] Ficha ({_selectedCharacter.Name}) e Árvore N-ária de Habilidades (Tree<T> C++) renderizadas... OK!");
 
 			// 2. Bandeja de Dados Visual (DiceVisualCanvas + DiceEngine C++)
-			AbrirPopupDados();
+			ToggleDiceTrayPopup();
 			RolarDadoExpressao("2d20kh1+5");
 			if (string.IsNullOrWhiteSpace(_lblResultado.Text) || _lblResultado.Text == "Erro")
 				throw new InvalidOperationException($"Falha na rolagem de dados via C++ DiceEngine: {_lblDetalhes.Text}");

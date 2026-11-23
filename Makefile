@@ -97,7 +97,8 @@ release: $(SHARED_TARGET)
 	@cp -f $(SHARED_TARGET) $(BIN_DIR)/release/linux-x64/libopenttrpg_core.so
 	@cp -f $(SHARED_TARGET) $(BIN_DIR)/release/linux-x64/data_OpenTTRPG_linuxbsd_x86_64/libopenttrpg_core.so
 	@if [ -f saves/characters.json ]; then cp -f saves/characters.json $(BIN_DIR)/release/linux-x64/saves/characters.json; fi
-	@[ -w "$$HOME" ] || export HOME=/tmp; \
+	@set -e; \
+	[ -w "$$HOME" ] || export HOME=/tmp; \
 	[ -w "$$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/tmp; \
 	if [ "$$HOME" = "/tmp" ] && [ -d /home/iago3457/.nuget/packages ]; then \
 		mkdir -p /tmp/nuget_cache /tmp/.nuget/NuGet; \
@@ -106,6 +107,8 @@ release: $(SHARED_TARGET)
 		export NUGET_PACKAGES=/tmp/nuget_cache; \
 	fi; \
 	dotnet publish $(CSHARP_PROJ) -c Release -o $(BIN_DIR)/release/linux-x64 --no-self-contained; \
+	echo "==> Compilando scripts C# da Interface Gráfica (OpenTTRPG.csproj)..."; \
+	dotnet build godot_ui/open-ttrpg/OpenTTRPG.csproj -c ExportRelease; \
 	if command -v godot-mono >/dev/null 2>&1; then \
 		echo "==> Exportando pacote Godot (.pck) e assemblies .NET (Linux x86_64)..."; \
 		godot-mono --headless --path godot_ui/open-ttrpg --export-pack "Linux" ../../$(BIN_DIR)/release/linux-x64/OpenTTRPG.pck; \
@@ -133,7 +136,8 @@ release-windows:
 		echo "Aviso: 'x86_64-w64-mingw32-g++' (mingw-w64-gcc) não instalado. No Windows execute 'build_windows.bat' ou no Linux instale 'mingw-w64-gcc'."; \
 	fi
 	@if [ -f saves/characters.json ]; then cp -f saves/characters.json $(BIN_DIR)/release/win-x64/saves/characters.json; fi
-	@[ -w "$$HOME" ] || export HOME=/tmp; \
+	@set -e; \
+	[ -w "$$HOME" ] || export HOME=/tmp; \
 	[ -w "$$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/tmp; \
 	if [ "$$HOME" = "/tmp" ] && [ -d /home/iago3457/.nuget/packages ]; then \
 		mkdir -p /tmp/nuget_cache /tmp/.nuget/NuGet; \
@@ -141,6 +145,8 @@ release-windows:
 		printf '<?xml version="1.0" encoding="utf-8"?>\n<configuration><packageSources><clear /><add key="local" value="/tmp/nuget_cache" /></packageSources></configuration>\n' > /tmp/.nuget/NuGet/NuGet.Config; \
 		export NUGET_PACKAGES=/tmp/nuget_cache; \
 	fi; \
+	echo "==> Compilando scripts C# da Interface Gráfica (OpenTTRPG.csproj)..."; \
+	dotnet build godot_ui/open-ttrpg/OpenTTRPG.csproj -c ExportRelease; \
 	if command -v godot-mono >/dev/null 2>&1; then \
 		echo "==> Exportando pacote Godot (.pck) e assemblies .NET (Windows x86_64)..."; \
 		godot-mono --headless --path godot_ui/open-ttrpg --export-pack "Windows Desktop" ../../$(BIN_DIR)/release/win-x64/OpenTTRPG.pck; \
@@ -160,7 +166,7 @@ release-all: release release-windows
 	@echo "==> Executando auto-teste da Release Linux (Godot UI <-> C# <-> C++ Core)..."
 	@[ -w "$$HOME" ] || export HOME=/tmp; \
 	[ -w "$$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/tmp; \
-	./$(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 --headless -- --self-test
+	timeout 30s ./$(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 --headless -- --self-test
 
 clean:
 	@rm -rf $(BUILD_DIR) $(BIN_DIR)
