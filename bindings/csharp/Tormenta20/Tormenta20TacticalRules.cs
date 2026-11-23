@@ -129,30 +129,35 @@ namespace OpenTTRPG.Tormenta20
                 }
             }
 
-            float meters = GetRaceBaseSpeedMeters(sheet.Race);
+            float meters = sheet.SpeedMetersOverride > 0f
+                ? sheet.SpeedMetersOverride
+                : GetRaceBaseSpeedMeters(sheet.Race);
 
-            bool hasHeavyArmor = false;
-            foreach (var item in sheet.Inventory)
+            if (!sheet.IsEnemy)
             {
-                if (item.Equipped && item.Type == ItemType.Armor && item.ArmorPenalty <= -4)
+                bool hasHeavyArmor = false;
+                foreach (var item in sheet.Inventory)
                 {
-                    hasHeavyArmor = true;
-                    break;
+                    if (item.Equipped && item.Type == ItemType.Armor && item.ArmorPenalty <= -4)
+                    {
+                        hasHeavyArmor = true;
+                        break;
+                    }
                 }
-            }
 
-            bool hasFanatico = sheet.UnlockedTreeKeys.Contains("fanatico") ||
-                               (session != null && combatantId > 0 && session.HasAbility(combatantId, "fanatico"));
-            if (hasHeavyArmor && !hasFanatico)
-            {
-                meters -= 3f;
-            }
+                bool hasFanatico = sheet.UnlockedTreeKeys.Contains("fanatico") ||
+                                   (session != null && combatantId > 0 && session.HasAbility(combatantId, "fanatico"));
+                if (hasHeavyArmor && !hasFanatico)
+                {
+                    meters -= 3f;
+                }
 
-            bool overburdened = sheet.IsOverburdened() ||
-                                (session != null && combatantId > 0 && session.HasCondition(combatantId, Tormenta20ConditionRules.OverburdenedKey));
-            if (overburdened)
-            {
-                meters -= 3f;
+                bool overburdened = sheet.IsOverburdened() ||
+                                    (session != null && combatantId > 0 && session.HasCondition(combatantId, Tormenta20ConditionRules.OverburdenedKey));
+                if (overburdened)
+                {
+                    meters -= 3f;
+                }
             }
 
             int squares = Math.Max(1, (int)Math.Round(Math.Max(MetersPerSquare, meters) / MetersPerSquare));

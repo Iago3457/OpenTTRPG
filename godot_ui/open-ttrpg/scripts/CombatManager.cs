@@ -16,6 +16,8 @@ public partial class CombatManager : Node
 	public EncounterSession Session => _session;
 
 	public List<CharacterSheetData> Characters { get; private set; } = new();
+	public List<CharacterSheetData> Enemies { get; private set; } = new();
+	private readonly List<CharacterSheetData> _transientCombatSheets = new();
 	public Dictionary<int, int> SheetIdToCombatantId { get; private set; } = new();
 	public Dictionary<int, CharacterSheetData> CombatantIdToSheet { get; private set; } = new();
 
@@ -34,6 +36,9 @@ public partial class CombatManager : Node
 
 	[Signal]
 	public delegate void CharactersLoadedEventHandler();
+
+	[Signal]
+	public delegate void EnemiesLoadedEventHandler();
 
 	static CombatManager()
 	{
@@ -116,6 +121,7 @@ public partial class CombatManager : Node
 		GD.Print("[OpenTTRPG] Inicializando CombatManager...");
 		InitializeSession();
 		LoadCharacters();
+		LoadEnemies();
 	}
 
 	public void InitializeSession()
@@ -178,6 +184,29 @@ public partial class CombatManager : Node
 		return localSavesPath;
 	}
 
+	public string GetEnemiesSavePath()
+	{
+		string charDir = Path.GetDirectoryName(GetCharactersSavePath()) ?? ".";
+		return Path.Combine(charDir, "enemies.json");
+	}
+
+	public int GetNextUniqueSheetId(bool isEnemy)
+	{
+		int minBase = isEnemy ? 1001 : 1;
+		int maxUsed = 0;
+		foreach (var c in Characters) if (c.Id > maxUsed) maxUsed = c.Id;
+		foreach (var e in Enemies) if (e.Id > maxUsed) maxUsed = e.Id;
+		foreach (var t in _transientCombatSheets) if (t.Id > maxUsed) maxUsed = t.Id;
+		return Math.Max(minBase, maxUsed + 1);
+	}
+
+	public CharacterSheetData FindSheetById(int sheetId)
+	{
+		return Characters.FirstOrDefault(c => c.Id == sheetId)
+			?? Enemies.FirstOrDefault(e => e.Id == sheetId)
+			?? _transientCombatSheets.FirstOrDefault(t => t.Id == sheetId);
+	}
+
 	public void LoadCharacters()
 	{
 		try
@@ -185,7 +214,13 @@ public partial class CombatManager : Node
 			string path = GetCharactersSavePath();
 			if (File.Exists(path))
 			{
-				Characters = Tormenta20Persistence.LoadCharactersFromFile(path);
+				var loaded = Tormenta20Persistence.LoadCharactersFromFile(path);
+				Characters = loaded.Where(c => !c.IsEnemy).ToList();
+				foreach (var legacyEnemy in loaded.Where(c => c.IsEnemy))
+				{
+					if (!Enemies.Any(e => e.Id == legacyEnemy.Id))
+						Enemies.Add(legacyEnemy);
+				}
 				GD.Print($"[OpenTTRPG] {Characters.Count} personagens carregados de: {path}");
 			}
 			else
@@ -208,6 +243,41 @@ public partial class CombatManager : Node
 		}
 	}
 
+	public void LoadEnemies()
+	{
+		try
+		{
+			string path = GetEnemiesSavePath();
+			if (File.Exists(path))
+			{
+				var loaded = Tormenta20Persistence.LoadCharactersFromFile(path);
+				foreach (var e in loaded)
+				{
+					e.IsEnemy = true;
+				}
+				Enemies = loaded;
+				GD.Print($"[OpenTTRPG] {Enemies.Count} inimigos carregados de: {path}");
+			}
+			else
+			{
+				GD.Print("[OpenTTRPG] Arquivo de bestiário não encontrado. Criando ameaças iniciais...");
+				SeedDefaultEnemies();
+				SaveEnemies();
+			}
+
+			EmitSignal(SignalName.EnemiesLoaded);
+		}
+		catch (Exception ex)
+		{
+			GD.PushError($"[OpenTTRPG] Erro ao carregar inimigos: {ex.Message}");
+			if (Enemies.Count == 0)
+			{
+				SeedDefaultEnemies();
+				EmitSignal(SignalName.EnemiesLoaded);
+			}
+		}
+	}
+
 	public void SaveCharacters()
 	{
 		try
@@ -220,6 +290,30 @@ public partial class CombatManager : Node
 		{
 			GD.PushError($"[OpenTTRPG] Erro ao salvar fichas: {ex.Message}");
 		}
+	}
+
+	public void SaveEnemies()
+	{
+		try
+		{
+			string path = GetEnemiesSavePath();
+			Tormenta20Persistence.SaveCharactersToFile(Enemies, path);
+			GD.Print($"[OpenTTRPG] Bestiário salvo com sucesso em: {path}");
+		}
+		catch (Exception ex)
+		{
+			GD.PushError($"[OpenTTRPG] Erro ao salvar inimigos: {ex.Message}");
+		}
+	}
+
+	private void SeedDefaultEnemies()
+	{
+		Enemies.Clear();
+		int baseId = Math.Max(1001, (Characters.Count > 0 ? Characters.Max(c => c.Id) + 1 : 1001));
+		Enemies.Add(Tormenta20Bestiary.CreateFromPreset(baseId++, "goblin_salteador"));
+		Enemies.Add(Tormenta20Bestiary.CreateFromPreset(baseId++, "esqueleto_guerreiro"));
+		Enemies.Add(Tormenta20Bestiary.CreateFromPreset(baseId++, "orc_berserker"));
+		Enemies.Add(Tormenta20Bestiary.CreateFromPreset(baseId++, "golem_ferro"));
 	}
 
 	private void SeedDefaultCharacters()
@@ -275,14 +369,58 @@ public partial class CombatManager : Node
 		string name, string characterClass, string race,
 		string origin, string deity, int level, int maxHp, int maxPm)
 	{
-		// Gera um ID único (maior ID existente + 1)
-		int newId = Characters.Count > 0 ? Characters.Max(c => c.Id) + 1 : 1;
+		int newId = GetNextUniqueSheetId(isEnemy: false);
 
 		var novo = new CharacterSheetData(newId, name, characterClass, race, origin, deity, level, maxHp, maxPm);
 		Characters.Add(novo);
 
 		GD.Print($"[OpenTTRPG] Personagem criado: {name} (id={newId})");
 		return novo;
+	}
+
+	public CharacterSheetData CreateEnemyFromPreset(string presetKey, string customName = null)
+	{
+		int newId = GetNextUniqueSheetId(isEnemy: true);
+		var enemy = Tormenta20Bestiary.CreateFromPreset(newId, presetKey, customName);
+		Enemies.Add(enemy);
+		GD.Print($"[OpenTTRPG] Inimigo criado do bestiário: {enemy.Name} (id={newId})");
+		return enemy;
+	}
+
+	public CharacterSheetData CreateBlankEnemy(string name = "Nova Ameaça")
+	{
+		int newId = GetNextUniqueSheetId(isEnemy: true);
+		var enemy = Tormenta20Bestiary.CreateBlankEnemy(newId, name);
+		Enemies.Add(enemy);
+		GD.Print($"[OpenTTRPG] Novo inimigo criado: {enemy.Name} (id={newId})");
+		return enemy;
+	}
+
+	public CharacterSheetData DuplicateEnemy(CharacterSheetData source)
+	{
+		if (source == null) return CreateBlankEnemy();
+		int newId = GetNextUniqueSheetId(isEnemy: true);
+		var copy = source.CloneForCombat(newId, $"{source.Name} (Cópia)");
+		copy.IsEnemy = true;
+		Enemies.Add(copy);
+		return copy;
+	}
+
+	public bool DeleteEnemy(int id)
+	{
+		var target = Enemies.FirstOrDefault(e => e.Id == id);
+		if (target == null) return false;
+
+		if (IsInCombat && SheetIdToCombatantId.TryGetValue(id, out int cid))
+		{
+			try { _session?.SetForcedOut(cid, true); } catch { }
+			SheetIdToCombatantId.Remove(id);
+			CombatantIdToSheet.Remove(cid);
+		}
+
+		Enemies.Remove(target);
+		GD.Print($"[OpenTTRPG] Inimigo removido: {target.Name} (id={id})");
+		return true;
 	}
 
 	/// <summary>
@@ -361,7 +499,7 @@ public partial class CombatManager : Node
 		var participants = selectedParticipants?.ToList() ?? new List<CharacterSheetData>();
 		if (participants.Count == 0)
 		{
-			LogCombat("⚠️ Selecione pelo menos 1 participante para iniciar o combate.", "#ff6b6b");
+			LogCombat("Selecione pelo menos 1 participante para iniciar o combate.", "#ff6b6b");
 			return;
 		}
 
@@ -393,22 +531,33 @@ public partial class CombatManager : Node
 
 		SheetIdToCombatantId.Clear();
 		CombatantIdToSheet.Clear();
+		_transientCombatSheets.Clear();
 
 		List<int> combatantIds = new();
 
 		foreach (var sheet in participants)
 		{
-			int teamId = (customTeams != null && customTeams.TryGetValue(sheet.Id, out int t)) ? t : 1;
+			if (!Characters.Contains(sheet) && !Enemies.Contains(sheet) && !_transientCombatSheets.Contains(sheet))
+			{
+				_transientCombatSheets.Add(sheet);
+			}
+
+			int defaultTeam = sheet.IsEnemy ? 2 : 1;
+			int teamId = (customTeams != null && customTeams.TryGetValue(sheet.Id, out int t)) ? t : defaultTeam;
 			Tormenta20SkillRules.TryCalculateSkillModifier(sheet, "Iniciativa", out int initMod, out _);
 			int cid = _session.AddCombatant(sheet.Name, initMod, sheet.MaxHp, team: teamId);
 
-			// Configura PV com mínimo negativo igual ao Limite de Morte de Tormenta20 (-max(10, MaxHp/2))
+			// Configura PV com mínimo negativo igual ao Limite de Morte de Tormenta20 (-max(10, MaxHp/2)) ou 0 para ameaças
 			_session.AddResource(cid, HealthResourceId, "Vida", sheet.MaxHp, sheet.GetDeathThreshold());
 			_session.SetResourceCurrent(cid, HealthResourceId, sheet.CurrentHp);
 			if (sheet.TempHp > 0)
 				_session.SetResourceTemp(cid, HealthResourceId, sheet.TempHp);
 			_session.AddResource(cid, ManaResourceId, "PM", sheet.MaxPm, 0);
 			_session.SetResourceCurrent(cid, ManaResourceId, sheet.CurrentPm);
+			if (sheet.DamageReduction > 0)
+			{
+				_session.SetGlobalDamageReduction(cid, sheet.DamageReduction);
+			}
 
 			Tormenta20ActionRules.ConfigureTurnActions(_session, cid, standardActions: 1, movementActions: 1, freeActions: -1);
 			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
@@ -417,7 +566,7 @@ public partial class CombatManager : Node
 				sheet.Intelligence, sheet.Wisdom, sheet.Charisma,
 				sheet.UnlockedTreeKeys);
 
-			if (sheet.IsOverburdened())
+			if (sheet.IsOverburdened() && !sheet.IsEnemy)
 			{
 				Tormenta20ConditionRules.ApplyCondition(_session, cid, T20Condition.Sobrecarregado);
 			}
@@ -444,7 +593,7 @@ public partial class CombatManager : Node
 
 		EnsureMapInitialized(resetTerrain: false);
 
-		LogCombat($"⚔️ Combate iniciado com {combatantIds.Count} participante(s)!", "#66d9ef");
+		LogCombat($"Combate iniciado com {combatantIds.Count} participante(s)!", "#66d9ef");
 		NotifyTurnChanged();
 	}
 
@@ -539,6 +688,7 @@ public partial class CombatManager : Node
 		try
 		{
 			SaveCharacters();
+			SaveEnemies();
 			var snap = new EncounterSnapshotDto
 			{
 				CombatStarted = true,
@@ -565,7 +715,8 @@ public partial class CombatManager : Node
 					MaxPm = sh.MaxPm,
 					CurrentPm = pm.Current,
 					IsBleedingOut = sh.IsBleedingOut,
-					ActiveConditions = Tormenta20ConditionRules.GetActiveConditionNames(_session, cid)
+					ActiveConditions = Tormenta20ConditionRules.GetActiveConditionNames(_session, cid),
+					InlineSheet = Tormenta20Persistence.ToDto(sh)
 				});
 			}
 
@@ -604,7 +755,7 @@ public partial class CombatManager : Node
 			}
 
 			Tormenta20Persistence.SaveEncounterSnapshotToFile(snap, filePath);
-			LogCombat($"💾 Combate salvo (Rodada {snap.Round}).", "#55ff99");
+			LogCombat($"Combate salvo (Rodada {snap.Round}).", "#55ff99");
 			return true;
 		}
 		catch (Exception ex)
@@ -627,10 +778,12 @@ public partial class CombatManager : Node
 			}
 
 			LoadCharacters();
+			LoadEnemies();
 			InitializeSession();
 			_session.SetAutoSkipDefeated(false);
 			SheetIdToCombatantId.Clear();
 			CombatantIdToSheet.Clear();
+			_transientCombatSheets.Clear();
 			FogTracker.Clear();
 
 			if (snap.TacticalMap != null)
@@ -651,7 +804,12 @@ public partial class CombatManager : Node
 			int targetTurnCid = 0;
 			foreach (var p in snap.Participants)
 			{
-				var sheet = Characters.FirstOrDefault(c => c.Id == p.SheetId);
+				var sheet = FindSheetById(p.SheetId);
+				if (sheet == null && p.InlineSheet != null)
+				{
+					sheet = Tormenta20Persistence.FromDto(p.InlineSheet);
+					_transientCombatSheets.Add(sheet);
+				}
 				if (sheet == null) continue;
 
 				sheet.CurrentHp = p.CurrentHp;
@@ -668,6 +826,10 @@ public partial class CombatManager : Node
 				_session.SetResourceTemp(cid, HealthResourceId, sheet.TempHp);
 				_session.AddResource(cid, ManaResourceId, "PM", sheet.MaxPm, 0);
 				_session.SetResourceCurrent(cid, ManaResourceId, sheet.CurrentPm);
+				if (sheet.DamageReduction > 0)
+				{
+					_session.SetGlobalDamageReduction(cid, sheet.DamageReduction);
+				}
 
 				Tormenta20ActionRules.ConfigureTurnActions(_session, cid, 1, 1, -1);
 				Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
@@ -713,7 +875,7 @@ public partial class CombatManager : Node
 			}
 
 			Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
-			LogCombat($"📂 Combate restaurado ({CombatantIdToSheet.Count} participantes).", "#66d9ef");
+			LogCombat($"Combate restaurado ({CombatantIdToSheet.Count} participantes).", "#66d9ef");
 			NotifyTurnChanged();
 			return true;
 		}
@@ -735,7 +897,7 @@ public partial class CombatManager : Node
 		if (drained.Count > 0)
 		{
 			string actorName = CombatantIdToSheet.TryGetValue(currentCid, out var s) ? s.Name : $"ID {currentCid}";
-			LogCombat($"▶ Ações concluídas ({actorName}): {string.Join(" → ", drained.Select(a => a.Name))}", "#c5e1a5");
+			LogCombat($"Ações concluídas ({actorName}): {string.Join(" -> ", drained.Select(a => a.Name))}", "#c5e1a5");
 		}
 
 		_session.NextTurn();
@@ -757,8 +919,9 @@ public partial class CombatManager : Node
 		IsInCombat = false;
 		SheetIdToCombatantId.Clear();
 		CombatantIdToSheet.Clear();
+		_transientCombatSheets.Clear();
 
-		LogCombat("🕊️ Combate encerrado.", "#99bbff");
+		LogCombat("Combate encerrado.", "#99bbff");
 		EmitSignal(SignalName.TurnChanged, 0, "Nenhum", 0);
 	}
 
@@ -775,7 +938,7 @@ public partial class CombatManager : Node
 			currentSheet = sheet;
 		}
 
-		LogCombat($"👉 Vez de [b]{name}[/b] (Rodada {_session.Round})", "#a6e22e");
+		LogCombat($"Vez de [b]{name}[/b] (Rodada {_session.Round})", "#a6e22e");
 
 		// Processa condições de início de turno (ex.: teste de Constituição contra Sangrando)
 		if (cid > 0)
@@ -783,7 +946,7 @@ public partial class CombatManager : Node
 			var condLogs = Tormenta20ConditionRules.ProcessStartOfTurnConditions(_session, cid, currentSheet);
 			foreach (string log in condLogs)
 			{
-				LogCombat($"🩸 {log}", "#ff7b7b");
+				LogCombat(log, "#ff7b7b");
 			}
 		}
 

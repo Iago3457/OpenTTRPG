@@ -133,8 +133,26 @@ namespace OpenTTRPG.Tormenta20
             }
 
             string attackSkill = weapon.IsRanged ? "Pontaria" : "Luta";
-            Tormenta20SkillRules.TryCalculateSkillModifier(
-                attacker, attackSkill, out int skillMod, out _, session, attackerId, extraAttackBonus);
+            int skillMod;
+            if (attacker.IsEnemy && (weapon.AttackBonus != 0 || attacker.ThreatAttackBonus != 0))
+            {
+                int baseAtk = weapon.AttackBonus != 0 ? weapon.AttackBonus : attacker.ThreatAttackBonus;
+                int condAtkMod = 0;
+                if (Tormenta20SkillRules.TryGetSkillDefinition(attackSkill, out var atkDef))
+                {
+                    condAtkMod = Tormenta20ConditionRules.GetSkillModifier(session, attackerId, atkDef);
+                }
+                skillMod = baseAtk + extraAttackBonus + condAtkMod;
+            }
+            else
+            {
+                Tormenta20SkillRules.TryCalculateSkillModifier(
+                    attacker, attackSkill, out skillMod, out _, session, attackerId, extraAttackBonus);
+                if (weapon.AttackBonus != 0)
+                {
+                    skillMod += weapon.AttackBonus;
+                }
+            }
 
             int weaponCount = 0;
             bool hasShield = false;
@@ -153,7 +171,7 @@ namespace OpenTTRPG.Tormenta20
             }
 
             int flatDamageBonus = extraDamageBonus;
-            if (!weapon.IsRanged)
+            if (!weapon.IsRanged && !attacker.IsEnemy)
             {
                 int strMod = attacker.Strength + Tormenta20ConditionRules.GetAttributeModifier(session, attackerId, AttributeType.Strength);
                 flatDamageBonus += strMod;
@@ -254,8 +272,10 @@ namespace OpenTTRPG.Tormenta20
                 _ => ""
             };
             string downLabel = defender.CurrentHp <= defender.GetDeathThreshold()
-                ? $" >>> 💀 {defender.Name} MORREU ({defender.CurrentHp} PV)!"
-                : (defender.CurrentHp <= 0 ? $" >>> 🩸 {defender.Name} CAIU MORRENDO ({defender.CurrentHp} PV — Inconsciente e Sangrando)!" : "");
+                ? (defender.IsEnemy
+                    ? $" >>> [DERROTADO] {defender.Name} foi derrotado ({defender.CurrentHp} PV)!"
+                    : $" >>> [MORTE] {defender.Name} MORREU ({defender.CurrentHp} PV)!")
+                : (defender.CurrentHp <= 0 ? $" >>> [MORRENDO] {defender.Name} CAIU MORRENDO ({defender.CurrentHp} PV - Inconsciente e Sangrando)!" : "");
 
             return new T20AttackResolutionResult
             {

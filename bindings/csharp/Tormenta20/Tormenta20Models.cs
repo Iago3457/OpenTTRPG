@@ -79,11 +79,13 @@ namespace OpenTTRPG.Tormenta20
         public int ArmorPenalty { get; set; }
         public int Price { get; set; }
         public bool Equipped { get; set; }
+        public int AttackBonus { get; set; }
 
         public CharacterItem(string name, string description, ItemType type, int slots = 1,
                              string damage = "", string critical = "20/x2",
                              int defenseBonus = 0, int armorPenalty = 0, int price = 0, bool equipped = false,
-                             T20DamageType damageType = T20DamageType.Slashing, bool isRanged = false)
+                             T20DamageType damageType = T20DamageType.Slashing, bool isRanged = false,
+                             int attackBonus = 0)
         {
             Name = name ?? string.Empty;
             Description = description ?? string.Empty;
@@ -97,6 +99,7 @@ namespace OpenTTRPG.Tormenta20
             Equipped = equipped;
             DamageType = damageType;
             IsRanged = isRanged;
+            AttackBonus = attackBonus;
         }
 
         public void ParseCritical(out int threatRange, out int multiplier)
@@ -148,7 +151,8 @@ namespace OpenTTRPG.Tormenta20
             sb.Append($"{Name} ({GetTypeName()}) [{Slots} {(Slots == 1 ? "espaço" : "espaços")}]");
             if (!string.IsNullOrEmpty(Damage))
             {
-                sb.Append($" | Dano: {Damage} (Crítico: {Critical})");
+                string atkTag = AttackBonus != 0 ? $"Atk {(AttackBonus >= 0 ? "+" : "")}{AttackBonus} | " : string.Empty;
+                sb.Append($" | {atkTag}Dano: {Damage} (Crítico: {Critical})");
             }
             if (DefenseBonus > 0)
             {
@@ -241,6 +245,25 @@ namespace OpenTTRPG.Tormenta20
         public int Tibares { get; set; } = 50;
         public AttributeType SpellKeyAttribute { get; set; } = AttributeType.Intelligence;
         public bool IsBleedingOut { get; set; }
+
+        // Campos dedicados a Fichas de Inimigos / Ameaças (Tormenta20 Jogo do Ano)
+        public bool IsEnemy { get; set; }
+        public string ChallengeRating { get; set; } = "1";
+        public string CreatureType { get; set; } = "Humanoide";
+        public string CreatureSize { get; set; } = "Médio";
+        public string ThreatRole { get; set; } = "Solo";
+        public float SpeedMetersOverride { get; set; }
+        public int FixedDefense { get; set; }
+        public int DamageReduction { get; set; }
+        public int ThreatAttackBonus { get; set; }
+        public int? InitiativeOverride { get; set; }
+        public int? PerceptionOverride { get; set; }
+        public int? FortitudeOverride { get; set; }
+        public int? ReflexOverride { get; set; }
+        public int? WillOverride { get; set; }
+        public string SensesNotes { get; set; } = string.Empty;
+        public string TreasureNotes { get; set; } = "Padrão";
+        public string ThreatNotes { get; set; } = string.Empty;
 
         public int LastInitiativeRoll { get; set; }
 
@@ -357,6 +380,16 @@ namespace OpenTTRPG.Tormenta20
 
         public int GetDefense(EncounterSession? session = null, int combatantId = 0)
         {
+            if (IsEnemy && FixedDefense > 0)
+            {
+                int condMod = 0;
+                if (session != null && combatantId > 0)
+                {
+                    condMod = Tormenta20ConditionRules.GetDefenseModifier(session, combatantId);
+                }
+                return FixedDefense + DefenseBonusMisc + condMod;
+            }
+
             int armorBonus = 0;
             bool wearingHeavyArmor = false;
             int weaponCount = 0;
@@ -412,9 +445,86 @@ namespace OpenTTRPG.Tormenta20
 
         /// <summary>
         /// Limite de PV negativo para morte em Tormenta20 Jogo do Ano:
-        /// -max(10, metade dos PV máximos).
+        /// -max(10, metade dos PV máximos) para heróis; 0 PV para ameaças/inimigos.
         /// </summary>
-        public int GetDeathThreshold() => -Math.Max(10, MaxHp / 2);
+        public int GetDeathThreshold() => IsEnemy ? 0 : -Math.Max(10, MaxHp / 2);
+
+        /// <summary>
+        /// Cria uma cópia independente da ficha (útil para instanciar múltiplos inimigos no combate).
+        /// </summary>
+        public CharacterSheetData CloneForCombat(int runtimeId, string? customName = null)
+        {
+            var copy = new CharacterSheetData(
+                runtimeId,
+                string.IsNullOrWhiteSpace(customName) ? Name : customName,
+                CharacterClass,
+                Race,
+                Origin,
+                Deity,
+                Level,
+                MaxHp,
+                MaxPm)
+            {
+                CurrentHp = MaxHp,
+                TempHp = TempHp,
+                CurrentPm = MaxPm,
+                DefenseBonusMisc = DefenseBonusMisc,
+                Tibares = Tibares,
+                SpellKeyAttribute = SpellKeyAttribute,
+                IsBleedingOut = false,
+                IsEnemy = IsEnemy,
+                ChallengeRating = ChallengeRating,
+                CreatureType = CreatureType,
+                CreatureSize = CreatureSize,
+                ThreatRole = ThreatRole,
+                SpeedMetersOverride = SpeedMetersOverride,
+                FixedDefense = FixedDefense,
+                DamageReduction = DamageReduction,
+                ThreatAttackBonus = ThreatAttackBonus,
+                InitiativeOverride = InitiativeOverride,
+                PerceptionOverride = PerceptionOverride,
+                FortitudeOverride = FortitudeOverride,
+                ReflexOverride = ReflexOverride,
+                WillOverride = WillOverride,
+                SensesNotes = SensesNotes,
+                TreasureNotes = TreasureNotes,
+                ThreatNotes = ThreatNotes
+            };
+
+            foreach (AttributeType type in Enum.GetValues(typeof(AttributeType)))
+            {
+                copy.SetAttributeValue(type, GetAttribute(type).BaseValue);
+            }
+            foreach (var item in Inventory)
+            {
+                copy.Inventory.Add(new CharacterItem(
+                    item.Name, item.Description, item.Type, item.Slots,
+                    item.Damage, item.Critical, item.DefenseBonus,
+                    item.ArmorPenalty, item.Price, item.Equipped,
+                    item.DamageType, item.IsRanged, item.AttackBonus));
+            }
+            foreach (var sk in Skills)
+            {
+                var skCopy = new CharacterSkill(
+                    sk.Name, sk.Description, sk.PmCost, sk.Action,
+                    sk.Modifier, sk.TreeKey, sk.IsSpell, sk.BaseFormula);
+                foreach (var enh in sk.Enhancements)
+                {
+                    skCopy.Enhancements.Add(new SpellEnhancement(enh.ExtraPmCost, enh.Description, enh.ExtraDice));
+                }
+                copy.Skills.Add(skCopy);
+            }
+            copy.UnlockedTreeKeys.AddRange(UnlockedTreeKeys);
+            foreach (string tr in TrainedSkills)
+            {
+                copy.TrainedSkills.Add(tr);
+            }
+            foreach (var kv in SkillMiscBonuses)
+            {
+                copy.SkillMiscBonuses[kv.Key] = kv.Value;
+            }
+            return copy;
+        }
 
         /// <summary>
         /// Retorna o estado vital atual do personagem segundo as regras de Ferimentos e Morte de Tormenta20.
@@ -450,11 +560,11 @@ namespace OpenTTRPG.Tormenta20
         {
             return GetHealthState(session, combatantId) switch
             {
-                T20HealthState.Dead => $"💀 MORTO (Limite {GetDeathThreshold()} PV atingido)",
-                T20HealthState.Dying => $"🩸 MORRENDO (Inconsciente e Sangrando | Morte em {GetDeathThreshold()} PV)",
-                T20HealthState.UnconsciousStable => $"😵 INCONSCIENTE (Estabilizado | Morte em {GetDeathThreshold()} PV)",
-                T20HealthState.Bloodied => "🩹 MACHUCADO",
-                _ => "💚 ATIVO"
+                T20HealthState.Dead => IsEnemy ? "DERROTADO (0 PV)" : $"MORTO (Limite {GetDeathThreshold()} PV atingido)",
+                T20HealthState.Dying => $"MORRENDO (Inconsciente e Sangrando | Morte em {GetDeathThreshold()} PV)",
+                T20HealthState.UnconsciousStable => $"INCONSCIENTE (Estabilizado | Morte em {GetDeathThreshold()} PV)",
+                T20HealthState.Bloodied => "MACHUCADO",
+                _ => "ATIVO"
             };
         }
 

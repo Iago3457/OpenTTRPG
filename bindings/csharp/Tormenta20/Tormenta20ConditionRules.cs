@@ -159,7 +159,9 @@ namespace OpenTTRPG.Tormenta20
                 session.RemoveCondition(combatantId, BleedingKey);
                 ApplyCondition(session, combatantId, T20Condition.Inconsciente);
                 session.SetForcedOut(combatantId, true);
-                return $"💀 [MORTE] {sheet.Name} atingiu {sheet.CurrentHp} PV (limite de morte {deathThreshold} PV) e MORREU!";
+                return sheet.IsEnemy
+                    ? $"[DERROTADO] {sheet.Name} chegou a {sheet.CurrentHp} PV e foi derrotado!"
+                    : $"[MORTE] {sheet.Name} atingiu {sheet.CurrentHp} PV (limite de morte {deathThreshold} PV) e MORREU!";
             }
 
             if (sheet.CurrentHp <= 0)
@@ -169,12 +171,12 @@ namespace OpenTTRPG.Tormenta20
                 if (sheet.IsBleedingOut)
                 {
                     ApplyCondition(session, combatantId, T20Condition.Sangrando);
-                    return $"🩸 [MORRENDO] {sheet.Name} caiu a {sheet.CurrentHp} PV! Está Inconsciente e Sangrando (Teste CON CD 15 no início do turno; morre em {deathThreshold} PV).";
+                    return $"[MORRENDO] {sheet.Name} caiu a {sheet.CurrentHp} PV! Está Inconsciente e Sangrando (Teste CON CD 15 no início do turno; morre em {deathThreshold} PV).";
                 }
                 else
                 {
                     session.RemoveCondition(combatantId, BleedingKey);
-                    return $"😵 [INCONSCIENTE] {sheet.Name} está Inconsciente e Estabilizado ({sheet.CurrentHp} PV).";
+                    return $"[INCONSCIENTE] {sheet.Name} está Inconsciente e Estabilizado ({sheet.CurrentHp} PV).";
                 }
             }
 
@@ -285,7 +287,7 @@ namespace OpenTTRPG.Tormenta20
 
                 T20HealthState stateAfter = sheet?.GetHealthState(session, combatantId) ?? T20HealthState.Dying;
                 string msg = died
-                    ? $"💀 [MORTE!] {name} falhou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15), perdeu {dmgTaken} PV de sangramento e atingiu {sheet!.CurrentHp} PV (limite {sheet.GetDeathThreshold()} PV) — {name} MORREU!"
+                    ? $"[MORTE!] {name} falhou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15), perdeu {dmgTaken} PV de sangramento e atingiu {sheet!.CurrentHp} PV (limite {sheet.GetDeathThreshold()} PV) — {name} MORREU!"
                     : $"[SANGRANDO] {name} falhou no teste de Constituição ({total} [1d20={natural}{modStr}] vs CD 15) e perdeu {dmgTaken} PV de sangramento!" +
                       (sheet != null ? $" (PV atual: {sheet.CurrentHp}/{sheet.MaxHp} | Morre em {sheet.GetDeathThreshold()} PV)" : "");
 
@@ -403,7 +405,7 @@ namespace OpenTTRPG.Tormenta20
             }
             else if (sheet != null && sheet.CurrentHp <= 0 && sheet.CurrentHp > sheet.GetDeathThreshold())
             {
-                logs.Add($"😵 [INCONSCIENTE] {sheet.Name} está Inconsciente e Estabilizado ({sheet.CurrentHp} PV) — não pode agir até receber cura acima de 0 PV.");
+                logs.Add($"[INCONSCIENTE] {sheet.Name} está Inconsciente e Estabilizado ({sheet.CurrentHp} PV) — não pode agir até receber cura acima de 0 PV.");
             }
 
             return logs;

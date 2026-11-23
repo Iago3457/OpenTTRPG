@@ -14,4 +14,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <Target Name="PinOfflineNet8Packs" BeforeTargets="CollectPackageReferences;ProcessFrameworkReferences;ResolveTargetingPackAssets"
+          Condition="'$(TargetFramework)' == 'net8.0' And '$(NUGET_PACKAGES)' != '' And Exists('$(NUGET_PACKAGES)/microsoft.netcore.app.ref/8.0.32') And !Exists('$(NUGET_PACKAGES)/microsoft.netcore.app.ref/8.0.33')">
+    <ItemGroup>
+      <KnownFrameworkReference Update="@(KnownFrameworkReference)" Condition="'%(KnownFrameworkReference.TargetFramework)' == 'net8.0' And '%(KnownFrameworkReference.Identity)' == 'Microsoft.NETCore.App'" LatestRuntimeFrameworkVersion="8.0.32" TargetingPackVersion="8.0.32" />
+      <KnownFrameworkReference Update="@(KnownFrameworkReference)" Condition="'%(KnownFrameworkReference.TargetFramework)' == 'net8.0' And '%(KnownFrameworkReference.Identity)' == 'Microsoft.AspNetCore.App'" LatestRuntimeFrameworkVersion="8.0.32" TargetingPackVersion="8.0.32" />
+      <KnownAppHostPack Update="@(KnownAppHostPack)" Condition="'%(KnownAppHostPack.TargetFramework)' == 'net8.0' And '%(KnownAppHostPack.Identity)' == 'Microsoft.NETCore.App'" AppHostPackVersion="8.0.32" />
+    </ItemGroup>
+  </Target>
 </Project>

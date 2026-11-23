@@ -80,12 +80,13 @@ public partial class MainMenu : MarginContainer
 
 		var btnRecarregar = new Button
 		{
-			Text = "🔄 Recarregar Fichas Salvas"
+			Text = "Recarregar Fichas Salvas"
 		};
 		btnRecarregar.Pressed += () =>
 		{
 			var cm = GetNodeOrNull<CombatManager>("/root/CombatManager");
 			cm?.LoadCharacters();
+			cm?.LoadEnemies();
 		};
 		vbox.AddChild(btnRecarregar);
 

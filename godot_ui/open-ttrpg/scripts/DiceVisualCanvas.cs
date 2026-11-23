@@ -177,7 +177,7 @@ public partial class DiceVisualCanvas : Control
 
 		if (_state == RollState.CriticalHit)
 		{
-			_subLabelText = $"★ CRÍTICO NATURAL (d{_dieSides}) ★";
+			_subLabelText = $"CRÍTICO NATURAL (d{_dieSides})";
 			_particlesCrit.Color = new Color(1f, 0.86f, 0.22f, 1f);
 			_particlesCrit.Restart();
 			_particlesCrit.Emitting = true;
@@ -191,7 +191,7 @@ public partial class DiceVisualCanvas : Control
 		}
 		else if (_state == RollState.CriticalFumble)
 		{
-			_subLabelText = $"💀 FALHA CRÍTICA (1 NATURAL) 💀";
+			_subLabelText = "FALHA CRÍTICA (1 NATURAL)";
 			_particlesCrit.Color = new Color(0.95f, 0.22f, 0.22f, 1f);
 			_particlesCrit.Restart();
 			_particlesCrit.Emitting = true;

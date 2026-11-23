@@ -82,7 +82,7 @@ namespace OpenTTRPG.Tormenta20
                 T20ActionType.Free, 1, "2. Brutalidade (FOR)", tier: 2),
             new T20PowerTreeDefinition(
                 "golpe_demolidor", "Golpe Demolidor", "trespassar",
-                "Gasta 2 PM para desferir um impacto devastador que causa +2d6 de dano extra (Requer: Ataque Poderoso → Trespassar e Nível >= 8)",
+                "Gasta 2 PM para desferir um impacto devastador que causa +2d6 de dano extra (Requer: Ataque Poderoso -> Trespassar e Nível >= 8)",
                 T20ActionType.Free, 2, "2. Brutalidade (FOR)", tier: 3, baseFormula: "2d6"),
 
             // =================================================================
@@ -98,7 +98,7 @@ namespace OpenTTRPG.Tormenta20
                 T20ActionType.Free, 0, "3. Bastião (CON)", tier: 2),
             new T20PowerTreeDefinition(
                 "fanatico", "Fanático", "inexpugnavel",
-                "Armadura pesada não reduz seu deslocamento (Requer: Encouraçado → Inexpugnável e Nível >= 12)",
+                "Armadura pesada não reduz seu deslocamento (Requer: Encouraçado -> Inexpugnável e Nível >= 12)",
                 T20ActionType.Free, 0, "3. Bastião (CON)", tier: 3),
 
             // =================================================================

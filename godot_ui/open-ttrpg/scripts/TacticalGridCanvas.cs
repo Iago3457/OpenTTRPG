@@ -14,11 +14,14 @@ public partial class TacticalGridCanvas : Control
 {
 	private const float BaseCellSize = 48f;
 	private const float MarginHeader = 26f;
+	private const float MinZoom = 0.40f;
+	private const float MaxZoom = 2.60f;
 
 	public event Action<GridPos> CellClicked;
 	public event Action<GridPos> CellDragged;
 	public event Action<int> TokenClicked;
 	public event Action<string> HoverStatusChanged;
+	public event Action<float> ZoomChanged;
 
 	public int GridWidth { get; private set; } = 16;
 	public int GridHeight { get; private set; } = 12;
@@ -26,13 +29,28 @@ public partial class TacticalGridCanvas : Control
 	public bool IsEditorMode { get; set; }
 	public bool RulerMode { get; set; }
 	public bool FogOfWarEnabled { get; set; }
+	public float TargetZoom => _targetZoom;
 
 	private float _zoom = 1.0f;
+	private float _targetZoom = 1.0f;
 	private Vector2 _panOffset = new Vector2(18f, 18f);
+	private Vector2 _targetPanOffset = new Vector2(18f, 18f);
+	private bool _hasCenteredOnce;
+	private int _lastCenteredW = -1;
+	private int _lastCenteredH = -1;
+
 	private bool _isPanning;
+	private bool _isLeftPanning;
 	private Vector2 _lastPanMouse;
 	private bool _isPaintingDrag;
 	private GridPos? _lastDraggedCell;
+
+	private bool _cachedRayValid;
+	private GridPos _cachedRayOrigin;
+	private GridPos _cachedRayDest;
+	private bool _cachedRayHasLoS;
+	private T20CoverLevel _cachedRayCover;
+	private int _cachedRayDistSq;
 
 	private Texture2D _bgTexture;
 	private string _bgImagePath = string.Empty;
@@ -71,6 +89,106 @@ public partial class TacticalGridCanvas : Control
 	{
 		ClipContents = true;
 		MouseFilter = MouseFilterEnum.Stop;
+		FocusMode = FocusModeEnum.Click;
+		SetProcess(true);
+		Resized += OnCanvasResized;
+	}
+
+	private void OnCanvasResized()
+	{
+		_targetPanOffset = ClampPanOffset(_targetPanOffset, _targetZoom);
+		_panOffset = ClampPanOffset(_panOffset, _zoom);
+		QueueRedraw();
+	}
+
+	public override void _Process(double delta)
+	{
+		float dt = (float)delta;
+		if (dt <= 0f) return;
+
+		bool changed = false;
+
+		// Navegação suave via teclado (WASD / Setas) quando o mapa está visível e nenhum campo de texto está focado
+		if (IsVisibleInTree() && !IsTextInputFocused())
+		{
+			Vector2 keyDir = Vector2.Zero;
+			if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up)) keyDir.Y += 1f;
+			if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down)) keyDir.Y -= 1f;
+			if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left)) keyDir.X += 1f;
+			if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right)) keyDir.X -= 1f;
+
+			if (keyDir != Vector2.Zero)
+			{
+				float speed = Input.IsKeyPressed(Key.Shift) ? 880f : 520f;
+				_targetPanOffset = ClampPanOffset(_targetPanOffset + keyDir.Normalized() * speed * dt, _targetZoom);
+				changed = true;
+			}
+		}
+
+		// Interpolação exponencial única mantém o pivô de zoom fixo na tela sem saltos
+		float alpha = 1f - Mathf.Exp(-18f * dt);
+		bool zoomDiff = Mathf.Abs(_targetZoom - _zoom) > 0.0008f;
+		bool panDiff = _targetPanOffset.DistanceSquaredTo(_panOffset) > 0.08f;
+
+		if (zoomDiff || panDiff)
+		{
+			if (zoomDiff)
+				_zoom = Mathf.Lerp(_zoom, _targetZoom, alpha);
+			else
+				_zoom = _targetZoom;
+
+			if (panDiff)
+				_panOffset = _panOffset.Lerp(_targetPanOffset, alpha);
+			else
+				_panOffset = _targetPanOffset;
+
+			changed = true;
+		}
+
+		if (changed)
+		{
+			QueueRedraw();
+		}
+	}
+
+	private bool IsTextInputFocused()
+	{
+		Control focus = GetViewport()?.GuiGetFocusOwner();
+		return focus is LineEdit or TextEdit or SpinBox;
+	}
+
+	private Vector2 ClampPanOffset(Vector2 offset, float zoom)
+	{
+		if (Size.X < 40f || Size.Y < 40f) return offset;
+
+		float totalW = (GridWidth * BaseCellSize + MarginHeader * 2f) * zoom;
+		float totalH = (GridHeight * BaseCellSize + MarginHeader * 2f) * zoom;
+
+		// Mantém sempre pelo menos 30% do tabuleiro ou 110px visível na área do canvas
+		float keepVisibleX = Mathf.Min(totalW * 0.45f, Mathf.Max(110f, Size.X * 0.25f));
+		float keepVisibleY = Mathf.Min(totalH * 0.45f, Mathf.Max(110f, Size.Y * 0.25f));
+
+		float minX = keepVisibleX - totalW;
+		float maxX = Size.X - keepVisibleX;
+		float minY = keepVisibleY - totalH;
+		float maxY = Size.Y - keepVisibleY;
+
+		if (minX > maxX)
+		{
+			float midX = (minX + maxX) * 0.5f;
+			minX = midX - 80f;
+			maxX = midX + 80f;
+		}
+		if (minY > maxY)
+		{
+			float midY = (minY + maxY) * 0.5f;
+			minY = midY - 80f;
+			maxY = midY + 80f;
+		}
+
+		return new Vector2(
+			Mathf.Clamp(offset.X, minX, maxX),
+			Mathf.Clamp(offset.Y, minY, maxY));
 	}
 
 	public void SetBackgroundImage(string path)
@@ -95,27 +213,65 @@ public partial class TacticalGridCanvas : Control
 		QueueRedraw();
 	}
 
-	public void CenterView()
+	public void EnsureInitialCenter()
+	{
+		if (!_hasCenteredOnce || _lastCenteredW != GridWidth || _lastCenteredH != GridHeight)
+		{
+			CenterView(animate: false);
+		}
+	}
+
+	public void CenterView(bool animate = true)
 	{
 		float contentW = GridWidth * BaseCellSize + MarginHeader * 2f;
 		float contentH = GridHeight * BaseCellSize + MarginHeader * 2f;
+		float desiredZoom;
+		Vector2 desiredPan;
+
 		if (Size.X > 40f && Size.Y > 40f && contentW > 0f && contentH > 0f)
 		{
-			float fitX = (Size.X - 24f) / contentW;
-			float fitY = (Size.Y - 24f) / contentH;
-			_zoom = Mathf.Clamp(Mathf.Min(fitX, fitY), 0.55f, 1.35f);
-			float drawnW = contentW * _zoom;
-			float drawnH = contentH * _zoom;
-			_panOffset = new Vector2(
-				Mathf.Max(12f, (Size.X - drawnW) * 0.5f),
-				Mathf.Max(12f, (Size.Y - drawnH) * 0.5f));
+			float fitX = (Size.X - 28f) / contentW;
+			float fitY = (Size.Y - 28f) / contentH;
+			desiredZoom = Mathf.Clamp(Mathf.Min(fitX, fitY), 0.55f, 1.35f);
+			float drawnW = contentW * desiredZoom;
+			float drawnH = contentH * desiredZoom;
+			desiredPan = new Vector2(
+				(Size.X - drawnW) * 0.5f,
+				(Size.Y - drawnH) * 0.5f);
+			_hasCenteredOnce = true;
+			_lastCenteredW = GridWidth;
+			_lastCenteredH = GridHeight;
 		}
 		else
 		{
-			_zoom = 1.0f;
-			_panOffset = new Vector2(18f, 18f);
+			desiredZoom = 1.0f;
+			desiredPan = new Vector2(18f, 18f);
 		}
+
+		_targetZoom = desiredZoom;
+		_targetPanOffset = ClampPanOffset(desiredPan, desiredZoom);
+		if (!animate)
+		{
+			_zoom = _targetZoom;
+			_panOffset = _targetPanOffset;
+		}
+		ZoomChanged?.Invoke(_targetZoom);
 		QueueRedraw();
+	}
+
+	public void ZoomBy(float factor)
+	{
+		Vector2 pivot = Size * 0.5f;
+		if (pivot.X < 10f || pivot.Y < 10f) pivot = Vector2.Zero;
+		ApplyZoom(factor, pivot, immediate: false);
+	}
+
+	public void ResetZoom100()
+	{
+		if (_targetZoom <= 0.001f) return;
+		Vector2 pivot = Size * 0.5f;
+		if (pivot.X < 10f || pivot.Y < 10f) pivot = Vector2.Zero;
+		ApplyZoom(1.0f / _targetZoom, pivot, immediate: false);
 	}
 
 	public void SetSelectedEditorToken(int entityId)
@@ -146,6 +302,7 @@ public partial class TacticalGridCanvas : Control
 		_reachableCells.Clear();
 		_hoverPath.Clear();
 		_hoverPathCost = -1;
+		_cachedRayValid = false;
 
 		if (reachableCells != null)
 		{
@@ -302,17 +459,33 @@ public partial class TacticalGridCanvas : Control
 
 	public override void _GuiInput(InputEvent @event)
 	{
+		if (@event is InputEventMagnifyGesture mg)
+		{
+			ApplyZoom(mg.Factor, mg.Position, immediate: true);
+			AcceptEvent();
+			return;
+		}
+		if (@event is InputEventPanGesture pg)
+		{
+			Vector2 shifted = ClampPanOffset(_targetPanOffset - pg.Delta * 18f, _targetZoom);
+			_targetPanOffset = shifted;
+			_panOffset = shifted;
+			QueueRedraw();
+			AcceptEvent();
+			return;
+		}
+
 		if (@event is InputEventMouseButton mb)
 		{
 			if (mb.ButtonIndex == MouseButton.WheelUp && mb.Pressed)
 			{
-				ApplyZoom(1.12f, mb.Position);
+				ApplyZoom(1.14f, mb.Position, immediate: false);
 				AcceptEvent();
 				return;
 			}
 			if (mb.ButtonIndex == MouseButton.WheelDown && mb.Pressed)
 			{
-				ApplyZoom(0.89f, mb.Position);
+				ApplyZoom(1.0f / 1.14f, mb.Position, immediate: false);
 				AcceptEvent();
 				return;
 			}
@@ -320,7 +493,9 @@ public partial class TacticalGridCanvas : Control
 			if (mb.ButtonIndex == MouseButton.Right || mb.ButtonIndex == MouseButton.Middle)
 			{
 				_isPanning = mb.Pressed;
+				_isLeftPanning = false;
 				_lastPanMouse = mb.Position;
+				MouseDefaultCursorShape = _isPanning ? CursorShape.Drag : CursorShape.Arrow;
 				AcceptEvent();
 				return;
 			}
@@ -329,8 +504,17 @@ public partial class TacticalGridCanvas : Control
 			{
 				if (mb.Pressed)
 				{
+					GrabFocus();
+					bool spacePan = Input.IsKeyPressed(Key.Space);
 					var cellOpt = ScreenToCell(mb.Position);
-					if (cellOpt.HasValue)
+					if (spacePan || !cellOpt.HasValue)
+					{
+						_isPanning = true;
+						_isLeftPanning = true;
+						_lastPanMouse = mb.Position;
+						MouseDefaultCursorShape = CursorShape.Drag;
+					}
+					else
 					{
 						var cell = cellOpt.Value;
 						_isPaintingDrag = IsEditorMode;
@@ -355,6 +539,12 @@ public partial class TacticalGridCanvas : Control
 				}
 				else
 				{
+					if (_isLeftPanning)
+					{
+						_isPanning = false;
+						_isLeftPanning = false;
+						MouseDefaultCursorShape = CursorShape.Arrow;
+					}
 					_isPaintingDrag = false;
 					_lastDraggedCell = null;
 				}
@@ -366,7 +556,9 @@ public partial class TacticalGridCanvas : Control
 			{
 				Vector2 delta = mm.Position - _lastPanMouse;
 				_lastPanMouse = mm.Position;
-				_panOffset += delta;
+				Vector2 clamped = ClampPanOffset(_targetPanOffset + delta, _targetZoom);
+				_targetPanOffset = clamped;
+				_panOffset = ClampPanOffset(_panOffset + delta, _zoom);
 				QueueRedraw();
 				AcceptEvent();
 				return;
@@ -388,15 +580,22 @@ public partial class TacticalGridCanvas : Control
 		}
 	}
 
-	private void ApplyZoom(float factor, Vector2 pivotLocal)
+	private void ApplyZoom(float factor, Vector2 pivotLocal, bool immediate)
 	{
-		float oldZoom = _zoom;
-		float newZoom = Mathf.Clamp(oldZoom * factor, 0.55f, 2.2f);
-		if (Mathf.IsEqualApprox(oldZoom, newZoom)) return;
+		float oldTarget = _targetZoom;
+		float newTarget = Mathf.Clamp(oldTarget * factor, MinZoom, MaxZoom);
+		if (Mathf.IsEqualApprox(oldTarget, newTarget)) return;
 
-		Vector2 worldBefore = (pivotLocal - _panOffset) / oldZoom;
-		_zoom = newZoom;
-		_panOffset = pivotLocal - worldBefore * _zoom;
+		Vector2 worldBefore = (pivotLocal - _targetPanOffset) / oldTarget;
+		_targetZoom = newTarget;
+		_targetPanOffset = ClampPanOffset(pivotLocal - worldBefore * _targetZoom, _targetZoom);
+
+		if (immediate)
+		{
+			_zoom = _targetZoom;
+			_panOffset = _targetPanOffset;
+		}
+		ZoomChanged?.Invoke(_targetZoom);
 		QueueRedraw();
 	}
 
@@ -404,10 +603,11 @@ public partial class TacticalGridCanvas : Control
 	{
 		_hoverPath.Clear();
 		_hoverPathCost = -1;
+		_cachedRayValid = false;
 
 		if (!_hoverCell.HasValue)
 		{
-			HoverStatusChanged?.Invoke("Passe o mouse sobre o mapa para inspecionar distâncias e terrenos.");
+			HoverStatusChanged?.Invoke("Escala: 1q = 1,5m | Pan: Direito/Meio/Espaço+Esquerdo/WASD | Scroll/+/-: Zoom");
 			return;
 		}
 
@@ -421,11 +621,11 @@ public partial class TacticalGridCanvas : Control
 			if (cInfo.TerrainType == MapTerrainType.Blocked) terrainName = "Parede / Obstáculo";
 			else if (cInfo.CoverLevel == 1 && cInfo.TerrainType == MapTerrainType.Difficult) terrainName = "Mureta (Terreno Difícil + Cobertura Leve)";
 			else if (cInfo.CoverLevel == 1) terrainName = "Cobertura Leve (+5 Def)";
-			else if (cInfo.TerrainType == MapTerrainType.Difficult) terrainName = "Terreno Difícil (Custo ×2)";
+			else if (cInfo.TerrainType == MapTerrainType.Difficult) terrainName = "Terreno Difícil (Custo x2)";
 		}
 
 		var tok = FindVisibleTokenAt(cell);
-		string tokNote = tok != null ? $" • {tok.Name} (PV {tok.CurrentHp}/{tok.MaxHp})" : string.Empty;
+		string tokNote = tok != null ? $" | {tok.Name} (PV {tok.CurrentHp}/{tok.MaxHp})" : string.Empty;
 
 		if (!IsEditorMode && _sessionRef != null && _currentTurnId > 0 && _sessionRef.TryGetToken(_currentTurnId, out var curTok))
 		{
@@ -433,18 +633,29 @@ public partial class TacticalGridCanvas : Control
 			int straightSquares = Tormenta20TacticalRules.ComputeT20DistanceSquares(origin, cell);
 			string straightDist = Tormenta20TacticalRules.FormatMeters(straightSquares);
 
+			if (origin != cell && (RulerMode || (tok != null && tok.EntityId != _currentTurnId)))
+			{
+				Tormenta20TacticalRules.EvaluateLineOfSightAndCover(_sessionRef, origin, cell, out bool hasLoS, out var cover);
+				_cachedRayValid = true;
+				_cachedRayOrigin = origin;
+				_cachedRayDest = cell;
+				_cachedRayHasLoS = hasLoS;
+				_cachedRayCover = cover;
+				_cachedRayDistSq = straightSquares;
+			}
+
 			if (!RulerMode && _reachableCells.TryGetValue(cell, out int costSquares))
 			{
 				_hoverPath = Tormenta20TacticalRules.FindShortestPath(_sessionRef, _currentTurnId, cell, costSquares, out _hoverPathCost);
-				HoverStatusChanged?.Invoke($"{coordLabel} — {terrainName} • Movimento: {Tormenta20TacticalRules.FormatMeters(costSquares)} ({costSquares}q){tokNote}");
+				HoverStatusChanged?.Invoke($"{coordLabel} - {terrainName} | Movimento: {Tormenta20TacticalRules.FormatMeters(costSquares)} ({costSquares}q){tokNote}");
 				return;
 			}
 
-			HoverStatusChanged?.Invoke($"{coordLabel} — {terrainName} • Distância: {straightDist}{tokNote}");
+			HoverStatusChanged?.Invoke($"{coordLabel} - {terrainName} | Distância: {straightDist}{tokNote}");
 			return;
 		}
 
-		HoverStatusChanged?.Invoke($"{coordLabel} — {terrainName}{tokNote}");
+		HoverStatusChanged?.Invoke($"{coordLabel} - {terrainName}{tokNote}");
 	}
 
 	public override void _Draw()
@@ -594,31 +805,23 @@ public partial class TacticalGridCanvas : Control
 			}
 		}
 
-		if (!IsEditorMode && (RulerMode || (_hoverCell.HasValue && FindVisibleTokenAt(_hoverCell.Value)?.EntityId != _currentTurnId && FindVisibleTokenAt(_hoverCell.Value) != null))
-		    && _sessionRef != null && _currentTurnId > 0 && _hoverCell.HasValue && _sessionRef.TryGetToken(_currentTurnId, out var atkTok))
+		if (!IsEditorMode && _cachedRayValid)
 		{
-			var originPos = new GridPos(atkTok.X, atkTok.Y);
-			var destPos = _hoverCell.Value;
-			if (originPos != destPos)
-			{
-				int distSq = Tormenta20TacticalRules.ComputeT20DistanceSquares(originPos, destPos);
-				Tormenta20TacticalRules.EvaluateLineOfSightAndCover(_sessionRef, originPos, destPos, out bool hasLoS, out var cover);
-				bool inRange = distSq <= _maxWeaponRangeSquares;
+			bool inRange = _cachedRayDistSq <= _maxWeaponRangeSquares;
 
-				Color rayColor = !hasLoS || !inRange
-					? new Color(1f, 0.30f, 0.30f, 0.9f)
-					: (cover == T20CoverLevel.Light ? new Color(1f, 0.82f, 0.25f, 0.92f) : new Color(0.32f, 0.95f, 0.52f, 0.92f));
+			Color rayColor = !_cachedRayHasLoS || !inRange
+				? new Color(1f, 0.30f, 0.30f, 0.9f)
+				: (_cachedRayCover == T20CoverLevel.Light ? new Color(1f, 0.82f, 0.25f, 0.92f) : new Color(0.32f, 0.95f, 0.52f, 0.92f));
 
-				Vector2 p0 = CellCenterScreen(new Vector2(originPos.X, originPos.Y));
-				Vector2 p1 = CellCenterScreen(new Vector2(destPos.X, destPos.Y));
-				DrawLine(p0, p1, rayColor, 2.8f);
+			Vector2 p0 = CellCenterScreen(new Vector2(_cachedRayOrigin.X, _cachedRayOrigin.Y));
+			Vector2 p1 = CellCenterScreen(new Vector2(_cachedRayDest.X, _cachedRayDest.Y));
+			DrawLine(p0, p1, rayColor, 2.8f);
 
-				string label = Tormenta20TacticalRules.FormatMeters(distSq);
-				if (!hasLoS) label += " • Sem Visão";
-				else if (!inRange) label += " • Fora de Alcance";
-				else if (cover == T20CoverLevel.Light) label += " • Cobertura (+5 Def)";
-				DrawBadge(font, (p0 + p1) * 0.5f, label, rayColor);
-			}
+			string label = Tormenta20TacticalRules.FormatMeters(_cachedRayDistSq);
+			if (!_cachedRayHasLoS) label += " | Sem Visão";
+			else if (!inRange) label += " | Fora de Alcance";
+			else if (_cachedRayCover == T20CoverLevel.Light) label += " | Cobertura (+5 Def)";
+			DrawBadge(font, (p0 + p1) * 0.5f, label, rayColor);
 		}
 
 		// 8. Tokens dos combatentes
@@ -662,7 +865,7 @@ public partial class TacticalGridCanvas : Control
 			DrawCircle(center, radius, fillColor);
 			DrawArc(center, radius, 0, Mathf.Tau, 24, borderColor, 2.0f);
 
-			string centerText = tok.IsDead ? "💀" : (tok.IsBleedingOut ? "🩸" : tok.Initials);
+			string centerText = tok.IsDead ? "X" : (tok.IsBleedingOut ? "!" : tok.Initials);
 			DrawString(font, center + new Vector2(-radius * 0.58f, initFontSize * 0.36f), centerText, HorizontalAlignment.Center, radius * 1.16f, initFontSize, Colors.White);
 
 			// Mini-barra de PV

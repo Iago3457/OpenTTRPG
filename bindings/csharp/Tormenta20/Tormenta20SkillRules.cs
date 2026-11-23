@@ -118,6 +118,39 @@ namespace OpenTTRPG.Tormenta20
             return 2;
         }
 
+        private static bool TryGetEnemySkillOverride(CharacterSheetData sheet, string skillName, out int baseOverride)
+        {
+            baseOverride = 0;
+            if (!sheet.IsEnemy) return false;
+
+            if (skillName.Equals("Iniciativa", StringComparison.OrdinalIgnoreCase) && sheet.InitiativeOverride.HasValue)
+            {
+                baseOverride = sheet.InitiativeOverride.Value;
+                return true;
+            }
+            if (skillName.Equals("Percepção", StringComparison.OrdinalIgnoreCase) && sheet.PerceptionOverride.HasValue)
+            {
+                baseOverride = sheet.PerceptionOverride.Value;
+                return true;
+            }
+            if (skillName.Equals("Fortitude", StringComparison.OrdinalIgnoreCase) && sheet.FortitudeOverride.HasValue)
+            {
+                baseOverride = sheet.FortitudeOverride.Value;
+                return true;
+            }
+            if (skillName.Equals("Reflexos", StringComparison.OrdinalIgnoreCase) && sheet.ReflexOverride.HasValue)
+            {
+                baseOverride = sheet.ReflexOverride.Value;
+                return true;
+            }
+            if (skillName.Equals("Vontade", StringComparison.OrdinalIgnoreCase) && sheet.WillOverride.HasValue)
+            {
+                baseOverride = sheet.WillOverride.Value;
+                return true;
+            }
+            return false;
+        }
+
         public static bool TryCalculateSkillModifier(CharacterSheetData sheet, string skillName,
                                                      out int totalModifier, out string breakdownOrError,
                                                      EncounterSession? session = null, int combatantId = 0,
@@ -130,6 +163,24 @@ namespace OpenTTRPG.Tormenta20
                 totalModifier = 0;
                 breakdownOrError = $"Perícia '{skillName}' não encontrada na tabela de Tormenta20.";
                 return false;
+            }
+
+            if (TryGetEnemySkillOverride(sheet, def.Name, out int enemyBase))
+            {
+                int enemyCondPenalty = (session != null && combatantId > 0)
+                    ? Tormenta20ConditionRules.GetSkillModifier(session, combatantId, def)
+                    : 0;
+                int enemyExtra = extraBonus;
+                if (sheet.SkillMiscBonuses.TryGetValue(def.Name, out int savedEnemyMisc))
+                {
+                    enemyExtra += savedEnemyMisc;
+                }
+                totalModifier = enemyBase + enemyCondPenalty + enemyExtra;
+                breakdownOrError =
+                    $"Base da Ameaça ({FormatSigned(enemyBase)})" +
+                    (enemyCondPenalty != 0 ? $" + Condições ({FormatSigned(enemyCondPenalty)})" : "") +
+                    (enemyExtra != 0 ? $" + Outros ({FormatSigned(enemyExtra)})" : "");
+                return true;
             }
 
             bool isTrained = sheet.TrainedSkills.Contains(def.Name);
@@ -193,42 +244,67 @@ namespace OpenTTRPG.Tormenta20
                 };
             }
 
-            bool isTrained = sheet.TrainedSkills.Contains(def.Name);
-            if (def.TrainedOnly && !isTrained)
+            int halfLevel;
+            int attrMod;
+            int trainBonus;
+            int armorPenalty;
+            int condMod;
+            int otherMod;
+            int totalMod;
+
+            if (TryGetEnemySkillOverride(sheet, def.Name, out int enemyBase))
             {
-                return new T20SkillCheckResult
+                halfLevel = 0;
+                attrMod = sheet.GetAttribute(def.KeyAttribute).Modifier;
+                trainBonus = 0;
+                armorPenalty = 0;
+                condMod = combatantId > 0 ? Tormenta20ConditionRules.GetSkillModifier(session, combatantId, def) : 0;
+                otherMod = extraBonus;
+                if (sheet.SkillMiscBonuses.TryGetValue(def.Name, out int savedEnemyMisc))
                 {
-                    Allowed = false,
-                    SkillName = def.Name,
-                    DifficultyClass = dc,
-                    Success = false,
-                    Message = $"[BLOQUEADO] '{def.Name}' exige treinamento (Somente Treinada) e {sheet.Name} não é treinado."
-                };
+                    otherMod += savedEnemyMisc;
+                }
+                totalMod = enemyBase + condMod + otherMod;
             }
-
-            int halfLevel = sheet.Level / 2;
-            int attrMod = sheet.GetAttribute(def.KeyAttribute).Modifier;
-            int trainBonus = GetTrainingBonus(sheet.Level, isTrained);
-            int armorPenalty = def.AppliesArmorPenalty ? sheet.GetTotalArmorPenalty(session, combatantId) : 0;
-            int condMod = combatantId > 0 ? Tormenta20ConditionRules.GetSkillModifier(session, combatantId, def) : 0;
-
-            int otherMod = extraBonus;
-            if (sheet.SkillMiscBonuses.TryGetValue(def.Name, out int savedMisc))
+            else
             {
-                otherMod += savedMisc;
-            }
+                bool isTrained = sheet.TrainedSkills.Contains(def.Name);
+                if (def.TrainedOnly && !isTrained)
+                {
+                    return new T20SkillCheckResult
+                    {
+                        Allowed = false,
+                        SkillName = def.Name,
+                        DifficultyClass = dc,
+                        Success = false,
+                        Message = $"[BLOQUEADO] '{def.Name}' exige treinamento (Somente Treinada) e {sheet.Name} não é treinado."
+                    };
+                }
 
-            bool isSavingThrow = def.Name.Equals("Fortitude", StringComparison.OrdinalIgnoreCase) ||
-                                 def.Name.Equals("Reflexos", StringComparison.OrdinalIgnoreCase) ||
-                                 def.Name.Equals("Vontade", StringComparison.OrdinalIgnoreCase);
-            bool hasInexpugnable = sheet.UnlockedTreeKeys.Contains("inexpugnavel") ||
-                (combatantId > 0 && session.HasAbility(combatantId, "inexpugnavel"));
-            if (isSavingThrow && hasInexpugnable)
-            {
-                otherMod += 2;
-            }
+                halfLevel = sheet.Level / 2;
+                attrMod = sheet.GetAttribute(def.KeyAttribute).Modifier;
+                trainBonus = GetTrainingBonus(sheet.Level, isTrained);
+                armorPenalty = def.AppliesArmorPenalty ? sheet.GetTotalArmorPenalty(session, combatantId) : 0;
+                condMod = combatantId > 0 ? Tormenta20ConditionRules.GetSkillModifier(session, combatantId, def) : 0;
 
-            int totalMod = halfLevel + attrMod + trainBonus + armorPenalty + condMod + otherMod;
+                otherMod = extraBonus;
+                if (sheet.SkillMiscBonuses.TryGetValue(def.Name, out int savedMisc))
+                {
+                    otherMod += savedMisc;
+                }
+
+                bool isSavingThrow = def.Name.Equals("Fortitude", StringComparison.OrdinalIgnoreCase) ||
+                                     def.Name.Equals("Reflexos", StringComparison.OrdinalIgnoreCase) ||
+                                     def.Name.Equals("Vontade", StringComparison.OrdinalIgnoreCase);
+                bool hasInexpugnable = sheet.UnlockedTreeKeys.Contains("inexpugnavel") ||
+                    (combatantId > 0 && session.HasAbility(combatantId, "inexpugnavel"));
+                if (isSavingThrow && hasInexpugnable)
+                {
+                    otherMod += 2;
+                }
+
+                totalMod = halfLevel + attrMod + trainBonus + armorPenalty + condMod + otherMod;
+            }
             RollResult d20 = session.Roll("1d20");
             int natural = d20.DiceTotal;
             int total = natural + totalMod;

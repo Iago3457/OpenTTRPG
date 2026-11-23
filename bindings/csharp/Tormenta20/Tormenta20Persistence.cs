@@ -44,6 +44,7 @@ namespace OpenTTRPG.Tormenta20
         public int ArmorPenalty { get; set; }
         public int Price { get; set; }
         public bool Equipped { get; set; }
+        public int AttackBonus { get; set; }
     }
 
     public sealed class CharacterSheetDto
@@ -74,6 +75,25 @@ namespace OpenTTRPG.Tormenta20
         public AttributeType SpellKeyAttribute { get; set; }
         public bool IsBleedingOut { get; set; }
 
+        // Campos de Ficha de Inimigo / Ameaça
+        public bool IsEnemy { get; set; }
+        public string ChallengeRating { get; set; } = "1";
+        public string CreatureType { get; set; } = "Humanoide";
+        public string CreatureSize { get; set; } = "Médio";
+        public string ThreatRole { get; set; } = "Solo";
+        public float SpeedMetersOverride { get; set; }
+        public int FixedDefense { get; set; }
+        public int DamageReduction { get; set; }
+        public int ThreatAttackBonus { get; set; }
+        public int? InitiativeOverride { get; set; }
+        public int? PerceptionOverride { get; set; }
+        public int? FortitudeOverride { get; set; }
+        public int? ReflexOverride { get; set; }
+        public int? WillOverride { get; set; }
+        public string SensesNotes { get; set; } = string.Empty;
+        public string TreasureNotes { get; set; } = "Padrão";
+        public string ThreatNotes { get; set; } = string.Empty;
+
         public List<CharacterItemDto> Inventory { get; set; } = new();
         public List<CharacterSkillDto> Skills { get; set; } = new();
         public List<string> UnlockedTreeKeys { get; set; } = new();
@@ -94,6 +114,7 @@ namespace OpenTTRPG.Tormenta20
         public int CurrentPm { get; set; }
         public bool IsBleedingOut { get; set; }
         public List<string> ActiveConditions { get; set; } = new();
+        public CharacterSheetDto? InlineSheet { get; set; }
     }
 
     public sealed class GridPosDto
@@ -169,6 +190,23 @@ namespace OpenTTRPG.Tormenta20
                 Tibares = sheet.Tibares,
                 SpellKeyAttribute = sheet.SpellKeyAttribute,
                 IsBleedingOut = sheet.IsBleedingOut,
+                IsEnemy = sheet.IsEnemy,
+                ChallengeRating = sheet.ChallengeRating,
+                CreatureType = sheet.CreatureType,
+                CreatureSize = sheet.CreatureSize,
+                ThreatRole = sheet.ThreatRole,
+                SpeedMetersOverride = sheet.SpeedMetersOverride,
+                FixedDefense = sheet.FixedDefense,
+                DamageReduction = sheet.DamageReduction,
+                ThreatAttackBonus = sheet.ThreatAttackBonus,
+                InitiativeOverride = sheet.InitiativeOverride,
+                PerceptionOverride = sheet.PerceptionOverride,
+                FortitudeOverride = sheet.FortitudeOverride,
+                ReflexOverride = sheet.ReflexOverride,
+                WillOverride = sheet.WillOverride,
+                SensesNotes = sheet.SensesNotes,
+                TreasureNotes = sheet.TreasureNotes,
+                ThreatNotes = sheet.ThreatNotes,
                 UnlockedTreeKeys = new List<string>(sheet.UnlockedTreeKeys),
                 TrainedSkills = new List<string>(sheet.TrainedSkills),
                 SkillMiscBonuses = new Dictionary<string, int>(sheet.SkillMiscBonuses)
@@ -189,7 +227,8 @@ namespace OpenTTRPG.Tormenta20
                     DefenseBonus = item.DefenseBonus,
                     ArmorPenalty = item.ArmorPenalty,
                     Price = item.Price,
-                    Equipped = item.Equipped
+                    Equipped = item.Equipped,
+                    AttackBonus = item.AttackBonus
                 });
             }
 
@@ -239,7 +278,24 @@ namespace OpenTTRPG.Tormenta20
                 DefenseBonusMisc = dto.DefenseBonusMisc,
                 Tibares = dto.Tibares,
                 SpellKeyAttribute = dto.SpellKeyAttribute,
-                IsBleedingOut = dto.IsBleedingOut || (dto.CurrentHp <= 0 && dto.CurrentHp > -Math.Max(10, dto.MaxHp / 2))
+                IsBleedingOut = dto.IsBleedingOut || (!dto.IsEnemy && dto.CurrentHp <= 0 && dto.CurrentHp > -Math.Max(10, dto.MaxHp / 2)),
+                IsEnemy = dto.IsEnemy,
+                ChallengeRating = string.IsNullOrWhiteSpace(dto.ChallengeRating) ? "1" : dto.ChallengeRating,
+                CreatureType = string.IsNullOrWhiteSpace(dto.CreatureType) ? "Humanoide" : dto.CreatureType,
+                CreatureSize = string.IsNullOrWhiteSpace(dto.CreatureSize) ? "Médio" : dto.CreatureSize,
+                ThreatRole = string.IsNullOrWhiteSpace(dto.ThreatRole) ? "Solo" : dto.ThreatRole,
+                SpeedMetersOverride = dto.SpeedMetersOverride,
+                FixedDefense = dto.FixedDefense,
+                DamageReduction = dto.DamageReduction,
+                ThreatAttackBonus = dto.ThreatAttackBonus,
+                InitiativeOverride = dto.InitiativeOverride,
+                PerceptionOverride = dto.PerceptionOverride,
+                FortitudeOverride = dto.FortitudeOverride,
+                ReflexOverride = dto.ReflexOverride,
+                WillOverride = dto.WillOverride,
+                SensesNotes = dto.SensesNotes ?? string.Empty,
+                TreasureNotes = string.IsNullOrWhiteSpace(dto.TreasureNotes) ? "Padrão" : dto.TreasureNotes,
+                ThreatNotes = dto.ThreatNotes ?? string.Empty
             };
 
             foreach (var itemDto in dto.Inventory)
@@ -248,7 +304,7 @@ namespace OpenTTRPG.Tormenta20
                     itemDto.Name, itemDto.Description, itemDto.Type, itemDto.Slots,
                     itemDto.Damage, itemDto.Critical, itemDto.DefenseBonus,
                     itemDto.ArmorPenalty, itemDto.Price, itemDto.Equipped,
-                    itemDto.DamageType, itemDto.IsRanged));
+                    itemDto.DamageType, itemDto.IsRanged, itemDto.AttackBonus));
             }
 
             foreach (var skDto in dto.Skills)

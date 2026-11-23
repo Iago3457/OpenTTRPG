@@ -245,21 +245,21 @@ public partial class AbilityTreeCanvas : Control
 			bgColor     = new Color(0.24f, 0.19f, 0.06f, 0.97f);
 			borderColor = isSelected ? new Color(1f, 0.96f, 0.55f) : new Color(0.95f, 0.76f, 0.22f);
 			titleColor  = new Color(1f, 0.92f, 0.45f);
-			statusBadge = "★ APRENDIDO";
+			statusBadge = "APRENDIDO";
 		}
 		else if (st.CanLearn)
 		{
 			bgColor     = new Color(0.08f, 0.22f, 0.14f, 0.97f);
 			borderColor = isSelected ? new Color(0.55f, 1f, 0.72f) : new Color(0.25f, 0.85f, 0.48f);
 			titleColor  = new Color(0.65f, 1f, 0.78f);
-			statusBadge = "✔ DISPONÍVEL";
+			statusBadge = "DISPONÍVEL";
 		}
 		else
 		{
 			bgColor     = new Color(0.12f, 0.13f, 0.16f, 0.94f);
 			borderColor = isSelected ? new Color(0.75f, 0.45f, 0.45f) : new Color(0.28f, 0.30f, 0.36f);
 			titleColor  = new Color(0.72f, 0.74f, 0.78f);
-			statusBadge = "🔒 BLOQUEADO";
+			statusBadge = "BLOQUEADO";
 		}
 
 		var card = new PanelContainer
@@ -330,7 +330,7 @@ public partial class AbilityTreeCanvas : Control
 		{
 			var btnLearn = new Button
 			{
-				Text = "✨ Aprender Poder",
+				Text = "Aprender Poder",
 				SizeFlagsVertical = SizeFlags.ShrinkEnd
 			};
 			btnLearn.AddThemeFontSizeOverride("font_size", 10);

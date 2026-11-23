@@ -37,6 +37,7 @@ namespace OpenTTRPG.Tests
             TestAutoCalculatedStatsByClassAndRace();
             TestCharacterPersistence();
             TestTacticalGridMovementRangeCoverAndFog();
+            TestEnemyThreatSheetsAndBestiary();
             Console.WriteLine("\n>>> TODOS OS TESTES AUTOMATIZADOS DE C# (TORMENTA20) PASSARAM COM ÊXITO! <<<");
         }
 
@@ -636,6 +637,75 @@ namespace OpenTTRPG.Tests
             AssertEqual(9, loadedMapSnap.TacticalMap.TokenPositions[1].Y, "Posição do token restaurada");
             AssertEqual(1, loadedMapSnap.TacticalMap.ExploredCells.Count, "Células exploradas restauradas");
             if (System.IO.File.Exists(mapSnapPath)) System.IO.File.Delete(mapSnapPath);
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestEnemyThreatSheetsAndBestiary()
+        {
+            Console.Write("[TEST C#] Ficha de Inimigos / Ameaças (Bestiário T20, RD, Defesa Fixa, Ataque e Persistência)... ");
+            using var session = new EncounterSession(123);
+
+            var golem = Tormenta20Bestiary.CreateFromPreset(1001, "golem_ferro");
+            AssertTrue(golem.IsEnemy, "Golem deve ser marcado como IsEnemy");
+            AssertEqual("5", golem.ChallengeRating, "ND do Golem de Ferro");
+            AssertEqual(22, golem.GetDefense(), "Defesa fixa da ameaça");
+            AssertEqual(10, golem.DamageReduction, "RD natural da ameaça");
+            AssertEqual(0, golem.GetDeathThreshold(), "Ameaça cai derrotada em 0 PV");
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(golem), "Deslocamento 6m = 4q");
+
+            AssertTrue(Tormenta20SkillRules.TryCalculateSkillModifier(golem, "Fortitude", out int fortMod, out _), "Fortitude calculada");
+            AssertEqual(13, fortMod, "Fortitude override da ameaça");
+            AssertTrue(Tormenta20SkillRules.TryCalculateSkillModifier(golem, "Iniciativa", out int iniMod, out _), "Iniciativa calculada");
+            AssertEqual(1, iniMod, "Iniciativa override da ameaça");
+            AssertTrue(Tormenta20SkillRules.TryCalculateSkillModifier(golem, "Percepção", out int percMod, out _), "Percepção calculada");
+            AssertEqual(4, percMod, "Percepção override da ameaça");
+
+            var heroi = new CharacterSheetData(1, "Valeros", "Guerreiro", "Humano", "Soldado", "Valkaria", 5, 60, 10)
+            {
+                Strength = 4,
+                Dexterity = 2
+            };
+            heroi.TrainedSkills.Add("Luta");
+
+            int heroId = session.AddCombatant(heroi.Name, 2, heroi.MaxHp, team: 1);
+            int golemId = session.AddCombatant(golem.Name, iniMod, golem.MaxHp, team: 2);
+            session.AddResource(heroId, 0, "Vida", heroi.MaxHp, heroi.GetDeathThreshold());
+            session.AddResource(golemId, 0, "Vida", golem.MaxHp, golem.GetDeathThreshold());
+            session.SetGlobalDamageReduction(golemId, golem.DamageReduction);
+            Tormenta20ActionRules.ConfigureTurnActions(session, heroId, 1, 1, -1);
+            Tormenta20ActionRules.ConfigureTurnActions(session, golemId, 1, 1, -1);
+            session.RollInitiative(1, 20);
+            session.StartCombat();
+
+            // Golem ataca com Pancada de Ferro (+17, 2d8+10) sem duplicar FOR (+6) no dano
+            var atkRes = Tormenta20CombatRules.ResolveWeaponAttack(session, golem, golemId, heroi, heroId, golem.Inventory[0]);
+            AssertTrue(atkRes.ActionSucceeded, "Ataque da ameaça deve executar");
+            AssertEqual(17, atkRes.AttackModifier, "Bônus de ataque da ameaça deve usar AttackBonus (17)");
+            if (atkRes.Hit)
+            {
+                AssertTrue(atkRes.DamageExpression.EndsWith("+10"), $"Dano da ameaça não deve somar FOR duplicada ({atkRes.DamageExpression})");
+            }
+
+            // Redução de Dano (RD 10) aplicada ao dano recebido pelo Golem
+            DamageResult rdTest = session.DealDamage(golemId, 15, (int)T20DamageType.Slashing);
+            AssertEqual(10, rdTest.ReducedBy, "RD 10 da ameaça deve absorver 10 de dano");
+            AssertEqual(5, rdTest.FinalAmount, "Dano líquido após RD 10 deve ser 5");
+
+            // Clonagem independente e persistência JSON
+            var golemClone = golem.CloneForCombat(9001, "Golem de Ferro #2");
+            AssertEqual(9001, golemClone.Id, "ID do clone");
+            AssertEqual("Golem de Ferro #2", golemClone.Name, "Nome do clone");
+            AssertEqual(22, golemClone.FixedDefense, "Defesa fixa clonada");
+
+            string enemyPath = "saves/test_enemies_roundtrip.json";
+            Tormenta20Persistence.SaveCharactersToFile(new[] { golem, golemClone }, enemyPath);
+            var reloaded = Tormenta20Persistence.LoadCharactersFromFile(enemyPath);
+            AssertEqual(2, reloaded.Count, "Ameaças carregadas do JSON");
+            AssertTrue(reloaded[0].IsEnemy, "Flag IsEnemy preservada");
+            AssertEqual(10, reloaded[0].DamageReduction, "RD preservada no JSON");
+            AssertEqual(17, reloaded[0].Inventory[0].AttackBonus, "AttackBonus da arma preservado no JSON");
+            if (System.IO.File.Exists(enemyPath)) System.IO.File.Delete(enemyPath);
 
             Console.WriteLine("SUCESSO!");
         }
