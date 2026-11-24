@@ -31,6 +31,7 @@ if %ERRORLEVEL% NEQ 0 (
 copy /Y "bin\release\win-x64\openttrpg_core.dll" "godot_ui\open-ttrpg\openttrpg_core.dll" >nul
 copy /Y "bin\release\win-x64\openttrpg_core.dll" "bin\release\win-x64\data_OpenTTRPG_windows_x86_64\openttrpg_core.dll" >nul
 if exist "saves\characters.json" copy /Y "saves\characters.json" "bin\release\win-x64\saves\characters.json" >nul
+if exist "saves\enemies.json" copy /Y "saves\enemies.json" "bin\release\win-x64\saves\enemies.json" >nul
 
 echo [2/4] Publicando executavel Windows C# CLI (OpenTTRPG.CLI.exe)...
 dotnet publish bindings\csharp\OpenTTRPG.CLI.csproj -c Release -r win-x64 --self-contained false -o bin\release\win-x64
@@ -40,6 +41,12 @@ where godot >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     godot --headless --path godot_ui\open-ttrpg --export-release "Windows Desktop" "..\..\bin\release\win-x64\OpenTTRPG.exe"
     copy /Y "bin\release\win-x64\openttrpg_core.dll" "bin\release\win-x64\data_OpenTTRPG_windows_x86_64\openttrpg_core.dll" >nul
+) else (
+    where godot-mono >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        godot-mono --headless --path godot_ui\open-ttrpg --export-release "Windows Desktop" "..\..\bin\release\win-x64\OpenTTRPG.exe"
+        copy /Y "bin\release\win-x64\openttrpg_core.dll" "bin\release\win-x64\data_OpenTTRPG_windows_x86_64\openttrpg_core.dll" >nul
+    )
 )
 
 echo [4/4] Executando auto-teste de integracao (Godot UI ^<--^> C# ^<--^> C++ Core)...
