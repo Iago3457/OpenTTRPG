@@ -748,6 +748,16 @@ namespace OpenTTRPG.Native
             }
         }
 
+        public void ResizeMap(int width, int height)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_map_resize(_handle, width, height);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao redimensionar mapa ({width}x{height}): {GetLastError()}");
+            }
+        }
+
         public void ClearMap()
         {
             EnsureNotDisposed();

@@ -638,6 +638,28 @@ namespace OpenTTRPG.Tests
             AssertEqual(1, loadedMapSnap.TacticalMap.ExploredCells.Count, "Células exploradas restauradas");
             if (System.IO.File.Exists(mapSnapPath)) System.IO.File.Delete(mapSnapPath);
 
+            // 10. Redimensionamento dinâmico (12x10 -> 60x60 -> 12x10) e presets em tamanhos extremos
+            session.ResizeMap(60, 60);
+            AssertEqual(60, session.MapWidth, "Largura após ResizeMap(60, 60)");
+            AssertEqual(60, session.MapHeight, "Altura após ResizeMap(60, 60)");
+            AssertEqual(MapTerrainType.Blocked, session.GetMapCell(4, 4).TerrainType, "Parede (4,4) preservada ao expandir para 60x60");
+            AssertTrue(session.TryGetToken(heroId, out var hero60) && hero60.X == 0 && hero60.Y == 9, "Token preservado após expandir para 60x60");
+            session.MoveToken(heroId, 52, 48);
+            AssertTrue(session.TryGetToken(heroId, out var heroFar) && heroFar.X == 52 && heroFar.Y == 48, "Movimento em mapa 60x60");
+
+            session.ResizeMap(12, 10);
+            AssertEqual(12, session.MapWidth, "Largura após ResizeMap(12, 10)");
+            AssertEqual(MapTerrainType.Blocked, session.GetMapCell(4, 4).TerrainType, "Parede (4,4) preservada ao encolher para 12x10");
+            AssertTrue(!session.TryGetToken(heroId, out _), "Token fora dos limites ao encolher deve sair da grade nativa sem erro");
+
+            foreach (T20ArenaPreset preset in Enum.GetValues(typeof(T20ArenaPreset)))
+            {
+                Tormenta20TacticalRules.ApplyArenaPreset(session, preset, 6, 6);
+                AssertEqual(6, session.MapWidth, $"Preset {preset} em 6x6");
+                Tormenta20TacticalRules.ApplyArenaPreset(session, preset, 60, 60);
+                AssertEqual(60, session.MapWidth, $"Preset {preset} em 60x60");
+            }
+
             Console.WriteLine("SUCESSO!");
         }
 

@@ -1934,6 +1934,20 @@ OTTRPG_API int32_t ottrpg_map_configure(OttrpgEncounter* encounter, int32_t widt
     }
 }
 
+OTTRPG_API int32_t ottrpg_map_resize(OttrpgEncounter* encounter, int32_t width, int32_t height) {
+    clear_last_error();
+    if (encounter == nullptr) {
+        set_last_error("Encounter nulo.");
+        return OTTRPG_ERR_NULL_HANDLE;
+    }
+    try {
+        encounter->encounter.map().resize(width, height);
+        return OTTRPG_OK;
+    } catch (...) {
+        return handle_exception();
+    }
+}
+
 OTTRPG_API int32_t ottrpg_map_clear(OttrpgEncounter* encounter) {
     clear_last_error();
     if (encounter == nullptr) {

@@ -734,6 +734,15 @@ namespace OpenTTRPG.Tormenta20
             }
         }
 
+        private static void SetCellIfInBounds(EncounterSession session, int width, int height,
+                                              int x, int y, MapTerrainType terrain, int coverLevel, bool blocksSight)
+        {
+            if (x >= 0 && x < width && y >= 0 && y < height)
+            {
+                session.SetMapCell(x, y, terrain, coverLevel, blocksSight);
+            }
+        }
+
         public static void ApplyArenaPreset(EncounterSession session, T20ArenaPreset preset, int width = 16, int height = 12)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
@@ -746,53 +755,109 @@ namespace OpenTTRPG.Tormenta20
 
             if (preset == T20ArenaPreset.PillaredDungeon)
             {
-                // Paredes de corredor central parcial e 4 pilares de pedra (cobertura leve + obstáculo)
-                int[] pillarXs = { width / 4, (width * 3) / 4 };
-                int[] pillarYs = { height / 4, (height * 3) / 4 };
-                foreach (int px in pillarXs)
+                if (width >= 24 || height >= 24)
                 {
-                    foreach (int py in pillarYs)
+                    int cols = Math.Max(2, width / 8);
+                    int rows = Math.Max(2, height / 8);
+                    for (int ci = 1; ci <= cols; ci++)
                     {
-                        session.SetMapCell(px, py, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                        int px = (ci * width) / (cols + 1);
+                        for (int ri = 1; ri <= rows; ri++)
+                        {
+                            int py = (ri * height) / (rows + 1);
+                            SetCellIfInBounds(session, width, height, px, py, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                        }
                     }
                 }
-                // Muretas centrais com Cobertura Leve (+5 Def)
+                else
+                {
+                    int[] pillarXs = { width / 4, (width * 3) / 4 };
+                    int[] pillarYs = { height / 4, (height * 3) / 4 };
+                    foreach (int px in pillarXs)
+                    {
+                        foreach (int py in pillarYs)
+                        {
+                            SetCellIfInBounds(session, width, height, px, py, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                        }
+                    }
+                }
+
+                // Muretas centrais com Cobertura Leve (+5 Def) e escombros ao redor do centro
                 int midX = width / 2;
                 int midY = height / 2;
-                session.SetMapCell(midX, midY - 2, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
-                session.SetMapCell(midX, midY + 1, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
-                // Escombros (terreno difícil)
-                session.SetMapCell(midX - 1, midY, MapTerrainType.Difficult, coverLevel: 0, blocksSight: false);
-                session.SetMapCell(midX + 1, midY, MapTerrainType.Difficult, coverLevel: 0, blocksSight: false);
+                SetCellIfInBounds(session, width, height, midX, midY - 2, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                SetCellIfInBounds(session, width, height, midX, midY + 1, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                SetCellIfInBounds(session, width, height, midX - 1, midY, MapTerrainType.Difficult, coverLevel: 0, blocksSight: false);
+                SetCellIfInBounds(session, width, height, midX + 1, midY, MapTerrainType.Difficult, coverLevel: 0, blocksSight: false);
             }
             else if (preset == T20ArenaPreset.Tavern)
             {
-                // Balcão e mesas da taverna (Cobertura Leve + Terreno Difícil)
-                for (int x = 5; x <= Math.Min(width - 4, 10); x++)
+                if (width == 16 && height == 12)
                 {
-                    session.SetMapCell(x, 3, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    for (int x = 5; x <= 10; x++)
+                    {
+                        SetCellIfInBounds(session, width, height, x, 3, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    }
+                    SetCellIfInBounds(session, width, height, 4, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, 5, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, 10, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, 11, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, width / 2, height / 2, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
                 }
-                session.SetMapCell(4, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
-                session.SetMapCell(5, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
-                session.SetMapCell(10, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
-                session.SetMapCell(11, 7, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
-                // Coluna estrutural de madeira
-                session.SetMapCell(width / 2, height / 2, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                else
+                {
+                    // Balcão proporcional + mesas distribuídas na área central
+                    int barY = Math.Max(2, height / 4);
+                    int barStart = Math.Max(2, width / 3);
+                    int barEnd = Math.Min(width - 3, (width * 2) / 3);
+                    for (int x = barStart; x <= barEnd; x++)
+                    {
+                        SetCellIfInBounds(session, width, height, x, barY, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    }
+
+                    int tableRow1 = Math.Max(barY + 3, (height * 6) / 10);
+                    int tableCol1 = Math.Max(2, width / 4);
+                    int tableCol2 = Math.Min(width - 3, (width * 3) / 4);
+                    SetCellIfInBounds(session, width, height, tableCol1, tableRow1, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, tableCol1 + 1, tableRow1, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, tableCol2 - 1, tableRow1, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    SetCellIfInBounds(session, width, height, tableCol2, tableRow1, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+
+                    if (width >= 24 && height >= 24)
+                    {
+                        int tableRow2 = Math.Min(height - 3, (height * 8) / 10);
+                        SetCellIfInBounds(session, width, height, tableCol1, tableRow2, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                        SetCellIfInBounds(session, width, height, tableCol2, tableRow2, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    }
+
+                    SetCellIfInBounds(session, width, height, width / 2, height / 2, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                }
             }
             else if (preset == T20ArenaPreset.ForestAmbush)
             {
-                // Troncos sólidos e moitas espessas (terreno difícil + cobertura)
-                (int x, int y)[] trees = { (4, 3), (7, 2), (11, 4), (6, 8), (10, 9), (8, 5) };
-                foreach (var (tx, ty) in trees)
+                (int x, int y)[] baseTrees = { (4, 3), (7, 2), (11, 4), (6, 8), (10, 9), (8, 5) };
+                (int x, int y)[] baseBrush = { (5, 4), (6, 4), (7, 5), (7, 6), (9, 5), (9, 6), (8, 7) };
+
+                if (width <= 20 && height <= 16)
                 {
-                    if (tx < width && ty < height)
-                        session.SetMapCell(tx, ty, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                    foreach (var (tx, ty) in baseTrees)
+                        SetCellIfInBounds(session, width, height, tx, ty, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                    foreach (var (bx, by) in baseBrush)
+                        SetCellIfInBounds(session, width, height, bx, by, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
                 }
-                (int x, int y)[] brush = { (5, 4), (6, 4), (7, 5), (7, 6), (9, 5), (9, 6), (8, 7) };
-                foreach (var (bx, by) in brush)
+                else
                 {
-                    if (bx < width && by < height)
-                        session.SetMapCell(bx, by, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                    // Repete o módulo de clareira e árvores em quadrantes de 16x12 para mapas extensos
+                    for (int oy = 0; oy < height; oy += 12)
+                    {
+                        for (int ox = 0; ox < width; ox += 16)
+                        {
+                            foreach (var (tx, ty) in baseTrees)
+                                SetCellIfInBounds(session, width, height, ox + tx, oy + ty, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+                            foreach (var (bx, by) in baseBrush)
+                                SetCellIfInBounds(session, width, height, ox + bx, oy + by, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false);
+                        }
+                    }
                 }
             }
         }

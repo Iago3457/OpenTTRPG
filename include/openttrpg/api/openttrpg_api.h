@@ -427,6 +427,7 @@ OTTRPG_API int32_t ottrpg_dice_last_format(OttrpgEncounter* encounter, char* buf
 /* ------------------------------------------------------------------------- */
 
 OTTRPG_API int32_t ottrpg_map_configure(OttrpgEncounter* encounter, int32_t width, int32_t height);
+OTTRPG_API int32_t ottrpg_map_resize(OttrpgEncounter* encounter, int32_t width, int32_t height);
 OTTRPG_API int32_t ottrpg_map_clear(OttrpgEncounter* encounter);
 OTTRPG_API int32_t ottrpg_map_get_info(OttrpgEncounter* encounter, int32_t* out_active,
                                        int32_t* out_width, int32_t* out_height);

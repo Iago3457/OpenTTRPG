@@ -655,6 +655,22 @@ void testTacticalMapAndApi() {
 
     assert(ottrpg_map_remove_token(apiEnc, c2) == OTTRPG_OK);
     assert(ottrpg_map_get_token(apiEnc, c2, &tokInfo) == OTTRPG_ERR_NOT_FOUND);
+
+    // 3. Redimensionamento dinâmico do mapa preservando terreno e tokens válidos (C++ + C ABI)
+    assert(ottrpg_map_resize(apiEnc, 60, 60) == OTTRPG_OK);
+    assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && w == 60 && h == 60);
+    OttrpgMapCellInfo keptWall;
+    assert(ottrpg_map_get_cell(apiEnc, 6, 5, &keptWall) == OTTRPG_OK && keptWall.terrain == OTTRPG_TERRAIN_BLOCKED);
+    assert(ottrpg_map_get_token(apiEnc, c1, &tokInfo) == OTTRPG_OK && tokInfo.x == 3 && tokInfo.y == 5);
+    assert(ottrpg_map_place_token(apiEnc, c2, 55, 52, 1) == OTTRPG_OK);
+    assert(ottrpg_map_move_token(apiEnc, c2, 58, 57) == OTTRPG_OK);
+
+    assert(ottrpg_map_resize(apiEnc, 12, 12) == OTTRPG_OK);
+    assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && w == 12 && h == 12);
+    assert(ottrpg_map_get_token(apiEnc, c1, &tokInfo) == OTTRPG_OK && tokInfo.x == 3 && tokInfo.y == 5);
+    assert(ottrpg_map_get_token(apiEnc, c2, &tokInfo) == OTTRPG_ERR_NOT_FOUND);
+    assert(ottrpg_map_get_cell(apiEnc, 6, 5, &keptWall) == OTTRPG_OK && keptWall.terrain == OTTRPG_TERRAIN_BLOCKED);
+
     assert(ottrpg_map_clear(apiEnc) == OTTRPG_OK);
     assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && active == 0);
 
