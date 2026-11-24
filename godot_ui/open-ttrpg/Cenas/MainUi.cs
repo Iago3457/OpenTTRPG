@@ -77,6 +77,8 @@ public partial class MainUi : Control
 	private Button _btnSubAcao1;
 	private Button _btnSubAcao2;
 	private Button _btnSubAcao3;
+	private Label _lblProfBadge1;
+	private Label _lblProfBadge2;
 
 	// ── Ficha: Perícias ─────────────────────────────────────────────────────
 	private LineEdit _txtBuscaPericia;
@@ -102,7 +104,9 @@ public partial class MainUi : Control
 	private VBoxContainer _boxActionQueueList;
 	private Label _lblActionQueueSlots;
 	private Button _btnPopNextAction;
+	private CheckBox _chkAtaquePoderoso;
 	private readonly Dictionary<(int cid, int actionId), int> _queuedActionPmSpent = new();
+	private readonly HashSet<(int cid, int actionId)> _resolvedQueuedActions = new();
 
 	// ── Pop-up Bandeja de Dados (Overlay sem trocar de aba!) ────────────────
 	private ColorRect _popupDadosOverlay;
@@ -203,6 +207,12 @@ public partial class MainUi : Control
 	private TacticalGridCanvas _tacticalGridCanvas;
 	private TabContainer _tabsMapaLateral;
 	private Button _btnMapaZoomLabel;
+	private Button _btnMapaTamanho;
+	private Window _dlgTamanhoMapa;
+	private SpinBox _spinMapaLargura;
+	private SpinBox _spinMapaAltura;
+	private CheckBox _chkMapaRegenerarCenario;
+	private Label _lblMapaDimensaoMetros;
 	private Button _btnMapaAjuda;
 	private OptionButton _optArenaPreset;
 	private Button _btnModoEditorMapa;
@@ -242,16 +252,8 @@ public partial class MainUi : Control
 		BuildDialogs();
 		ConnectEvents();
 
-		_combatManager.CharactersLoaded += () =>
-		{
-			UpdateCharacterDropdown();
-			if (_combatManager.Characters.Count > 0)
-				SelectCharacter(0);
-		};
-		_combatManager.EnemiesLoaded += () =>
-		{
-			RefreshEnemyList();
-		};
+		_combatManager.CharactersLoaded += OnCombatManagerCharactersLoaded;
+		_combatManager.EnemiesLoaded += OnCombatManagerEnemiesLoaded;
 
 		if (_combatManager.Characters.Count > 0)
 		{
@@ -356,6 +358,8 @@ public partial class MainUi : Control
 		_btnSubAcao1      = GetNode<Button>($"{interativo}/PanelContent/HBoxSubActions/BtnSubAcao1");
 		_btnSubAcao2      = GetNode<Button>($"{interativo}/PanelContent/HBoxSubActions/BtnSubAcao2");
 		_btnSubAcao3      = GetNode<Button>($"{interativo}/PanelContent/HBoxSubActions/BtnSubAcao3");
+		_lblProfBadge1    = GetNodeOrNull<Label>($"{lc}/CardProficiencias/VBox/HBoxBadges/Badge1/Lbl");
+		_lblProfBadge2    = GetNodeOrNull<Label>($"{lc}/CardProficiencias/VBox/HBoxBadges/Badge2/Lbl");
 
 		// Perícias
 		string rc = $"{mc}/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox";
@@ -748,6 +752,15 @@ public partial class MainUi : Control
 		_btnCondicoesCombate.AddThemeColorOverride("font_color", new Color(1f, 0.78f, 0.35f));
 		leftActions.AddChild(_btnCondicoesCombate);
 
+		_chkAtaquePoderoso = new CheckBox
+		{
+			Text = "Ataque Poderoso (-2 Atq / +5 Dano)",
+			Visible = false
+		};
+		_chkAtaquePoderoso.AddThemeFontSizeOverride("font_size", 11);
+		_chkAtaquePoderoso.AddThemeColorOverride("font_color", new Color(1f, 0.72f, 0.42f));
+		leftActions.AddChild(_chkAtaquePoderoso);
+
 		// Painel de ações planejadas no turno
 		var queueCard = new PanelContainer
 		{
@@ -842,6 +855,31 @@ public partial class MainUi : Control
 		else
 		{
 			_popupDadosOverlay.Visible = false;
+		}
+		SyncTacticalCanvasInputBlock();
+	}
+
+	private bool IsAnyPopupOrModalOpen()
+	{
+		return (_popupDadosOverlay != null && _popupDadosOverlay.Visible) ||
+			   (_popupPericia != null && _popupPericia.Visible) ||
+			   (_dlgConfirmarExcluir != null && _dlgConfirmarExcluir.Visible) ||
+			   (_dlgNovoPersonagem != null && _dlgNovoPersonagem.Visible) ||
+			   (_dlgNovoItem != null && _dlgNovoItem.Visible) ||
+			   (_dlgNovaMagia != null && _dlgNovaMagia.Visible) ||
+			   (_dlgNovoAtaqueInimigo != null && _dlgNovoAtaqueInimigo.Visible) ||
+			   (_dlgArvorePoderes != null && _dlgArvorePoderes.Visible) ||
+			   (_dlgUsarHabilidadeCombate != null && _dlgUsarHabilidadeCombate.Visible) ||
+			   (_dlgCondicoesCombate != null && _dlgCondicoesCombate.Visible) ||
+			   (_dlgSelecaoIniciativa != null && _dlgSelecaoIniciativa.Visible) ||
+			   (_fileDlgMapaFundo != null && _fileDlgMapaFundo.Visible);
+	}
+
+	private void SyncTacticalCanvasInputBlock()
+	{
+		if (_tacticalGridCanvas != null)
+		{
+			_tacticalGridCanvas.InputBlocked = IsAnyPopupOrModalOpen();
 		}
 	}
 
@@ -1124,6 +1162,7 @@ public partial class MainUi : Control
 		{
 			_combatManager.Session.AddResource(cid, CombatManager.HealthResourceId, "Vida", _selectedCharacter.MaxHp, _selectedCharacter.GetDeathThreshold());
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedCharacter.TempHp);
 			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedCharacter.MaxPm, 0);
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
 			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
@@ -1131,12 +1170,20 @@ public partial class MainUi : Control
 				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
 				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
 				_selectedCharacter.UnlockedTreeKeys);
+			Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
 		}
 
 		UpdateCharacterDropdown();
 		int idx = _combatManager.Characters.IndexOf(_selectedCharacter);
 		if (idx >= 0) _optPersonagens.Select(idx);
 		RefreshSheetUI();
+		if (_combatManager.IsInCombat)
+		{
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			UpdateCombatStatusDisplay();
+			RefreshTacticalMapView();
+		}
 		ShowToast($"Nível ajustado para {_selectedCharacter.Level}! PV Máx: {_selectedCharacter.MaxHp} | PM Máx: {_selectedCharacter.MaxPm}");
 	}
 
@@ -1155,6 +1202,7 @@ public partial class MainUi : Control
 		{
 			_combatManager.Session.AddResource(cid, CombatManager.HealthResourceId, "Vida", _selectedCharacter.MaxHp, _selectedCharacter.GetDeathThreshold());
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedCharacter.TempHp);
 			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedCharacter.MaxPm, 0);
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
 			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
@@ -1162,9 +1210,21 @@ public partial class MainUi : Control
 				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
 				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
 				_selectedCharacter.UnlockedTreeKeys);
+			if (_selectedCharacter.IsOverburdened())
+				Tormenta20ConditionRules.ApplyCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+			else
+				Tormenta20ConditionRules.RemoveCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+			Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
 		}
 
 		RefreshSheetUI();
+		if (_combatManager.IsInCombat)
+		{
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			UpdateCombatStatusDisplay();
+			RefreshTacticalMapView();
+		}
 	}
 
 	private void SetupRestMenu()
@@ -1188,6 +1248,8 @@ public partial class MainUi : Control
 			{
 				RefreshInitiativeBar();
 				PopularAlvoCombate();
+				UpdateCombatStatusDisplay();
+				RefreshTacticalMapView();
 			}
 			ShowToast(result.Message, new Color(0.4f, 0.85f, 1f));
 		};
@@ -1754,7 +1816,7 @@ public partial class MainUi : Control
 		{
 			Title = "Adicionar Equipamento / Item",
 			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
-			Size = new Vector2I(410, 480),
+			Size = new Vector2I(430, 560),
 			Exclusive = true
 		};
 
@@ -1829,6 +1891,38 @@ public partial class MainUi : Control
 		hRow3.AddChild(vbDef);
 		hRow3.AddChild(vbPen);
 
+		var hRow4 = new HBoxContainer();
+		hRow4.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hRow4);
+
+		var optDmgType = new OptionButton();
+		optDmgType.AddItem("Corte", (int)T20DamageType.Slashing);
+		optDmgType.AddItem("Perfuração", (int)T20DamageType.Piercing);
+		optDmgType.AddItem("Impacto", (int)T20DamageType.Bludgeoning);
+		optDmgType.AddItem("Fogo", (int)T20DamageType.Fire);
+		optDmgType.AddItem("Frio", (int)T20DamageType.Cold);
+		optDmgType.AddItem("Eletricidade", (int)T20DamageType.Electricity);
+		optDmgType.AddItem("Ácido", (int)T20DamageType.Acid);
+		optDmgType.AddItem("Essência", (int)T20DamageType.Essence);
+		optDmgType.AddItem("Luz", (int)T20DamageType.Light);
+		optDmgType.AddItem("Trevas", (int)T20DamageType.Darkness);
+		optDmgType.AddItem("Psíquico", (int)T20DamageType.Psychic);
+		optDmgType.AddItem("Veneno", (int)T20DamageType.Poison);
+		var spAtkBonus = new SpinBox { MinValue = -5, MaxValue = 20, Value = 0 };
+		var vbDt = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+		vbDt.AddChild(new Label { Text = "Tipo de Dano" });
+		vbDt.AddChild(optDmgType);
+		var vbAtk = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+		vbAtk.AddChild(new Label { Text = "Bônus Ataque" });
+		vbAtk.AddChild(spAtkBonus);
+		hRow4.AddChild(vbDt);
+		hRow4.AddChild(vbAtk);
+
+		var chkRanged = new CheckBox { Text = "Arma à Distância", ButtonPressed = false };
+		var chkHeavyArmor = new CheckBox { Text = "Armadura Pesada (não soma DES na Defesa)", ButtonPressed = false };
+		vbox.AddChild(chkRanged);
+		vbox.AddChild(chkHeavyArmor);
+
 		var chkEquip = new CheckBox { Text = "Equipar imediatamente", ButtonPressed = true };
 		vbox.AddChild(chkEquip);
 
@@ -1865,13 +1959,33 @@ public partial class MainUi : Control
 
 			var tipo = (ItemType)optTipo.GetSelectedId();
 			string dano = tipo == ItemType.Weapon ? leDano.Text.Trim() : "";
+			var dmgType = (T20DamageType)optDmgType.GetSelectedId();
+			bool? isHeavy = tipo == ItemType.Armor ? chkHeavyArmor.ButtonPressed : (bool?)null;
 			_selectedCharacter.Inventory.Add(new CharacterItem(
 				nome, "", tipo, (int)spSlots.Value, dano, leCrit.Text.Trim(),
-				(int)spDef.Value, (int)spPen.Value, preco, chkEquip.ButtonPressed));
+				(int)spDef.Value, (int)spPen.Value, preco, chkEquip.ButtonPressed,
+				dmgType, tipo == ItemType.Weapon && chkRanged.ButtonPressed, (int)spAtkBonus.Value, isHeavy));
+
+			int cid = GetSelectedCombatantId();
+			if (cid > 0)
+			{
+				if (_selectedCharacter.IsOverburdened())
+					Tormenta20ConditionRules.ApplyCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+				else
+					Tormenta20ConditionRules.RemoveCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+			}
 
 			leNome.Text = "";
+			chkRanged.ButtonPressed = false;
+			chkHeavyArmor.ButtonPressed = false;
+			spAtkBonus.Value = 0;
 			win.Hide();
 			RefreshSheetUI();
+			if (_combatManager.IsInCombat)
+			{
+				PopularAlvoCombate();
+				RefreshTacticalMapView();
+			}
 			ShowToast($"Item \"{nome}\" adicionado ao inventário!{(chkComprar.ButtonPressed ? $" (-T$ {preco})" : "")}");
 		};
 
@@ -2143,7 +2257,13 @@ public partial class MainUi : Control
 			_selectedCharacter.Skills.RemoveAll(s => !string.IsNullOrEmpty(s.TreeKey));
 			_selectedCharacter.UnlockedTreeKeys.Clear();
 			SincronizarArvoreComCombateAtivo();
+			_combatManager.SaveCharacters();
 			RefreshSheetUI();
+			if (_combatManager.IsInCombat)
+			{
+				PopularAlvoCombate();
+				RefreshTacticalMapView();
+			}
 			AbrirArvorePoderes();
 			ShowToast($"Árvore de habilidades de {_selectedCharacter.Name} resetada!");
 		};
@@ -2278,7 +2398,13 @@ public partial class MainUi : Control
 				_selectedCharacter.UnlockedTreeKeys.Remove(st.Definition.Key);
 				_selectedCharacter.Skills.RemoveAll(s => s.TreeKey == st.Definition.Key);
 				SincronizarArvoreComCombateAtivo();
+				_combatManager.SaveCharacters();
 				RefreshSheetUI();
+				if (_combatManager.IsInCombat)
+				{
+					PopularAlvoCombate();
+					RefreshTacticalMapView();
+				}
 				AbrirArvorePoderes();
 				ShowToast($"Poder \"{st.Definition.Name}\" removido da árvore.");
 			}
@@ -2326,7 +2452,13 @@ public partial class MainUi : Control
 		}
 
 		SincronizarArvoreComCombateAtivo();
+		_combatManager.SaveCharacters();
 		RefreshSheetUI();
+		if (_combatManager.IsInCombat)
+		{
+			PopularAlvoCombate();
+			RefreshTacticalMapView();
+		}
 		AbrirArvorePoderes();
 		_abilityTreeCanvas?.PlayUnlockEffectAt(power.Key);
 		ShowToast($"Poder \"{power.Name}\" desbloqueado na Árvore de Habilidades!");
@@ -2345,7 +2477,9 @@ public partial class MainUi : Control
 				.FirstOrDefault(p => p.Key == st.Definition.ParentKey)?.Name ?? st.Definition.ParentKey;
 			parentLabel = $"Pré-requisito: {parentName}";
 		}
-		string costLabel = st.Definition.PmCost > 0 ? $"{st.Definition.PmCost} PM ({st.Definition.ActionType})" : "Passivo / Sem custo de PM";
+		string costLabel = st.Definition.PmCost > 0
+			? $"{st.Definition.PmCost} PM ({Tormenta20ActionRules.GetActionTypeName(st.Definition.ActionType)})"
+			: "Passivo / Sem custo de PM";
 
 		_lblArvoreNodeTitle.Text = $"{st.Definition.Name}   —   [{st.Definition.BranchName}]   |   {parentLabel}   |   {costLabel}";
 		_lblArvoreNodeDesc.Text  = st.Definition.Description;
@@ -2497,19 +2631,70 @@ public partial class MainUi : Control
 				}
 				AppendCombatLog($"{actorSheet.Name} usou [b]{sk.Name}[/b] (-{totalPm} PM): {sk.Description}", "#66d9ef");
 
-				// Se a magia/habilidade possui fórmula de dados (ex.: Mísseis Mágicos "2d4+2"), rola e aplica no alvo!
+				// Se a magia/habilidade possui fórmula de dados (ex.: Curar Ferimentos ou Mísseis Mágicos), rola e aplica no alvo
 				if (!string.IsNullOrWhiteSpace(sk.BaseFormula) &&
 					_combatManager.CombatantIdToSheet.TryGetValue(targetId, out var targetSheet))
 				{
 					try
 					{
-						RollResult dmgRoll = _combatManager.Session.Roll(sk.BaseFormula.Trim());
-						int rawDmg = Math.Max(1, dmgRoll.Total + extraPm * 2);
-						DamageResult dmgRes = _combatManager.Session.DealDamage(targetId, rawDmg, (int)T20DamageType.Essence);
-						targetSheet.CurrentHp = _combatManager.Session.GetResource(targetId, CombatManager.HealthResourceId).Current;
-						AppendCombatLog($"Efeito de [b]{sk.Name}[/b] em {targetSheet.Name}: rolou {sk.BaseFormula} = {dmgRes.FinalAmount} de dano mágico!", "#ffaa44");
+						RollResult effectRoll = _combatManager.Session.Roll(sk.BaseFormula.Trim());
+						bool isCure = sk.Name.Contains("Curar", StringComparison.OrdinalIgnoreCase) ||
+						              sk.Description.Contains("restaurar", StringComparison.OrdinalIgnoreCase) ||
+						              sk.Description.Contains("Recupera", StringComparison.OrdinalIgnoreCase);
+
+						if (actRes.ActionId > 0)
+						{
+							_resolvedQueuedActions.Add((actorId, actRes.ActionId));
+						}
+
+						if (isCure)
+						{
+							int healAmt = Math.Max(1, effectRoll.Total + extraPm * 2);
+							if (targetSheet.CurrentHp <= targetSheet.GetDeathThreshold())
+							{
+								AppendCombatLog($"{targetSheet.Name} já atingiu o limite de morte e não pode receber cura comum.", "#ff6b6b");
+							}
+							else
+							{
+								int beforeHp = targetSheet.CurrentHp;
+								targetSheet.HealHp(healAmt);
+								_combatManager.Session.SetResourceCurrent(targetId, CombatManager.HealthResourceId, targetSheet.CurrentHp);
+								string stateMsg = Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, targetId, targetSheet);
+								int healed = targetSheet.CurrentHp - beforeHp;
+								AppendCombatLog($"Cura de [b]{sk.Name}[/b] em {targetSheet.Name}: rolou {sk.BaseFormula} -> +{healed} PV ({targetSheet.CurrentHp}/{targetSheet.MaxHp})!", "#55ff99");
+								if (!string.IsNullOrEmpty(stateMsg)) AppendCombatLog(stateMsg, "#55ff99");
+							}
+						}
+						else
+						{
+							int arcanoBonus = sk.IsSpell
+								? Tormenta20MagicRules.GetArcanoDeBatalhaBonus(actorSheet, _combatManager.Session, actorId)
+								: 0;
+							int rawDmg = Math.Max(1, effectRoll.Total + extraPm * 2 + arcanoBonus);
+							DamageResult dmgRes = _combatManager.Session.DealDamage(targetId, rawDmg, (int)T20DamageType.Essence);
+							ResourceInfo defHp = _combatManager.Session.GetResource(targetId, CombatManager.HealthResourceId);
+							targetSheet.TempHp = defHp.Temp;
+							if (defHp.Minimum == 0 && targetSheet.CurrentHp <= 0)
+								targetSheet.CurrentHp = Math.Max(targetSheet.GetDeathThreshold(), targetSheet.CurrentHp - dmgRes.Overflow);
+							else if (defHp.Minimum == 0 && dmgRes.Overflow > 0)
+								targetSheet.CurrentHp = Math.Max(targetSheet.GetDeathThreshold(), defHp.Current - dmgRes.Overflow);
+							else
+								targetSheet.CurrentHp = defHp.Current;
+
+							if (targetSheet.CurrentHp <= targetSheet.GetDeathThreshold()) targetSheet.IsBleedingOut = false;
+							else if (targetSheet.CurrentHp <= 0) targetSheet.IsBleedingOut = true;
+
+							string stateMsg = Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, targetId, targetSheet);
+							string arcTag = arcanoBonus > 0 ? $" (+{arcanoBonus} Arcano de Batalha)" : "";
+							AppendCombatLog($"Efeito de [b]{sk.Name}[/b] em {targetSheet.Name}: rolou {sk.BaseFormula}{arcTag} = {dmgRes.FinalAmount} de dano!", "#ffaa44");
+							if (!string.IsNullOrEmpty(stateMsg)) AppendCombatLog(stateMsg, "#ff6b6b");
+						}
 					}
-					catch { }
+					catch (Exception ex)
+					{
+						ShowToast($"Fórmula '{sk.BaseFormula}' inválida: {ex.Message}", new Color(1f, 0.45f, 0.45f));
+						AppendCombatLog($"Fórmula '{sk.BaseFormula}' inválida: {ex.Message}", "#ff6b6b");
+					}
 				}
 			}
 
@@ -2747,24 +2932,67 @@ public partial class MainUi : Control
 
 		_optAlvoCombate.ItemSelected += (_) => RefreshTacticalMapView();
 
-		_combatManager.TurnChanged += (cid, cname, round) =>
-		{
-			_runModeNextClick = false;
-			UpdateCombatStatusDisplay();
-			RefreshInitiativeBar();
-			PopularAlvoCombate();
-			RefreshActionQueuePanel();
-			RefreshTacticalMapView();
-			RefreshSheetUI();
-			RefreshEnemySheetUI();
-		};
-
-		_combatManager.CombatLog += (msg, hex) => AppendCombatLog(msg, hex);
+		_combatManager.TurnChanged += OnCombatManagerTurnChanged;
+		_combatManager.CombatLog += OnCombatManagerCombatLog;
 
 		// Dados (Pop-up Bandeja de Dados)
 		_btnRolar.Pressed           += () => RolarDadoExpressao(_txtExpressao.Text);
 		_txtExpressao.TextSubmitted += RolarDadoExpressao;
 	}
+
+	public override void _ExitTree()
+	{
+		if (_combatManager != null)
+		{
+			_combatManager.CharactersLoaded -= OnCombatManagerCharactersLoaded;
+			_combatManager.EnemiesLoaded -= OnCombatManagerEnemiesLoaded;
+			_combatManager.TurnChanged -= OnCombatManagerTurnChanged;
+			_combatManager.CombatLog -= OnCombatManagerCombatLog;
+		}
+	}
+
+	private void OnCombatManagerCharactersLoaded()
+	{
+		UpdateCharacterDropdown();
+		if (_combatManager.Characters.Count > 0)
+			SelectCharacter(0);
+	}
+
+	private void OnCombatManagerEnemiesLoaded()
+	{
+		int prevId = _selectedEnemy?.Id ?? -1;
+		RefreshEnemyList();
+		if (prevId > 0)
+		{
+			var rebound = _combatManager.Enemies.FirstOrDefault(e => e.Id == prevId);
+			if (rebound != null)
+			{
+				SelectEnemyByRef(rebound);
+				return;
+			}
+		}
+		if (_combatManager.Enemies.Count > 0 && (_selectedEnemy == null || !_combatManager.Enemies.Contains(_selectedEnemy)))
+		{
+			SelectEnemy(0);
+		}
+	}
+
+	private void OnCombatManagerTurnChanged(int cid, string cname, int round)
+	{
+		_queuedActionPmSpent.Clear();
+		_resolvedQueuedActions.Clear();
+		_runModeNextClick = false;
+		_btnMapaCorrer?.SetPressedNoSignal(false);
+		UpdateCombatStatusDisplay();
+		RefreshInitiativeBar();
+		PopularAlvoCombate();
+		RefreshActionQueuePanel();
+		RefreshTacticalMapView();
+		RefreshSheetUI();
+		RefreshEnemySheetUI();
+	}
+
+	private void OnCombatManagerCombatLog(string msg, string hex) => AppendCombatLog(msg, hex);
 
 	public override void _UnhandledKeyInput(InputEvent @event)
 	{
@@ -2785,8 +3013,9 @@ public partial class MainUi : Control
 			return;
 		}
 
-		if (_currentMainView == "Mapa" && _tacticalGridCanvas != null)
+		if (_currentMainView == "Mapa" && _tacticalGridCanvas != null && !IsAnyPopupOrModalOpen())
 		{
+			if (_dlgTamanhoMapa != null && _dlgTamanhoMapa.Visible) return;
 			Control focused = GetViewport()?.GuiGetFocusOwner();
 			if (focused is LineEdit or TextEdit or SpinBox) return;
 
@@ -2995,6 +3224,13 @@ public partial class MainUi : Control
 
 		_combatManager.SaveCharacters();
 		UpdateCharacterDropdown();
+		if (_combatManager.IsInCombat)
+		{
+			RefreshInitiativeBar();
+			PopularAlvoCombate();
+			UpdateCombatStatusDisplay();
+			RefreshTacticalMapView();
+		}
 		ShowToast($"Personagem \"{nome}\" excluído.", new Color(1f, 0.45f, 0.45f));
 		AppendCombatLog($"Personagem \"{nome}\" excluído.", "#ff9999");
 
@@ -3129,6 +3365,32 @@ public partial class MainUi : Control
 		int treinoBonus = c.Level >= 15 ? 6 : (c.Level >= 7 ? 4 : 2);
 		int penArmadura = c.GetTotalArmorPenalty(activeSession, cid);
 		_lblResumoNivelTreino.Text = $"½ Nível: +{halfLevel}   |   Treino: +{treinoBonus}   |   Pen. Armadura: {penArmadura}";
+
+		// Proficiências base por classe
+		UpdateClassProficiencyBadges(c);
+	}
+
+	private void UpdateClassProficiencyBadges(CharacterSheetData c)
+	{
+		if (_lblProfBadge1 == null || _lblProfBadge2 == null) return;
+		var cls = Tormenta20CharacterCreationRules.GetClassTemplateByName(c.CharacterClass).ClassType;
+		(string armas, string armaduras) = cls switch
+		{
+			T20Class.Guerreiro or T20Class.Barbaro or T20Class.Cavaleiro or T20Class.Paladino or T20Class.Cacador
+				=> ("Armas Simples e Marciais", cls == T20Class.Barbaro || cls == T20Class.Cacador ? "Armaduras Leves e Escudos" : "Armaduras Pesadas e Escudos"),
+			T20Class.Bucaneiro or T20Class.Nobre
+				=> ("Armas Simples e Marciais", cls == T20Class.Nobre ? "Armaduras Pesadas e Escudos" : "Armaduras Leves"),
+			T20Class.Clerigo
+				=> ("Armas Simples", "Armaduras Pesadas e Escudos"),
+			T20Class.Druida
+				=> ("Armas Simples", "Armaduras Leves e Escudos"),
+			T20Class.Arcanista
+				=> ("Armas Simples", "Sem Armaduras"),
+			_
+				=> ("Armas Simples", "Armaduras Leves")
+		};
+		_lblProfBadge1.Text = armas;
+		_lblProfBadge2.Text = armaduras;
 	}
 
 	private void UpdatePvCircleStyle(CharacterSheetData c, T20HealthState state)
@@ -3198,7 +3460,13 @@ public partial class MainUi : Control
 		var tween = CreateTween();
 		tween.TweenProperty(_popupPericia, "modulate", new Color(1, 1, 1, 1), 0.2f);
 
-		_diceVisualPericia?.PlayRollAnimation("1d20", res.Total, res.NaturalRoll, res.Stabilized, !res.Stabilized, 0.42f);
+		string dieSub = res.Stabilized
+			? "ESTABILIZOU (CD 15)"
+			: (res.Died ? "LIMITE DE MORTE!" : "FALHOU (SANGRANDO)");
+		_diceVisualPericia?.PlayRollAnimation(
+			"1d20", res.Total, res.NaturalRoll,
+			res.NaturalRoll == 20, res.NaturalRoll == 1,
+			0.42f, dieSub);
 
 		string cor = res.Stabilized ? "#55ff99" : "#ff5555";
 		_txtHistorico?.AppendText($"[color={cor}][{_selectedCharacter.Name}] {res.Message}[/color]\n");
@@ -3235,8 +3503,26 @@ public partial class MainUi : Control
 	{
 		_lblCharName.Text      = "—";
 		_lblCharClassRace.Text = "";
+		_lblCharNivel.Text     = "NÍVEL —";
+		_lblCharOrigem.Text    = "ORIGEM: —";
+		if (_lblTibaresFicha != null) _lblTibaresFicha.Text = "T$ 0";
+		if (_lblEstadoVital != null) _lblEstadoVital.Text = "ESTADO: —";
+		_lblCharCondicoes.Text = "CONDIÇÕES: —";
+		if (_btnTestarMorte != null) _btnTestarMorte.Visible = false;
+		if (_btnReviver != null) _btnReviver.Visible = false;
 		_lblPvValor.Text       = "0";
+		_lblPvSubtexto.Text    = "PV 0/0";
 		_lblPmValor.Text       = "0";
+		_lblPmSubtexto.Text    = "PM 0/0";
+		_lblForca.Text         = "+0";
+		_lblDestreza.Text      = "+0";
+		_lblConstituicao.Text  = "+0";
+		_lblInteligencia.Text  = "+0";
+		_lblSabedoria.Text     = "+0";
+		_lblCarisma.Text       = "+0";
+		_lblDefesaDetalhe.Visible = false;
+		_lblCargaInfo.Text     = "Carga: 0/0 espaços";
+		_lblResumoNivelTreino.Text = "½ Nível: +0   |   Treino: +2   |   Pen. Armadura: 0";
 		_listSubItems.Clear();
 		foreach (Node child in _boxPericiasList.GetChildren().ToArray())
 			child.QueueFree();
@@ -3370,7 +3656,7 @@ public partial class MainUi : Control
 		T20HealthState hState = _selectedCharacter.GetHealthState(activeSession, cid);
 		if (hState is T20HealthState.Dying or T20HealthState.UnconsciousStable or T20HealthState.Dead)
 		{
-			ShowToast($"{_selectedCharacter.Name} está {hState} e não pode executar habilidades ou ataques!", new Color(1f, 0.45f, 0.45f));
+			ShowToast($"{_selectedCharacter.Name} está {_selectedCharacter.GetHealthStateLabel(activeSession, cid)} e não pode executar habilidades ou ataques!", new Color(1f, 0.45f, 0.45f));
 			return;
 		}
 
@@ -3395,9 +3681,10 @@ public partial class MainUi : Control
 			var sk = _selectedCharacter.Skills[idx];
 
 			int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(_selectedCharacter, activeSession, cid);
-			if (sk.PmCost > pmLimit)
+			int effectiveLimit = Math.Max(pmLimit, sk.PmCost);
+			if (sk.PmCost > effectiveLimit)
 			{
-				ShowToast($"Custo ({sk.PmCost} PM) excede o limite de gasto por nível ({pmLimit} PM)!", new Color(1f, 0.45f, 0.45f));
+				ShowToast($"Custo ({sk.PmCost} PM) excede o limite de gasto por nível ({effectiveLimit} PM)!", new Color(1f, 0.45f, 0.45f));
 				return;
 			}
 
@@ -3408,6 +3695,7 @@ public partial class MainUi : Control
 			}
 
 			// Se estiver em combate e for a vez deste personagem, valida na sessão nativa também
+			int usedActionId = 0;
 			if (cid > 0 && _combatManager.Session.CurrentTurn == cid)
 			{
 				var actRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(
@@ -3417,6 +3705,11 @@ public partial class MainUi : Control
 				{
 					ShowToast(actRes.Message, new Color(1f, 0.45f, 0.45f));
 					return;
+				}
+				usedActionId = actRes.ActionId;
+				if (usedActionId > 0 && sk.PmCost > 0)
+				{
+					_queuedActionPmSpent[(cid, usedActionId)] = sk.PmCost;
 				}
 			}
 			else
@@ -3436,7 +3729,8 @@ public partial class MainUi : Control
 				{
 					RollResult r = _combatManager.Session.Roll(sk.BaseFormula.Trim());
 					bool isCure = sk.Name.Contains("Curar", StringComparison.OrdinalIgnoreCase) ||
-								  sk.Description.Contains("restaurar", StringComparison.OrdinalIgnoreCase);
+								  sk.Description.Contains("restaurar", StringComparison.OrdinalIgnoreCase) ||
+								  sk.Description.Contains("Recupera", StringComparison.OrdinalIgnoreCase);
 					if (isCure)
 					{
 						_selectedCharacter.HealHp(r.Total);
@@ -3444,16 +3738,25 @@ public partial class MainUi : Control
 						{
 							_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
 							Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
+							if (usedActionId > 0) _resolvedQueuedActions.Add((cid, usedActionId));
 						}
 						rollSummary = $" -> Curou +{r.Total} PV ({sk.BaseFormula})!";
 					}
 					else
 					{
-						rollSummary = $" -> Rolou {sk.BaseFormula} = {r.Total}!";
+						int arcanoBonus = sk.IsSpell
+							? Tormenta20MagicRules.GetArcanoDeBatalhaBonus(_selectedCharacter, activeSession, cid)
+							: 0;
+						int totalRoll = r.Total + arcanoBonus;
+						string arcNote = arcanoBonus > 0 ? $" +{arcanoBonus} Arcano" : "";
+						rollSummary = $" -> Rolou {sk.BaseFormula}{arcNote} = {totalRoll}!";
 					}
 					_txtHistorico?.AppendText($"[color=#66d9ef][{_selectedCharacter.Name}] {sk.Name} (-{sk.PmCost} PM){rollSummary}[/color]\n");
 				}
-				catch { }
+				catch (Exception ex)
+				{
+					ShowToast($"Fórmula '{sk.BaseFormula}' inválida: {ex.Message}", new Color(1f, 0.45f, 0.45f));
+				}
 			}
 			else
 			{
@@ -3478,18 +3781,61 @@ public partial class MainUi : Control
 			var weapon = _selectedCharacter.Inventory[idx];
 			string periciaAtk = weapon.IsRanged ? "Pontaria" : "Luta";
 			Tormenta20SkillRules.TryCalculateSkillModifier(_selectedCharacter, periciaAtk, out int atkMod, out _, activeSession, cid);
+			atkMod += weapon.AttackBonus;
+
+			int meleeCount = 0;
+			int totalWpnCount = 0;
+			bool hasShield = false;
+			foreach (var it in _selectedCharacter.Inventory)
+			{
+				if (!it.Equipped) continue;
+				if (it.Type == ItemType.Weapon)
+				{
+					totalWpnCount++;
+					if (!it.IsRanged) meleeCount++;
+				}
+				if (it.Type == ItemType.Shield) hasShield = true;
+			}
+			bool oneWeaponStyle = _selectedCharacter.UnlockedTreeKeys.Contains("estilo_uma_arma") &&
+								  meleeCount == 1 && totalWpnCount == 1 && !hasShield && !weapon.IsRanged;
+			if (oneWeaponStyle) atkMod += 2;
+
 			weapon.ParseCritical(out int threat, out int mult);
+			if (_selectedCharacter.UnlockedTreeKeys.Contains("ataque_preciso") &&
+				meleeCount == 1 && totalWpnCount == 1 && !hasShield && !weapon.IsRanged)
+			{
+				threat = Math.Max(1, threat - 2);
+				mult += 1;
+			}
 
 			RollResult d20 = _combatManager.Session.Roll("1d20");
 			int natural = d20.DiceTotal;
 			int totalAtk = natural + atkMod;
-			bool isCrit = natural >= threat;
+			bool isCrit = natural == 20 || (natural != 1 && natural >= threat);
 			bool isFumble = natural == 1;
 
-			int flatDmg = weapon.IsRanged ? 0 : _selectedCharacter.Strength;
+			int flatDmg = 0;
+			if (!weapon.IsRanged)
+			{
+				flatDmg = _selectedCharacter.Strength;
+			}
+			else if (_selectedCharacter.UnlockedTreeKeys.Contains("estilo_disparo"))
+			{
+				flatDmg = _selectedCharacter.Dexterity;
+			}
+
 			string dmgExpr = Tormenta20CombatRules.BuildWeaponDamageExpression(weapon.Damage, isCrit, mult, flatDmg);
-			RollResult dmgRoll = _combatManager.Session.Roll(dmgExpr);
-			int totalDmg = Math.Max(1, dmgRoll.Total);
+			int totalDmg = 0;
+			try
+			{
+				RollResult dmgRoll = _combatManager.Session.Roll(dmgExpr);
+				totalDmg = Math.Max(1, dmgRoll.Total);
+			}
+			catch (Exception ex)
+			{
+				ShowToast($"Fórmula de dano inválida ('{dmgExpr}'): {ex.Message}", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
 
 			string critTag = isCrit ? $" [CRÍTICO {threat}/x{mult}!]" : (isFumble ? " [FALHA CRÍTICA!]" : "");
 			ShowToast($"{weapon.Name}: Ataque {totalAtk} (1d20={natural}+Mod {atkMod}){critTag} | Dano: {totalDmg} ({dmgExpr})",
@@ -3520,7 +3866,20 @@ public partial class MainUi : Control
 
 		var item = _selectedCharacter.Inventory[invIdx];
 		item.Equipped = !item.Equipped;
+		int cid = GetSelectedCombatantId();
+		if (cid > 0)
+		{
+			if (_selectedCharacter.IsOverburdened())
+				Tormenta20ConditionRules.ApplyCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+			else
+				Tormenta20ConditionRules.RemoveCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+		}
 		RefreshSheetUI();
+		if (_combatManager.IsInCombat)
+		{
+			PopularAlvoCombate();
+			RefreshTacticalMapView();
+		}
 		ShowToast($"{(item.Equipped ? "Equipado" : "Guardado")}: {item.Name}");
 	}
 
@@ -3557,12 +3916,25 @@ public partial class MainUi : Control
 			if (idx >= 0 && idx < _selectedCharacter.Skills.Count)
 			{
 				var removedSkill = _selectedCharacter.Skills[idx];
-				_selectedCharacter.Skills.RemoveAt(idx);
 				if (!string.IsNullOrEmpty(removedSkill.TreeKey))
 				{
+					bool hasChild = Tormenta20AbilityTreeRules.CanonicalPowers.Any(
+						p => p.ParentKey == removedSkill.TreeKey && _selectedCharacter.UnlockedTreeKeys.Contains(p.Key));
+					if (hasChild)
+					{
+						ShowToast($"Remova primeiro os poderes que dependem de \"{removedSkill.Name}\"!", new Color(1f, 0.45f, 0.45f));
+						return;
+					}
 					_selectedCharacter.UnlockedTreeKeys.Remove(removedSkill.TreeKey);
+					SincronizarArvoreComCombateAtivo();
 				}
+				_selectedCharacter.Skills.RemoveAt(idx);
 				RefreshSheetUI();
+				if (_combatManager.IsInCombat)
+				{
+					PopularAlvoCombate();
+					RefreshTacticalMapView();
+				}
 				ShowToast($"Removido: {removedSkill.Name}");
 			}
 		}
@@ -3572,7 +3944,20 @@ public partial class MainUi : Control
 			{
 				string removedName = _selectedCharacter.Inventory[idx].Name;
 				_selectedCharacter.Inventory.RemoveAt(idx);
+				int cid = GetSelectedCombatantId();
+				if (cid > 0)
+				{
+					if (_selectedCharacter.IsOverburdened())
+						Tormenta20ConditionRules.ApplyCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+					else
+						Tormenta20ConditionRules.RemoveCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
+				}
 				RefreshSheetUI();
+				if (_combatManager.IsInCombat)
+				{
+					PopularAlvoCombate();
+					RefreshTacticalMapView();
+				}
 				ShowToast($"Removido: {removedName}");
 			}
 		}
@@ -3658,7 +4043,8 @@ public partial class MainUi : Control
 				int intVal = (int)val;
 				if (intVal == 0) _selectedCharacter.SkillMiscBonuses.Remove(nomeCopy);
 				else             _selectedCharacter.SkillMiscBonuses[nomeCopy] = intVal;
-				RefreshPericiasUI();
+				bool canNow = Tormenta20SkillRules.TryCalculateSkillModifier(_selectedCharacter, nomeCopy, out int updatedMod, out _, activeSession, cid);
+				lblTotal.Text = canNow ? (updatedMod >= 0 ? $"+{updatedMod}" : updatedMod.ToString()) : "—";
 			};
 			row.AddChild(spinOutros);
 
@@ -3741,6 +4127,7 @@ public partial class MainUi : Control
 		if (cid > 0)
 		{
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedCharacter.CurrentHp);
+			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedCharacter.TempHp);
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
 			string stateMsg = Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
 			if (!string.IsNullOrEmpty(stateMsg))
@@ -3750,6 +4137,7 @@ public partial class MainUi : Control
 			RefreshInitiativeBar();
 			PopularAlvoCombate();
 			UpdateCombatStatusDisplay();
+			RefreshTacticalMapView();
 		}
 
 		var newState = _selectedCharacter.GetHealthState(cid > 0 ? _combatManager.Session : null, cid);
@@ -3810,6 +4198,15 @@ public partial class MainUi : Control
 			_btnUsarHabilidade.Disabled = isIncapacitated;
 			if (_btnAcaoCompleta != null) _btnAcaoCompleta.Disabled = isIncapacitated;
 			if (_btnPopNextAction != null) _btnPopNextAction.Disabled = isIncapacitated;
+			if (_chkAtaquePoderoso != null)
+			{
+				bool hasPowerAttack = sheet != null &&
+					(sheet.UnlockedTreeKeys.Contains("ataque_poderoso") ||
+					 (cid > 0 && _combatManager.Session.HasAbility(cid, "ataque_poderoso")));
+				_chkAtaquePoderoso.Visible = hasPowerAttack;
+				_chkAtaquePoderoso.Disabled = isIncapacitated;
+				if (!hasPowerAttack) _chkAtaquePoderoso.ButtonPressed = false;
+			}
 		}
 		else
 		{
@@ -3823,6 +4220,11 @@ public partial class MainUi : Control
 			_btnUsarHabilidade.Disabled = false;
 			if (_btnAcaoCompleta != null) _btnAcaoCompleta.Disabled = true;
 			if (_btnPopNextAction != null) _btnPopNextAction.Disabled = true;
+			if (_chkAtaquePoderoso != null)
+			{
+				_chkAtaquePoderoso.Visible = false;
+				_chkAtaquePoderoso.ButtonPressed = false;
+			}
 		}
 		RefreshActionQueuePanel();
 		RefreshTacticalMapView();
@@ -3932,36 +4334,53 @@ public partial class MainUi : Control
 
 			int capturedActionId = entry.ActionId;
 			string capturedLabel = actionLabel;
-			var btnUndo = new Button
+			bool alreadyResolved = _resolvedQueuedActions.Contains((actorId, entry.ActionId));
+			if (alreadyResolved)
 			{
-				Text = "Desfazer",
-				CustomMinimumSize = new Vector2(88, 24),
-				TooltipText = "Cancela esta ação e devolve o uso da ação (e PM gasto, se houver)"
-			};
-			btnUndo.Pressed += () =>
-			{
-				if (_combatManager.Session.CancelQueuedAction(actorId, capturedActionId, refundSlot: true))
+				var lblApplied = new Label
 				{
-					string pmRefundMsg = "";
-					if (_queuedActionPmSpent.TryGetValue((actorId, capturedActionId), out int refundPm) && refundPm > 0)
+					Text = "Aplicada",
+					CustomMinimumSize = new Vector2(88, 24),
+					HorizontalAlignment = HorizontalAlignment.Center,
+					VerticalAlignment = VerticalAlignment.Center
+				};
+				lblApplied.AddThemeFontSizeOverride("font_size", 11);
+				lblApplied.AddThemeColorOverride("font_color", new Color(0.55f, 0.85f, 0.62f));
+				row.AddChild(lblApplied);
+			}
+			else
+			{
+				var btnUndo = new Button
+				{
+					Text = "Desfazer",
+					CustomMinimumSize = new Vector2(88, 24),
+					TooltipText = "Cancela esta ação pendente e devolve o uso da ação (e PM gasto, se houver)"
+				};
+				btnUndo.Pressed += () =>
+				{
+					if (_combatManager.Session.CancelQueuedAction(actorId, capturedActionId, refundSlot: true))
 					{
-						if (_combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet))
+						string pmRefundMsg = "";
+						if (_queuedActionPmSpent.TryGetValue((actorId, capturedActionId), out int refundPm) && refundPm > 0)
 						{
-							actorSheet.RecoverPm(refundPm);
-							_combatManager.Session.RestoreResource(actorId, CombatManager.ManaResourceId, refundPm);
-							pmRefundMsg = $" (+{refundPm} PM recuperado)";
+							if (_combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet))
+							{
+								actorSheet.RecoverPm(refundPm);
+								_combatManager.Session.RestoreResource(actorId, CombatManager.ManaResourceId, refundPm);
+								pmRefundMsg = $" (+{refundPm} PM recuperado)";
+							}
+							_queuedActionPmSpent.Remove((actorId, capturedActionId));
 						}
-						_queuedActionPmSpent.Remove((actorId, capturedActionId));
+						AppendCombatLog($"Ação \"{capturedLabel}\" cancelada{pmRefundMsg}.", "#66d9ef");
+						ShowToast($"Desfeita: {capturedLabel}{pmRefundMsg}");
+						UpdateCombatStatusDisplay();
+						RefreshSheetUI();
+						RefreshEnemySheetUI();
+						RefreshInitiativeBar();
 					}
-					AppendCombatLog($"Ação \"{capturedLabel}\" cancelada{pmRefundMsg}.", "#66d9ef");
-					ShowToast($"Desfeita: {capturedLabel}{pmRefundMsg}");
-					UpdateCombatStatusDisplay();
-					RefreshSheetUI();
-					RefreshEnemySheetUI();
-					RefreshInitiativeBar();
-				}
-			};
-			row.AddChild(btnUndo);
+				};
+				row.AddChild(btnUndo);
+			}
 			_boxActionQueueList.AddChild(row);
 		}
 	}
@@ -4086,8 +4505,21 @@ public partial class MainUi : Control
 		if (!_combatManager.CombatantIdToSheet.TryGetValue(targetId, out var targetSheet))
 			targetSheet = actorSheet;
 
+		bool usePowerAttack = _chkAtaquePoderoso != null && _chkAtaquePoderoso.Visible && _chkAtaquePoderoso.ButtonPressed;
+		var prevQueueIds = _combatManager.Session.GetActionQueue(actorId).Select(q => q.ActionId).ToHashSet();
+
 		var resultado = Tormenta20CombatRules.ResolveWeaponAttack(
-			_combatManager.Session, actorSheet, actorId, targetSheet, targetId, weapon);
+			_combatManager.Session, actorSheet, actorId, targetSheet, targetId, weapon,
+			useAtaquePoderoso: usePowerAttack);
+
+		if (resultado.ActionSucceeded)
+		{
+			foreach (var q in _combatManager.Session.GetActionQueue(actorId))
+			{
+				if (!prevQueueIds.Contains(q.ActionId))
+					_resolvedQueuedActions.Add((actorId, q.ActionId));
+			}
+		}
 
 		if (!resultado.ActionSucceeded)
 			AppendCombatLog(resultado.Message, "#ff9999");
@@ -4376,16 +4808,27 @@ public partial class MainUi : Control
 		{
 			if (_selectedEnemy == null) return;
 			string deletedName = _selectedEnemy.Name;
-			_combatManager.DeleteEnemy(_selectedEnemy.Id);
+			if (!_combatManager.DeleteEnemy(_selectedEnemy.Id))
+			{
+				ShowToast("Clones de combate só podem ser removidos encerrando ou reiniciando o encontro.", new Color(1f, 0.72f, 0.35f));
+				return;
+			}
 			_combatManager.SaveEnemies();
 			_selectedEnemy = _combatManager.Enemies.FirstOrDefault();
 			RefreshEnemyList();
 			RefreshEnemySheetUI();
+			if (_combatManager.IsInCombat)
+			{
+				RefreshInitiativeBar();
+				PopularAlvoCombate();
+				UpdateCombatStatusDisplay();
+				RefreshTacticalMapView();
+			}
 			ShowToast($"Inimigo \"{deletedName}\" removido do Bestiário.", new Color(1f, 0.55f, 0.45f));
 		};
 		hListBtns.AddChild(btnDelEnemy);
 
-		var btnSaveBestiary = new Button { Text = "Salvar Bestiário (enemies.json)" };
+		var btnSaveBestiary = new Button { Text = "Salvar Bestiário" };
 		btnSaveBestiary.AddThemeColorOverride("font_color", new Color(0.55f, 0.92f, 1f));
 		btnSaveBestiary.Pressed += OnSalvarBestiarioPressed;
 		vLeft.AddChild(btnSaveBestiary);
@@ -4430,6 +4873,12 @@ public partial class MainUi : Control
 			if (_updatingEnemyUi || _selectedEnemy == null) return;
 			_selectedEnemy.Name = txt;
 			RefreshEnemyList();
+			if (_combatManager.IsInCombat && _combatManager.SheetIdToCombatantId.ContainsKey(_selectedEnemy.Id))
+			{
+				RefreshInitiativeBar();
+				PopularAlvoCombate();
+				RefreshTacticalMapView();
+			}
 		};
 		vInfo.AddChild(_leEnemyName);
 
@@ -4580,6 +5029,10 @@ public partial class MainUi : Control
 		{
 			_selectedEnemy.FixedDefense = (int)v;
 			RefreshEnemyList();
+			if (_combatManager.IsInCombat && _combatManager.SheetIdToCombatantId.ContainsKey(_selectedEnemy.Id))
+			{
+				PopularAlvoCombate();
+			}
 		});
 		_spinEnemyRd = AddStatSpin(hDefRow, "RD (Red. Dano)", 0, 50, 1, v =>
 		{
@@ -4587,7 +5040,12 @@ public partial class MainUi : Control
 			if (_combatManager.IsInCombat && _combatManager.SheetIdToCombatantId.TryGetValue(_selectedEnemy.Id, out int cid))
 				_combatManager.Session.SetGlobalDamageReduction(cid, _selectedEnemy.DamageReduction);
 		});
-		_spinEnemySpeed = AddStatSpin(hDefRow, "Desloc. (m)", 1.5f, 36f, 1.5f, v => _selectedEnemy.SpeedMetersOverride = (float)v);
+		_spinEnemySpeed = AddStatSpin(hDefRow, "Desloc. (m)", 1.5f, 36f, 1.5f, v =>
+		{
+			_selectedEnemy.SpeedMetersOverride = (float)v;
+			if (_combatManager.IsInCombat && _combatManager.SheetIdToCombatantId.ContainsKey(_selectedEnemy.Id))
+				RefreshTacticalMapView();
+		});
 
 		var vbSenses = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill, SizeFlagsStretchRatio = 1.6f };
 		vbSenses.AddChild(new Label { Text = "Sentidos / Imunidades" });
@@ -4911,16 +5369,16 @@ public partial class MainUi : Control
 			_lblEnemyPmCircle.Text = $"PM: {e.CurrentPm}/{e.MaxPm}";
 			_spinEnemyPmMax.Value = e.MaxPm;
 
-			_spinEnemyDef.Value = e.GetDefense(activeSession, cid);
+			_spinEnemyDef.Value = e.FixedDefense > 0 ? e.FixedDefense : e.GetDefense();
 			_spinEnemyRd.Value = e.DamageReduction;
 			_spinEnemySpeed.Value = e.SpeedMetersOverride > 0f ? e.SpeedMetersOverride : Tormenta20TacticalRules.GetRaceBaseSpeedMeters(e.Race);
 			if (_leEnemySenses.Text != e.SensesNotes) _leEnemySenses.Text = e.SensesNotes;
 
-			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Iniciativa", out int initMod, out _, activeSession, cid);
-			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Percepção", out int percMod, out _, activeSession, cid);
-			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Fortitude", out int fortMod, out _, activeSession, cid);
-			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Reflexos", out int refMod, out _, activeSession, cid);
-			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Vontade", out int willMod, out _, activeSession, cid);
+			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Iniciativa", out int initMod, out _);
+			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Percepção", out int percMod, out _);
+			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Fortitude", out int fortMod, out _);
+			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Reflexos", out int refMod, out _);
+			Tormenta20SkillRules.TryCalculateSkillModifier(e, "Vontade", out int willMod, out _);
 
 			_spinEnemyInit.Value = e.InitiativeOverride ?? initMod;
 			_spinEnemyPerc.Value = e.PerceptionOverride ?? percMod;
@@ -4994,12 +5452,14 @@ public partial class MainUi : Control
 		{
 			_combatManager.Session.AddResource(cid, CombatManager.HealthResourceId, "Vida", _selectedEnemy.MaxHp, _selectedEnemy.GetDeathThreshold());
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.HealthResourceId, _selectedEnemy.CurrentHp);
+			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedEnemy.TempHp);
 			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedEnemy.MaxPm, 0);
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedEnemy.CurrentPm);
 			Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedEnemy);
 			RefreshInitiativeBar();
 			PopularAlvoCombate();
 			UpdateCombatStatusDisplay();
+			RefreshTacticalMapView();
 		}
 	}
 
@@ -5078,12 +5538,21 @@ public partial class MainUi : Control
 		RollResult d20 = _combatManager.Session.Roll("1d20");
 		int natural = d20.DiceTotal;
 		int totalAtk = natural + atkMod;
-		bool isCrit = natural >= threat;
+		bool isCrit = natural == 20 || (natural != 1 && natural >= threat);
 		bool isFumble = natural == 1;
 
 		string dmgExpr = Tormenta20CombatRules.BuildWeaponDamageExpression(weapon.Damage, isCrit, mult, 0);
-		RollResult dmgRoll = _combatManager.Session.Roll(dmgExpr);
-		int totalDmg = Math.Max(1, dmgRoll.Total);
+		int totalDmg = 0;
+		try
+		{
+			RollResult dmgRoll = _combatManager.Session.Roll(dmgExpr);
+			totalDmg = Math.Max(1, dmgRoll.Total);
+		}
+		catch (Exception ex)
+		{
+			ShowToast($"Fórmula de dano inválida ('{dmgExpr}'): {ex.Message}", new Color(1f, 0.45f, 0.45f));
+			return;
+		}
 
 		string critTag = isCrit ? $" [CRÍTICO {threat}/x{mult}!]" : (isFumble ? " [FALHA CRÍTICA!]" : "");
 		ShowToast($"{_selectedEnemy.Name} - {weapon.Name}: Ataque {totalAtk} (1d20={natural}{(atkMod >= 0 ? "+" : "")}{atkMod}){critTag} | Dano: {totalDmg} ({dmgExpr})",
@@ -5122,7 +5591,10 @@ public partial class MainUi : Control
 				RollResult r = _combatManager.Session.Roll(sk.BaseFormula.Trim());
 				rollSummary = $" -> Rolou {sk.BaseFormula} = {r.Total}!";
 			}
-			catch { }
+			catch (Exception ex)
+			{
+				ShowToast($"Fórmula '{sk.BaseFormula}' inválida: {ex.Message}", new Color(1f, 0.45f, 0.45f));
+			}
 		}
 
 		RefreshEnemySheetUI();
@@ -5133,7 +5605,7 @@ public partial class MainUi : Control
 	private void OnSalvarBestiarioPressed()
 	{
 		_combatManager.SaveEnemies();
-		ShowToast($"{_combatManager.Enemies.Count} ameaça(s) salva(s) em enemies.json!");
+		ShowToast($"{_combatManager.Enemies.Count} ameaça(s) salva(s) no Bestiário!");
 		AppendCombatLog("Bestiário salvo com sucesso!", "#55ff99");
 	}
 
@@ -5175,6 +5647,15 @@ public partial class MainUi : Control
 			ShowToast($"Cenário alterado para {_optArenaPreset.GetItemText((int)idx)}.");
 		};
 		toolBar.AddChild(_optArenaPreset);
+
+		_btnMapaTamanho = new Button
+		{
+			Text = "Grid: 16x12",
+			TooltipText = "Alterar o tamanho base do tabuleiro (ex.: 12x12, 30x30, 60x60)"
+		};
+		_btnMapaTamanho.AddThemeColorOverride("font_color", new Color(0.65f, 0.90f, 1f));
+		_btnMapaTamanho.Pressed += AbrirDialogTamanhoMapa;
+		toolBar.AddChild(_btnMapaTamanho);
 
 		_btnModoEditorMapa = new Button
 		{
@@ -5328,6 +5809,8 @@ public partial class MainUi : Control
 				_editorBrush = brush;
 				_editorSelectedTokenId = 0;
 				_tacticalGridCanvas?.SetSelectedEditorToken(0);
+				if (_tacticalGridCanvas != null)
+					_tacticalGridCanvas.SuppressCellClickOnTokenInEditor = (brush == MapEditorBrush.MoveToken);
 				for (int i = 0; i < _brushButtons.Count; i++)
 				{
 					_brushButtons[i].Modulate = (i == (int)brush) ? new Color(1f, 0.88f, 0.35f) : Colors.White;
@@ -5393,7 +5876,8 @@ public partial class MainUi : Control
 		_tacticalGridCanvas = new TacticalGridCanvas
 		{
 			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
-			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill
+			SizeFlagsVertical = SizeFlags.Expand | SizeFlags.Fill,
+			ExternalInputBlocker = IsAnyPopupOrModalOpen
 		};
 		canvasFrame.AddChild(_tacticalGridCanvas);
 
@@ -5581,6 +6065,175 @@ public partial class MainUi : Control
 			ShowToast("Imagem de fundo aplicada ao mapa!");
 		};
 		AddChild(_fileDlgMapaFundo);
+
+		_dlgTamanhoMapa = BuildTamanhoMapaDialog();
+		AddChild(_dlgTamanhoMapa);
+	}
+
+	private void AbrirDialogTamanhoMapa()
+	{
+		if (_dlgTamanhoMapa == null) return;
+		int curW = (_combatManager.Session != null && _combatManager.Session.IsMapActive)
+			? _combatManager.Session.MapWidth
+			: _combatManager.DefaultMapWidth;
+		int curH = (_combatManager.Session != null && _combatManager.Session.IsMapActive)
+			? _combatManager.Session.MapHeight
+			: _combatManager.DefaultMapHeight;
+		if (_spinMapaLargura != null) _spinMapaLargura.Value = Math.Clamp(curW, CombatManager.MinMapSize, CombatManager.MaxMapSize);
+		if (_spinMapaAltura != null) _spinMapaAltura.Value = Math.Clamp(curH, CombatManager.MinMapSize, CombatManager.MaxMapSize);
+		if (_chkMapaRegenerarCenario != null) _chkMapaRegenerarCenario.ButtonPressed = false;
+		AtualizarPreviewTamanhoMapa();
+		_dlgTamanhoMapa.PopupCentered();
+	}
+
+	private void AtualizarPreviewTamanhoMapa()
+	{
+		if (_lblMapaDimensaoMetros == null || _spinMapaLargura == null || _spinMapaAltura == null) return;
+		int w = (int)_spinMapaLargura.Value;
+		int h = (int)_spinMapaAltura.Value;
+		string metersW = (w * 1.5).ToString("0.0").Replace('.', ',');
+		string metersH = (h * 1.5).ToString("0.0").Replace('.', ',');
+		_lblMapaDimensaoMetros.Text = $"Dimensão: {w} x {h} quadrados ({metersW}m x {metersH}m)";
+	}
+
+	private Window BuildTamanhoMapaDialog()
+	{
+		var win = new Window
+		{
+			Title = "Tamanho Base do Tabletop",
+			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
+			Size = new Vector2I(430, 340),
+			Exclusive = true
+		};
+		win.CloseRequested += () => win.Hide();
+
+		var margin = new MarginContainer();
+		margin.SetAnchorsPreset(LayoutPreset.FullRect);
+		margin.AddThemeConstantOverride("margin_left", 16);
+		margin.AddThemeConstantOverride("margin_right", 16);
+		margin.AddThemeConstantOverride("margin_top", 14);
+		margin.AddThemeConstantOverride("margin_bottom", 14);
+		win.AddChild(margin);
+
+		var vbox = new VBoxContainer();
+		vbox.AddThemeConstantOverride("separation", 10);
+		margin.AddChild(vbox);
+
+		var lblDesc = new Label
+		{
+			Text = $"Defina a largura e altura da grade ({CombatManager.MinMapSize} a {CombatManager.MaxMapSize} quadrados). O tamanho escolhido também vale como base para novos combates.",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		lblDesc.AddThemeColorOverride("font_color", new Color(0.86f, 0.89f, 0.96f));
+		lblDesc.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(lblDesc);
+
+		var lblPresets = new Label { Text = "Tamanhos Rápidos:" };
+		lblPresets.AddThemeColorOverride("font_color", new Color(0.95f, 0.85f, 0.45f));
+		lblPresets.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(lblPresets);
+
+		var gridPresets = new GridContainer { Columns = 4 };
+		gridPresets.AddThemeConstantOverride("h_separation", 8);
+		gridPresets.AddThemeConstantOverride("v_separation", 6);
+		vbox.AddChild(gridPresets);
+
+		(int pw, int ph)[] quickSizes =
+		{
+			(12, 12), (16, 12), (20, 20), (30, 30),
+			(40, 40), (60, 60), (80, 80), (100, 100)
+		};
+		foreach (var (pw, ph) in quickSizes)
+		{
+			var btnPreset = new Button
+			{
+				Text = $"{pw}x{ph}",
+				SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+			};
+			int capW = pw;
+			int capH = ph;
+			btnPreset.Pressed += () =>
+			{
+				if (_spinMapaLargura != null) _spinMapaLargura.Value = capW;
+				if (_spinMapaAltura != null) _spinMapaAltura.Value = capH;
+				AtualizarPreviewTamanhoMapa();
+			};
+			gridPresets.AddChild(btnPreset);
+		}
+
+		var gridInputs = new GridContainer { Columns = 2 };
+		gridInputs.AddThemeConstantOverride("h_separation", 14);
+		gridInputs.AddThemeConstantOverride("v_separation", 6);
+		vbox.AddChild(gridInputs);
+
+		var vbW = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+		vbW.AddChild(new Label { Text = "Largura (Colunas):" });
+		_spinMapaLargura = new SpinBox
+		{
+			MinValue = CombatManager.MinMapSize,
+			MaxValue = CombatManager.MaxMapSize,
+			Step = 1,
+			Value = 16,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_spinMapaLargura.ValueChanged += (_) => AtualizarPreviewTamanhoMapa();
+		vbW.AddChild(_spinMapaLargura);
+		gridInputs.AddChild(vbW);
+
+		var vbH = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+		vbH.AddChild(new Label { Text = "Altura (Linhas):" });
+		_spinMapaAltura = new SpinBox
+		{
+			MinValue = CombatManager.MinMapSize,
+			MaxValue = CombatManager.MaxMapSize,
+			Step = 1,
+			Value = 12,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_spinMapaAltura.ValueChanged += (_) => AtualizarPreviewTamanhoMapa();
+		vbH.AddChild(_spinMapaAltura);
+		gridInputs.AddChild(vbH);
+
+		_lblMapaDimensaoMetros = new Label { Text = "Dimensão: 16 x 12 quadrados (24,0m x 18,0m)" };
+		_lblMapaDimensaoMetros.AddThemeColorOverride("font_color", new Color(0.55f, 0.88f, 1f));
+		_lblMapaDimensaoMetros.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(_lblMapaDimensaoMetros);
+
+		_chkMapaRegenerarCenario = new CheckBox
+		{
+			Text = "Regenerar obstáculos do cenário selecionado",
+			ButtonPressed = false,
+			TooltipText = "Desmarcado: preserva paredes, terrenos e tokens já posicionados dentro da nova área."
+		};
+		vbox.AddChild(_chkMapaRegenerarCenario);
+
+		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+		hBtns.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hBtns);
+
+		var btnCancel = new Button { Text = "Cancelar" };
+		btnCancel.Pressed += () => win.Hide();
+		hBtns.AddChild(btnCancel);
+
+		var btnAplicar = new Button { Text = "Aplicar Tamanho" };
+		btnAplicar.AddThemeColorOverride("font_color", new Color(0.45f, 0.98f, 0.60f));
+		btnAplicar.Pressed += () =>
+		{
+			int w = (int)_spinMapaLargura.Value;
+			int h = (int)_spinMapaAltura.Value;
+			bool regen = _chkMapaRegenerarCenario.ButtonPressed;
+			_combatManager.ResizeMap(w, h, resetTerrain: regen);
+			RefreshTacticalMapView();
+			_tacticalGridCanvas?.CenterView(animate: true);
+			win.Hide();
+			string metersW = (w * 1.5).ToString("0.0").Replace('.', ',');
+			string metersH = (h * 1.5).ToString("0.0").Replace('.', ',');
+			ShowToast($"Tabuleiro redimensionado para {w}x{h} ({metersW}m x {metersH}m).");
+		};
+		hBtns.AddChild(btnAplicar);
+
+		win.Hide();
+		return win;
 	}
 
 	private Control BuildTacticalHelpTab()
@@ -5628,6 +6281,7 @@ public partial class MainUi : Control
 			"- [b]Correr (2x Desloc.):[/b] Dobra a área azul por 1 Ação Completa.\n" +
 			"- [b]Régua (ou tecla M):[/b] Mede distância em metros e testa Linha de Visão/Cobertura até o cursor.\n\n" +
 			"[color=#80d8ff][b]Modo Editor de Mapa[/b][/color]\n" +
+			"- [b]Grid (LxA):[/b] Altera o tamanho base do tabuleiro (de 6x6 até 120x120 quadrados), preservando obstáculos e combatentes.\n" +
 			"- Clique ou arraste com o botão esquerdo para pintar Chão Livre, Parede Sólida, Cobertura Leve (+5 Def) ou Terreno Difícil (custo x2).\n" +
 			"- Pincel [b]Reposicionar Token[/b]: clique em um token e depois clique na nova célula livre.\n\n" +
 			"[color=#80d8ff][b]Regras Táticas (Tormenta20 JdA)[/b][/color]\n" +
@@ -5700,6 +6354,13 @@ public partial class MainUi : Control
 			{
 				if (_editorSelectedTokenId > 0)
 				{
+					bool cellOccupied = _combatManager.Session.GetAllTokens()
+						.Any(t => t.EntityId != _editorSelectedTokenId && t.X == cell.X && t.Y == cell.Y);
+					if (cellOccupied)
+					{
+						ShowToast("Já existe outro token ocupando essa célula.", new Color(1f, 0.45f, 0.45f));
+						return;
+					}
 					if (_combatManager.Session.MoveToken(_editorSelectedTokenId, cell.X, cell.Y))
 					{
 						Tormenta20TacticalRules.UpdateFogOfWar(_combatManager.Session, _combatManager.FogTracker, alliedTeam: 1);
@@ -5729,11 +6390,17 @@ public partial class MainUi : Control
 			return;
 		}
 
+		var prevMoveQueueIds = _combatManager.Session.GetActionQueue(actorId).Select(q => q.ActionId).ToHashSet();
 		var res = Tormenta20TacticalRules.ExecuteTacticalMove(
 			_combatManager.Session, actorSheet, actorId, cell, useFullRunAction: _runModeNextClick);
 
 		if (res.Success)
 		{
+			foreach (var q in _combatManager.Session.GetActionQueue(actorId))
+			{
+				if (!prevMoveQueueIds.Contains(q.ActionId))
+					_resolvedQueuedActions.Add((actorId, q.ActionId));
+			}
 			_runModeNextClick = false;
 			if (_btnMapaCorrer != null) _btnMapaCorrer.ButtonPressed = false;
 			_tacticalGridCanvas?.AnimateTokenMove(actorId, res.Path);
@@ -5754,6 +6421,16 @@ public partial class MainUi : Control
 	{
 		if (_combatManager.Session == null || !_combatManager.Session.IsMapActive) return;
 		if (_editorBrush == MapEditorBrush.MoveToken) return;
+
+		if (_editorBrush == MapEditorBrush.Wall)
+		{
+			bool hasTokenHere = _combatManager.Session.GetAllTokens().Any(t => t.X == cell.X && t.Y == cell.Y);
+			if (hasTokenHere)
+			{
+				ShowToast("Remova/mova o token antes de colocar uma parede sólida aqui.", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
+		}
 
 		switch (_editorBrush)
 		{
@@ -5778,10 +6455,7 @@ public partial class MainUi : Control
 	{
 		if (_tacticalGridCanvas == null || _combatManager?.Session == null) return;
 
-		if (!string.IsNullOrEmpty(_combatManager.CurrentMapBackgroundPath))
-		{
-			_tacticalGridCanvas.SetBackgroundImage(_combatManager.CurrentMapBackgroundPath);
-		}
+		_tacticalGridCanvas.SetBackgroundImage(_combatManager.CurrentMapBackgroundPath);
 
 		int actorId = _combatManager.IsInCombat ? _combatManager.Session.CurrentTurn : 0;
 		int targetId = _combatManager.IsInCombat ? GetSelectedCombatTargetId(actorId) : 0;
@@ -5828,6 +6502,13 @@ public partial class MainUi : Control
 			if (_btnMapaAtacar != null) _btnMapaAtacar.Disabled = true;
 			if (_btnMapaCorrer != null) _btnMapaCorrer.Disabled = true;
 			if (_btnMapaHabilidade != null) _btnMapaHabilidade.Disabled = true;
+		}
+
+		if (_btnMapaTamanho != null)
+		{
+			int gw = _combatManager.Session.IsMapActive ? _combatManager.Session.MapWidth : _combatManager.DefaultMapWidth;
+			int gh = _combatManager.Session.IsMapActive ? _combatManager.Session.MapHeight : _combatManager.DefaultMapHeight;
+			_btnMapaTamanho.Text = $"Grid: {gw}x{gh}";
 		}
 
 		if (_btnFogToggle != null && _btnFogToggle.ButtonPressed != _combatManager.FogOfWarEnabled)
@@ -5982,6 +6663,22 @@ public partial class MainUi : Control
 			_tacticalGridCanvas.ZoomBy(1.2f);
 			if (Mathf.IsEqualApprox(_tacticalGridCanvas.TargetZoom, 1.0f))
 				throw new InvalidOperationException("Controle de zoom do Tabletop não atualizou TargetZoom!");
+
+			// Redimensionamento dinâmico do grid base (16x12 -> 60x60 -> 16x12) preservando tokens
+			_combatManager.ResizeMap(60, 60);
+			RefreshTacticalMapView();
+			if (_combatManager.Session.MapWidth != 60 || _combatManager.Session.MapHeight != 60)
+				throw new InvalidOperationException("ResizeMap(60, 60) não atualizou as dimensões do mapa na sessão!");
+			if (!_combatManager.Session.TryGetToken(currentActor, out _))
+				throw new InvalidOperationException("Token do combatente ativo foi perdido após ResizeMap(60, 60)!");
+			if (_btnMapaTamanho == null || _btnMapaTamanho.Text != "Grid: 60x60")
+				throw new InvalidOperationException("Botão Grid do Tabletop não atualizou para 'Grid: 60x60'!");
+			_tacticalGridCanvas.CenterView(animate: false);
+
+			_combatManager.ResizeMap(16, 12);
+			RefreshTacticalMapView();
+			if (_combatManager.Session.MapWidth != 16 || _combatManager.Session.MapHeight != 12)
+				throw new InvalidOperationException("ResizeMap(16, 12) não restaurou as dimensões do mapa!");
 			_tacticalGridCanvas.CenterView(animate: false);
 
 			_combatManager.FogOfWarEnabled = true;

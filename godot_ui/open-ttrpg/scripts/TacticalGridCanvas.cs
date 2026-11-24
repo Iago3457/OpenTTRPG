@@ -13,8 +13,8 @@ using OpenTTRPG.Tormenta20;
 public partial class TacticalGridCanvas : Control
 {
 	private const float BaseCellSize = 48f;
-	private const float MarginHeader = 26f;
-	private const float MinZoom = 0.40f;
+	private const float MarginHeader = 32f;
+	private const float MinZoom = 0.14f;
 	private const float MaxZoom = 2.60f;
 
 	public event Action<GridPos> CellClicked;
@@ -29,6 +29,9 @@ public partial class TacticalGridCanvas : Control
 	public bool IsEditorMode { get; set; }
 	public bool RulerMode { get; set; }
 	public bool FogOfWarEnabled { get; set; }
+	public bool InputBlocked { get; set; }
+	public Func<bool> ExternalInputBlocker { get; set; }
+	public bool SuppressCellClickOnTokenInEditor { get; set; }
 	public float TargetZoom => _targetZoom;
 
 	private float _zoom = 1.0f;
@@ -108,8 +111,8 @@ public partial class TacticalGridCanvas : Control
 
 		bool changed = false;
 
-		// Navegação suave via teclado (WASD / Setas) quando o mapa está visível e nenhum campo de texto está focado
-		if (IsVisibleInTree() && !IsTextInputFocused())
+		// Navegação suave via teclado (WASD / Setas) quando o mapa está visível e nenhum campo de texto ou modal está aberto
+		if (IsVisibleInTree() && !InputBlocked && !(ExternalInputBlocker?.Invoke() ?? false) && !IsTextInputFocused())
 		{
 			Vector2 keyDir = Vector2.Zero;
 			if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up)) keyDir.Y += 1f;
@@ -232,7 +235,7 @@ public partial class TacticalGridCanvas : Control
 		{
 			float fitX = (Size.X - 28f) / contentW;
 			float fitY = (Size.Y - 28f) / contentH;
-			desiredZoom = Mathf.Clamp(Mathf.Min(fitX, fitY), 0.55f, 1.35f);
+			desiredZoom = Mathf.Clamp(Mathf.Min(fitX, fitY), MinZoom, 1.35f);
 			float drawnW = contentW * desiredZoom;
 			float drawnH = contentH * desiredZoom;
 			desiredPan = new Vector2(
@@ -350,7 +353,7 @@ public partial class TacticalGridCanvas : Control
 				{
 					_visualPositions[tok.EntityId] = new Vector2(pos.X, pos.Y);
 				}
-				else if (_moveTween == null || !_moveTween.IsRunning())
+				else if (tok.EntityId != _animatingEntityId || _moveTween == null || !_moveTween.IsRunning())
 				{
 					_visualPositions[tok.EntityId] = new Vector2(pos.X, pos.Y);
 				}
@@ -373,16 +376,34 @@ public partial class TacticalGridCanvas : Control
 			{
 				_visualPositions.Remove(oldId);
 			}
+			if (_animatingEntityId > 0 && !aliveIds.Contains(_animatingEntityId))
+			{
+				_moveTween?.Kill();
+				_animatingEntityId = 0;
+			}
 		}
 
+		if (_hoverCell.HasValue)
+		{
+			UpdateHoverPreview();
+		}
 		QueueRedraw();
 	}
+
+	private int _animatingEntityId = 0;
 
 	public void AnimateTokenMove(int entityId, List<GridPos> path)
 	{
 		if (path == null || path.Count == 0) return;
 
+		if (_animatingEntityId > 0)
+		{
+			var prevTok = _tokens.FirstOrDefault(t => t.EntityId == _animatingEntityId);
+			if (prevTok != null)
+				_visualPositions[_animatingEntityId] = new Vector2(prevTok.GridPos.X, prevTok.GridPos.Y);
+		}
 		_moveTween?.Kill();
+		_animatingEntityId = entityId;
 		_moveTween = CreateTween();
 		_visualPositions[entityId] = new Vector2(path[0].X, path[0].Y);
 
@@ -393,6 +414,7 @@ public partial class TacticalGridCanvas : Control
 			_moveTween.TweenMethod(
 				Callable.From<Vector2>(v =>
 				{
+					if (_animatingEntityId != entityId) return;
 					_visualPositions[entityId] = v;
 					QueueRedraw();
 				}),
@@ -400,6 +422,10 @@ public partial class TacticalGridCanvas : Control
 				nextCoord,
 				stepDuration);
 		}
+		_moveTween.TweenCallback(Callable.From(() =>
+		{
+			if (_animatingEntityId == entityId) _animatingEntityId = 0;
+		}));
 	}
 
 	private static string BuildInitials(string name)
@@ -528,7 +554,10 @@ public partial class TacticalGridCanvas : Control
 						else if (tok != null && IsEditorMode)
 						{
 							TokenClicked?.Invoke(tok.EntityId);
-							CellClicked?.Invoke(cell);
+							if (!SuppressCellClickOnTokenInEditor)
+							{
+								CellClicked?.Invoke(cell);
+							}
 						}
 						else
 						{
@@ -599,6 +628,19 @@ public partial class TacticalGridCanvas : Control
 		QueueRedraw();
 	}
 
+	private static string FormatColumnLabel(int colIndex)
+	{
+		if (colIndex < 0) return "?";
+		string label = string.Empty;
+		int idx = colIndex;
+		do
+		{
+			label = (char)('A' + (idx % 26)) + label;
+			idx = (idx / 26) - 1;
+		} while (idx >= 0);
+		return label;
+	}
+
 	private void UpdateHoverPreview()
 	{
 		_hoverPath.Clear();
@@ -612,7 +654,7 @@ public partial class TacticalGridCanvas : Control
 		}
 
 		GridPos cell = _hoverCell.Value;
-		string colLetter = ((char)('A' + (cell.X % 26))).ToString();
+		string colLetter = FormatColumnLabel(cell.X);
 		string coordLabel = $"{colLetter}{cell.Y + 1}";
 
 		string terrainName = "Chão Livre";
@@ -668,16 +710,25 @@ public partial class TacticalGridCanvas : Control
 		Vector2 mapSize = new Vector2(GridWidth * cellPx, GridHeight * cellPx);
 		Rect2 mapRect = new Rect2(origin, mapSize);
 
+		int visMinX = GridWidth > 0 ? Math.Clamp(Mathf.FloorToInt((0f - origin.X) / cellPx) - 1, 0, GridWidth - 1) : 0;
+		int visMaxX = GridWidth > 0 ? Math.Clamp(Mathf.CeilToInt((Size.X - origin.X) / cellPx), 0, GridWidth - 1) : -1;
+		int visMinY = GridHeight > 0 ? Math.Clamp(Mathf.FloorToInt((0f - origin.Y) / cellPx) - 1, 0, GridHeight - 1) : 0;
+		int visMaxY = GridHeight > 0 ? Math.Clamp(Mathf.CeilToInt((Size.Y - origin.Y) / cellPx), 0, GridHeight - 1) : -1;
+
 		// 2. Chão ou imagem de fundo
 		if (_bgTexture != null)
 		{
 			DrawTextureRect(_bgTexture, mapRect, false, new Color(1f, 1f, 1f, 0.88f));
 		}
+		else if (cellPx < 10f)
+		{
+			DrawRect(mapRect, new Color(0.13f, 0.14f, 0.18f, 1f));
+		}
 		else
 		{
-			for (int y = 0; y < GridHeight; y++)
+			for (int y = visMinY; y <= visMaxY; y++)
 			{
-				for (int x = 0; x < GridWidth; x++)
+				for (int x = visMinX; x <= visMaxX; x++)
 				{
 					Color tileColor = ((x + y) % 2 == 0)
 						? new Color(0.12f, 0.13f, 0.17f, 1f)
@@ -692,7 +743,7 @@ public partial class TacticalGridCanvas : Control
 		{
 			var pos = kv.Key;
 			var cell = kv.Value;
-			if (pos.X < 0 || pos.X >= GridWidth || pos.Y < 0 || pos.Y >= GridHeight) continue;
+			if (pos.X < visMinX || pos.X > visMaxX || pos.Y < visMinY || pos.Y > visMaxY) continue;
 			Rect2 r = CellRectScreen(pos.X, pos.Y);
 
 			if (cell.TerrainType == MapTerrainType.Blocked)
@@ -728,6 +779,7 @@ public partial class TacticalGridCanvas : Control
 		{
 			foreach (var kv in _reachableCells)
 			{
+				if (kv.Key.X < visMinX || kv.Key.X > visMaxX || kv.Key.Y < visMinY || kv.Key.Y > visMaxY) continue;
 				Rect2 r = CellRectScreen(kv.Key.X, kv.Key.Y);
 				DrawRect(r.Grow(-1.5f), new Color(0.20f, 0.56f, 0.95f, 0.22f));
 				DrawRect(r.Grow(-1.5f), new Color(0.36f, 0.72f, 1.0f, 0.38f), false, 1.0f);
@@ -737,9 +789,9 @@ public partial class TacticalGridCanvas : Control
 		// 5. Névoa de Guerra
 		if (FogOfWarEnabled && !IsEditorMode && _fogTracker != null)
 		{
-			for (int y = 0; y < GridHeight; y++)
+			for (int y = visMinY; y <= visMaxY; y++)
 			{
-				for (int x = 0; x < GridWidth; x++)
+				for (int x = visMinX; x <= visMaxX; x++)
 				{
 					FogState fs = _fogTracker.GetState(new GridPos(x, y));
 					if (fs == FogState.Unseen)
@@ -755,31 +807,42 @@ public partial class TacticalGridCanvas : Control
 		}
 
 		// 6. Linhas da grade e borda externa
-		for (int x = 0; x <= GridWidth; x++)
+		float lineMinY = origin.Y + visMinY * cellPx;
+		float lineMaxY = origin.Y + Math.Min(GridHeight, visMaxY + 1) * cellPx;
+		float lineMinX = origin.X + visMinX * cellPx;
+		float lineMaxX = origin.X + Math.Min(GridWidth, visMaxX + 1) * cellPx;
+
+		for (int x = visMinX; x <= Math.Min(GridWidth, visMaxX + 1); x++)
 		{
 			float px = origin.X + x * cellPx;
-			DrawLine(new Vector2(px, origin.Y), new Vector2(px, origin.Y + mapSize.Y), new Color(1f, 1f, 1f, 0.14f), 1.0f);
+			float alpha = cellPx < 8f ? (x % 5 == 0 ? 0.18f : 0.06f) : 0.14f;
+			DrawLine(new Vector2(px, lineMinY), new Vector2(px, lineMaxY), new Color(1f, 1f, 1f, alpha), 1.0f);
 		}
-		for (int y = 0; y <= GridHeight; y++)
+		for (int y = visMinY; y <= Math.Min(GridHeight, visMaxY + 1); y++)
 		{
 			float py = origin.Y + y * cellPx;
-			DrawLine(new Vector2(origin.X, py), new Vector2(origin.X + mapSize.X, py), new Color(1f, 1f, 1f, 0.14f), 1.0f);
+			float alpha = cellPx < 8f ? (y % 5 == 0 ? 0.18f : 0.06f) : 0.14f;
+			DrawLine(new Vector2(lineMinX, py), new Vector2(lineMaxX, py), new Color(1f, 1f, 1f, alpha), 1.0f);
 		}
 		DrawRect(mapRect, new Color(0.75f, 0.62f, 0.32f, 0.75f), false, 2.0f);
 
-		// Coordenadas nas margens
+		// Coordenadas nas margens (suporta colunas AA+ e passos adaptativos em grids grandes)
 		Font font = ThemeDB.FallbackFont;
 		int coordFontSize = Math.Clamp((int)(11 * _zoom), 9, 14);
-		for (int x = 0; x < GridWidth; x++)
+		int labelStep = cellPx < 11f ? 5 : (cellPx < 22f ? 2 : 1);
+		for (int x = visMinX; x <= visMaxX; x++)
 		{
-			string col = ((char)('A' + (x % 26))).ToString();
-			Vector2 pos = new Vector2(origin.X + (x + 0.35f) * cellPx, origin.Y - 6f * _zoom);
+			if (x != 0 && x % labelStep != 0) continue;
+			string col = FormatColumnLabel(x);
+			Vector2 pos = new Vector2(origin.X + (x + 0.25f) * cellPx, origin.Y - 6f * Math.Max(0.65f, _zoom));
 			DrawString(font, pos, col, HorizontalAlignment.Left, -1, coordFontSize, new Color(0.75f, 0.78f, 0.84f));
 		}
-		for (int y = 0; y < GridHeight; y++)
+		for (int y = visMinY; y <= visMaxY; y++)
 		{
-			Vector2 pos = new Vector2(origin.X - 20f * _zoom, origin.Y + (y + 0.62f) * cellPx);
-			DrawString(font, pos, (y + 1).ToString(), HorizontalAlignment.Left, -1, coordFontSize, new Color(0.75f, 0.78f, 0.84f));
+			if (y != 0 && y % labelStep != 0) continue;
+			float rowWidth = Math.Max(22f, 26f * _zoom);
+			Vector2 pos = new Vector2(origin.X - rowWidth - 4f * Math.Max(0.65f, _zoom), origin.Y + (y + 0.65f) * cellPx);
+			DrawString(font, pos, (y + 1).ToString(), HorizontalAlignment.Right, rowWidth, coordFontSize, new Color(0.75f, 0.78f, 0.84f));
 		}
 
 		// 7. Destaque do hover + Caminho A* + Régua de Linha de Visão

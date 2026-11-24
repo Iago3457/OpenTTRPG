@@ -107,11 +107,14 @@ public partial class DiceVisualCanvas : Control
 	/// <summary>
 	/// Inicia a animação visual de rolagem do dado poliedral e revela o resultado ao final.
 	/// </summary>
-	public void PlayRollAnimation(string expression, int finalTotal, int naturalDiceSum, bool isCrit, bool isFumble, float duration = 0.42f)
+	private string _customSubLabel = null;
+
+	public void PlayRollAnimation(string expression, int finalTotal, int naturalDiceSum, bool isCrit, bool isFumble, float duration = 0.42f, string customSubLabel = null)
 	{
 		_dieSides = DetectDieSides(expression);
 		_finalTotal = finalTotal;
 		_finalNatural = naturalDiceSum;
+		_customSubLabel = customSubLabel;
 		_targetState = isCrit ? RollState.CriticalHit : (isFumble ? RollState.CriticalFumble : RollState.NormalResult);
 
 		_state = RollState.Rolling;
@@ -141,6 +144,15 @@ public partial class DiceVisualCanvas : Control
 
 	public override void _Process(double delta)
 	{
+		if (!IsVisibleInTree())
+		{
+			if (_state == RollState.Rolling)
+			{
+				FinishRollAnimation();
+			}
+			return;
+		}
+
 		float dt = (float)delta;
 		_glowPulse += dt * 4.2f;
 
@@ -177,7 +189,7 @@ public partial class DiceVisualCanvas : Control
 
 		if (_state == RollState.CriticalHit)
 		{
-			_subLabelText = $"CRÍTICO NATURAL (d{_dieSides})";
+			_subLabelText = !string.IsNullOrEmpty(_customSubLabel) ? _customSubLabel : $"CRÍTICO NATURAL (d{_dieSides})";
 			_particlesCrit.Color = new Color(1f, 0.86f, 0.22f, 1f);
 			_particlesCrit.Restart();
 			_particlesCrit.Emitting = true;
@@ -191,7 +203,7 @@ public partial class DiceVisualCanvas : Control
 		}
 		else if (_state == RollState.CriticalFumble)
 		{
-			_subLabelText = "FALHA CRÍTICA (1 NATURAL)";
+			_subLabelText = !string.IsNullOrEmpty(_customSubLabel) ? _customSubLabel : "FALHA CRÍTICA (1 NATURAL)";
 			_particlesCrit.Color = new Color(0.95f, 0.22f, 0.22f, 1f);
 			_particlesCrit.Restart();
 			_particlesCrit.Emitting = true;
@@ -207,7 +219,7 @@ public partial class DiceVisualCanvas : Control
 		}
 		else
 		{
-			_subLabelText = $"d{_dieSides} (Dado: {_finalNatural})";
+			_subLabelText = !string.IsNullOrEmpty(_customSubLabel) ? _customSubLabel : $"d{_dieSides} (Dado: {_finalNatural})";
 			_particlesNormal.Color = new Color(0.45f, 0.82f, 1f, 0.9f);
 			_particlesNormal.Restart();
 			_particlesNormal.Emitting = true;

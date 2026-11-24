@@ -16,9 +16,11 @@ namespace openttrpg::core {
  * - Pools de dados de sistemas narrativos
  */
 enum class KeepMode : int {
-    All = 0,     // Todos os dados somam
-    Highest = 1, // Mantém os N maiores
-    Lowest = 2   // Mantém os N menores
+    All = 0,         // Todos os dados somam
+    Highest = 1,     // Mantém os N maiores
+    Lowest = 2,      // Mantém os N menores
+    DropHighest = 3, // Descarta os N maiores (calculado após explosões)
+    DropLowest = 4   // Descarta os N menores (calculado após explosões)
 };
 
 /**

@@ -655,10 +655,125 @@ void testTacticalMapAndApi() {
 
     assert(ottrpg_map_remove_token(apiEnc, c2) == OTTRPG_OK);
     assert(ottrpg_map_get_token(apiEnc, c2, &tokInfo) == OTTRPG_ERR_NOT_FOUND);
+
+    // 3. Redimensionamento dinâmico do mapa preservando terreno e tokens válidos (C++ + C ABI)
+    assert(ottrpg_map_resize(apiEnc, 60, 60) == OTTRPG_OK);
+    assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && w == 60 && h == 60);
+    OttrpgMapCellInfo keptWall;
+    assert(ottrpg_map_get_cell(apiEnc, 6, 5, &keptWall) == OTTRPG_OK && keptWall.terrain == OTTRPG_TERRAIN_BLOCKED);
+    assert(ottrpg_map_get_token(apiEnc, c1, &tokInfo) == OTTRPG_OK && tokInfo.x == 3 && tokInfo.y == 5);
+    assert(ottrpg_map_place_token(apiEnc, c2, 55, 52, 1) == OTTRPG_OK);
+    assert(ottrpg_map_move_token(apiEnc, c2, 58, 57) == OTTRPG_OK);
+
+    assert(ottrpg_map_resize(apiEnc, 12, 12) == OTTRPG_OK);
+    assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && w == 12 && h == 12);
+    assert(ottrpg_map_get_token(apiEnc, c1, &tokInfo) == OTTRPG_OK && tokInfo.x == 3 && tokInfo.y == 5);
+    assert(ottrpg_map_get_token(apiEnc, c2, &tokInfo) == OTTRPG_ERR_NOT_FOUND);
+    assert(ottrpg_map_get_cell(apiEnc, 6, 5, &keptWall) == OTTRPG_OK && keptWall.terrain == OTTRPG_TERRAIN_BLOCKED);
+
     assert(ottrpg_map_clear(apiEnc) == OTTRPG_OK);
     assert(ottrpg_map_get_info(apiEnc, &active, &w, &h) == OTTRPG_OK && active == 0);
 
     ottrpg_encounter_destroy(apiEnc);
+    std::cout << "SUCESSO!\n";
+}
+
+void testAuditFixesAndRegressions() {
+    std::cout << "[TEST] Regressões de Core/C ABI (compound refund, 4d6!dl1, AtLeastN, size=2, restore)... ";
+    using namespace openttrpg::core;
+
+    // 1. Dice DropLowest após explosão
+    DiceEngine dice(777);
+    DiceRollResult r = dice.rollExpression("4d6!dl1+2");
+    int keptCount = 0;
+    r.rolls.for_each([&](const DieRoll& d, std::size_t) {
+        if (d.kept) {
+            ++keptCount;
+        }
+    });
+    assert(r.rolls.size() >= 4);
+    assert(static_cast<std::size_t>(keptCount) == r.rolls.size() - 1);
+    assert(r.modifier == 2);
+    assert(r.total == r.diceTotal + 2);
+
+    // 2. AtLeastN com 0 filhos e threshold > 0 deve falhar
+    RequirementTree emptyAtLeast;
+    assert(emptyAtLeast.setRootKind(RequirementKind::AtLeastN, 2));
+    Combatant dummy(99, "Dummy");
+    ds::LinkedList<std::string> unmet;
+    assert(!emptyAtLeast.isSatisfied(dummy, &unmet));
+
+    // 3. Compound action count == 0 rejeitada + cancel reembolsa slots exatos e desfaz histórico
+    Encounter enc(321);
+    EntityId h = enc.addCombatant("Hero", 0, 15, 1);
+    enc.rollInitiative(h);
+    Combatant* hc = enc.find(h);
+    assert(hc != nullptr);
+    ActionEconomy& econ = hc->actions();
+    constexpr ActionTypeId kStd = 1;
+    constexpr ActionTypeId kMov = 2;
+    econ.defineActionType(kStd, "Padrão", 20, 1);
+    econ.defineActionType(kMov, "Movimento", 30, 1);
+    assert(enc.startCombat());
+
+    const ActionTypeId fullCosts[2] = { kStd, kMov };
+    assert(econ.enqueueCompoundAction(fullCosts, 0, 10, "Zero") == 0);
+
+    const int actId = econ.enqueueCompoundAction(fullCosts, 2, 10, "Investida");
+    assert(actId > 0);
+    assert(econ.remaining(kStd) == 0);
+    assert(econ.remaining(kMov) == 0);
+    hc->recordActionInTurn("Investida");
+    assert(hc->hasUsedActionInTurn("Investida"));
+
+    assert(econ.cancelQueuedAction(actId, true));
+    hc->unrecordActionInTurn("Investida");
+    assert(econ.remaining(kStd) == 1);
+    assert(econ.remaining(kMov) == 1);
+    assert(!hc->hasUsedActionInTurn("Investida"));
+
+    // 4. TacticalMap multi-célula (sizeCells = 2) valida footprint e queries sem duplicatas
+    enc.map().configure(10, 10);
+    enc.map().setCell(ds::GridCoord{5, 4}, MapCell{TerrainType::Blocked, 2, true});
+    bool threwFootprint = false;
+    try {
+        enc.map().placeToken(h, ds::GridCoord{4, 3}, 2); // ocupa (4,3),(5,3),(4,4),(5,4) -> colide em (5,4)
+    } catch (const std::invalid_argument&) {
+        threwFootprint = true;
+    }
+    assert(threwFootprint);
+    enc.map().placeToken(h, ds::GridCoord{2, 3}, 2); // ocupa (2,3),(3,3),(2,4),(3,4)
+    ds::LinkedList<EntityId> qRes;
+    enc.map().queryTokensInRadius(ds::GridCoord{3, 4}, 0, qRes);
+    assert(qRes.size() == 1 && qRes.get(0) == h);
+
+    // 5. C ABI: ottrpg_action_queue_pop com buffer pequeno preserva a fila + restore_state
+    OttrpgEncounter* api = ottrpg_encounter_create(888);
+    OttrpgId a1 = ottrpg_combatant_add(api, "A", 1, 20, 1);
+    OttrpgId a2 = ottrpg_combatant_add(api, "B", 0, 10, 2);
+    assert(ottrpg_action_define_type(api, a1, 1, "Padrão", 20, 1) == OTTRPG_OK);
+    assert(ottrpg_initiative_roll_all(api, 1, 20) == OTTRPG_OK);
+    assert(ottrpg_combat_start(api) == OTTRPG_OK);
+    int32_t outActId = 0;
+    int32_t outConsumed = 0;
+    assert(ottrpg_action_enqueue(api, a1, 1, "Investida", a2, &outActId, &outConsumed) == OTTRPG_OK);
+
+    char smallBuf[3];
+    OttrpgQueuedActionInfo popped{};
+    int32_t reqLen = 0;
+    assert(ottrpg_action_queue_pop(api, a1, &popped, smallBuf, sizeof(smallBuf), &reqLen) == OTTRPG_ERR_BUFFER_TOO_SMALL);
+    assert(ottrpg_action_queue_count(api, a1) == 1);
+
+    char okBuf[32];
+    assert(ottrpg_action_queue_pop(api, a1, &popped, okBuf, sizeof(okBuf), &reqLen) == OTTRPG_OK);
+    assert(std::string(okBuf) == "Investida");
+    assert(ottrpg_action_queue_count(api, a1) == 0);
+
+    assert(ottrpg_combat_restore_state(api, 4, a2) == OTTRPG_OK);
+    assert(ottrpg_combat_round(api) == 4);
+    assert(ottrpg_combat_current(api) == a2);
+    ottrpg_encounter_destroy(api);
+
     std::cout << "SUCESSO!\n";
 }
 
@@ -675,6 +790,7 @@ int main() {
     testAbilityAndPrerequisiteTrees();
     testC_ApiDll();
     testTacticalMapAndApi();
+    testAuditFixesAndRegressions();
     std::cout << "\n>>> TODOS OS TESTES DO CORE GENÉRICO PASSARAM COM ÊXITO! <<<\n";
     return 0;
 }

@@ -90,6 +90,25 @@ namespace OpenTTRPG.Tormenta20
             if (attacker == null) throw new ArgumentNullException(nameof(attacker));
             if (defender == null) throw new ArgumentNullException(nameof(defender));
 
+            if (attacker.CurrentHp <= attacker.GetDeathThreshold() ||
+                session.HasCondition(attackerId, Tormenta20ConditionRules.UnconsciousKey))
+            {
+                return new T20AttackResolutionResult
+                {
+                    ActionSucceeded = false,
+                    Message = $"[BLOQUEADO] {attacker.Name} está inconsciente/incapacitado e não pode atacar."
+                };
+            }
+
+            if (defender.CurrentHp <= defender.GetDeathThreshold())
+            {
+                return new T20AttackResolutionResult
+                {
+                    ActionSucceeded = false,
+                    Message = $"[BLOQUEADO] {defender.Name} já está fora de combate/morto."
+                };
+            }
+
             if (weapon == null)
             {
                 foreach (var item in attacker.Inventory)
@@ -154,18 +173,23 @@ namespace OpenTTRPG.Tormenta20
                 }
             }
 
-            int weaponCount = 0;
+            int meleeWeaponCount = 0;
+            int totalWeaponCount = 0;
             bool hasShield = false;
             foreach (var item in attacker.Inventory)
             {
                 if (!item.Equipped) continue;
-                if (item.Type == ItemType.Weapon) weaponCount++;
+                if (item.Type == ItemType.Weapon)
+                {
+                    totalWeaponCount++;
+                    if (!item.IsRanged) meleeWeaponCount++;
+                }
                 if (item.Type == ItemType.Shield) hasShield = true;
             }
 
             bool hasOneWeaponStyle = attacker.UnlockedTreeKeys.Contains("estilo_uma_arma") ||
                                      session.HasAbility(attackerId, "estilo_uma_arma");
-            if (hasOneWeaponStyle && weaponCount <= 1 && !hasShield && !weapon.IsRanged)
+            if (hasOneWeaponStyle && meleeWeaponCount == 1 && totalWeaponCount == 1 && !hasShield && !weapon.IsRanged)
             {
                 skillMod += 2;
             }
@@ -175,6 +199,16 @@ namespace OpenTTRPG.Tormenta20
             {
                 int strMod = attacker.Strength + Tormenta20ConditionRules.GetAttributeModifier(session, attackerId, AttributeType.Strength);
                 flatDamageBonus += strMod;
+            }
+            else if (weapon.IsRanged && !attacker.IsEnemy)
+            {
+                bool hasEstiloDisparo = attacker.UnlockedTreeKeys.Contains("estilo_disparo") ||
+                                        session.HasAbility(attackerId, "estilo_disparo");
+                if (hasEstiloDisparo)
+                {
+                    int dexMod = attacker.Dexterity + Tormenta20ConditionRules.GetAttributeModifier(session, attackerId, AttributeType.Dexterity);
+                    flatDamageBonus += dexMod;
+                }
             }
 
             bool hasPowerAttack = attacker.UnlockedTreeKeys.Contains("ataque_poderoso") ||
@@ -188,7 +222,7 @@ namespace OpenTTRPG.Tormenta20
             weapon.ParseCritical(out int threatRange, out int critMultiplier);
             bool hasPreciseAttack = attacker.UnlockedTreeKeys.Contains("ataque_preciso") ||
                                     session.HasAbility(attackerId, "ataque_preciso");
-            if (hasPreciseAttack && weaponCount <= 1 && !hasShield && !weapon.IsRanged)
+            if (hasPreciseAttack && meleeWeaponCount == 1 && totalWeaponCount == 1 && !hasShield && !weapon.IsRanged)
             {
                 threatRange = Math.Max(1, threatRange - 2);
                 critMultiplier += 1;
@@ -197,15 +231,29 @@ namespace OpenTTRPG.Tormenta20
             int baseDef = defender.GetDefense(session, defenderId) + tacticalCtx.DefenseCoverBonus;
             if (weapon.IsRanged && session.HasCondition(defenderId, Tormenta20ConditionRules.ProneKey))
             {
+                // Tormenta20ConditionRules.GetDefenseModifier já incluiu -5 de Caído (para corpo a corpo),
+                // então +10 transforma o modificador líquido contra ataque à distância em +5 na Defesa.
                 baseDef += 10;
             }
             skillMod += tacticalCtx.FlankingAttackBonus;
+
+            bool hasDisparoPreciso = attacker.UnlockedTreeKeys.Contains("disparo_preciso") ||
+                                     session.HasAbility(attackerId, "disparo_preciso");
+            bool engagedInMeleePenalty = false;
+            if (weapon.IsRanged && tacticalCtx.MapActive &&
+                Tormenta20TacticalRules.IsTargetEngagedInMelee(session, attackerId, defenderId) &&
+                !hasDisparoPreciso)
+            {
+                skillMod -= 5;
+                engagedInMeleePenalty = true;
+            }
 
             string tacticalNotes = string.Empty;
             if (tacticalCtx.MapActive)
             {
                 if (tacticalCtx.IsFlanking) tacticalNotes += " [Flanqueando +2 Atk]";
                 if (tacticalCtx.Cover == T20CoverLevel.Light) tacticalNotes += " [Cobertura Leve +5 Def]";
+                if (engagedInMeleePenalty) tacticalNotes += " [Alvo em Corpo a Corpo -5 Atk]";
             }
 
             RollResult d20 = session.Roll("1d20");
@@ -242,7 +290,12 @@ namespace OpenTTRPG.Tormenta20
 
             DamageResult dmgRes = session.DealDamage(defenderId, rawDamage, (int)weapon.DamageType);
             ResourceInfo defHp = session.GetResource(defenderId, Tormenta20ActionRules.HealthResourceId);
-            if (defHp.Minimum == 0 && dmgRes.Overflow > 0)
+            defender.TempHp = defHp.Temp;
+            if (defHp.Minimum == 0 && defender.CurrentHp <= 0)
+            {
+                defender.CurrentHp = Math.Max(defender.GetDeathThreshold(), defender.CurrentHp - dmgRes.Overflow);
+            }
+            else if (defHp.Minimum == 0 && dmgRes.Overflow > 0)
             {
                 defender.CurrentHp = Math.Max(defender.GetDeathThreshold(), defHp.Current - dmgRes.Overflow);
             }

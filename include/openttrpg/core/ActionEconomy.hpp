@@ -34,6 +34,14 @@ struct ActionTypeSlot {
 };
 
 /**
+ * @brief Custo individual dentro de uma ação composta (ex.: 1 Ação A + 1 Ação B, ou 2 Pontos de Ação).
+ */
+struct ActionCostTerm {
+    ActionTypeId actionType = kInvalidActionType;
+    int amount = 1;
+};
+
+/**
  * @brief Ação agendada na Fila de Prioridades de uma entidade.
  */
 struct QueuedAction {
@@ -42,16 +50,9 @@ struct QueuedAction {
     ActionTypeId requiredType = kInvalidActionType; // Tipo de ação exigido pela habilidade
     ActionTypeId consumedType = kInvalidActionType; // Slot efetivamente gasto (próprio ou fallback)
     int cost = 1;                                   // Quantidade de unidades consumidas do slot
+    ds::LinkedList<ActionCostTerm> consumedCosts;   // Lista exata de slots consumidos (simples ou composta)
     int targetId = 0;                               // ID do alvo (0 = sem alvo)
     int priority = 0;                               // Prioridade de execução na PriorityQueue
-};
-
-/**
- * @brief Custo individual dentro de uma ação composta (ex.: 1 Ação A + 1 Ação B, ou 2 Pontos de Ação).
- */
-struct ActionCostTerm {
-    ActionTypeId actionType = kInvalidActionType;
-    int amount = 1;
 };
 
 /**
@@ -113,7 +114,8 @@ public:
     /**
      * @brief Consome múltiplos tipos de ação de forma atômica (tudo ou nada).
      */
-    bool spendCompound(const ActionTypeId* requiredTypes, std::size_t count);
+    bool spendCompound(const ActionTypeId* requiredTypes, std::size_t count,
+                       ds::LinkedList<ActionCostTerm>* outConsumed = nullptr);
 
     /**
      * @brief Devolve `amount` unidades ao slot `consumedType`.

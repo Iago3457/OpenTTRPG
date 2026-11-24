@@ -248,7 +248,8 @@ namespace OpenTTRPG.CLI
                     {
                         selected.UnlockedTreeKeys.Add(chosenPower.Key);
                         selected.Skills.Add(new CharacterSkill(
-                            chosenPower.Name, chosenPower.Description, chosenPower.PmCost, chosenPower.ActionType, 0, chosenPower.Key));
+                            chosenPower.Name, chosenPower.Description, chosenPower.PmCost, chosenPower.ActionType,
+                            0, chosenPower.Key, false, chosenPower.BaseFormula));
                         Console.WriteLine($"[SUCESSO] '{chosenPower.Name}' desbloqueado na Árvore de Poderes e adicionado à ficha!");
                     }
                     else

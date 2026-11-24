@@ -45,6 +45,7 @@ public:
     TacticalMap() = default;
 
     void configure(int width, int height);
+    void resize(int width, int height);
     void clear();
 
     [[nodiscard]] bool isActive() const { return active_; }

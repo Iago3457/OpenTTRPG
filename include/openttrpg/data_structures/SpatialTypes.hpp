@@ -35,17 +35,20 @@ struct GridRect {
         if (isEmpty()) {
             return false;
         }
-        return p.x >= x && p.x < (x + width) && p.y >= y && p.y < (y + height);
+        const long long right = static_cast<long long>(x) + width;
+        const long long bottom = static_cast<long long>(y) + height;
+        return p.x >= x && static_cast<long long>(p.x) < right &&
+               p.y >= y && static_cast<long long>(p.y) < bottom;
     }
 
     [[nodiscard]] bool intersects(const GridRect& other) const {
         if (isEmpty() || other.isEmpty()) {
             return false;
         }
-        const int r1Right = x + width;
-        const int r1Bottom = y + height;
-        const int r2Right = other.x + other.width;
-        const int r2Bottom = other.y + other.height;
+        const long long r1Right = static_cast<long long>(x) + width;
+        const long long r1Bottom = static_cast<long long>(y) + height;
+        const long long r2Right = static_cast<long long>(other.x) + other.width;
+        const long long r2Bottom = static_cast<long long>(other.y) + other.height;
         return x < r2Right && r1Right > other.x && y < r2Bottom && r1Bottom > other.y;
     }
 };

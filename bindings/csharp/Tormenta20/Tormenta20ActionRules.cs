@@ -65,8 +65,8 @@ namespace OpenTTRPG.Tormenta20
 
         public static void ApplySlowedCondition(EncounterSession session, int combatantId)
         {
-            session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 1, refillCurrent: true);
-            session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: true);
+            session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 1, refillCurrent: false);
+            session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: false);
         }
 
         public static void ApplyHasteBonus(EncounterSession session, int combatantId, bool extraStandard = true)
@@ -104,14 +104,13 @@ namespace OpenTTRPG.Tormenta20
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
 
-            if (requiredType == T20ActionType.Movement &&
-                session.HasCondition(combatantId, Tormenta20ConditionRules.ImmobileKey))
+            if (session.HasCondition(combatantId, Tormenta20ConditionRules.UnconsciousKey))
             {
                 return new T20ActionResult
                 {
                     Success = false,
                     RequiredType = requiredType,
-                    Message = $"[BLOQUEADO] Combatente está Imóvel (deslocamento 0m) e não pode executar '{actionName}'."
+                    Message = $"[BLOQUEADO] Combatente está Inconsciente e não pode executar '{actionName}'."
                 };
             }
 

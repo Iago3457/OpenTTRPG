@@ -305,6 +305,7 @@ OTTRPG_API OttrpgId ottrpg_combat_peek_next(OttrpgEncounter* encounter);
 OTTRPG_API int32_t  ottrpg_combat_round(OttrpgEncounter* encounter);
 OTTRPG_API int32_t  ottrpg_combat_is_active(OttrpgEncounter* encounter);
 OTTRPG_API int32_t  ottrpg_combat_end(OttrpgEncounter* encounter);
+OTTRPG_API int32_t  ottrpg_combat_restore_state(OttrpgEncounter* encounter, int32_t round, OttrpgId current_turn_id);
 OTTRPG_API int32_t  ottrpg_combat_is_team_defeated(OttrpgEncounter* encounter, int32_t team);
 OTTRPG_API int32_t  ottrpg_combat_standing_team_count(OttrpgEncounter* encounter);
 
@@ -398,7 +399,8 @@ OTTRPG_API int32_t ottrpg_ability_add_req_node(OttrpgEncounter* encounter, const
                                                int32_t req_kind, const char* target_key_utf8,
                                                int32_t threshold, int32_t resource_id, int32_t* out_node_id);
 
-/* Avaliação da Árvore: retornam 1 se permitido, 0 se negado (motivos em ottrpg_last_error()), ou < 0 em erro */
+/* Avaliação da Árvore: `can_learn`/`can_use` retornam 1 se permitido, 0 se negado (motivos em ottrpg_last_error()), ou < 0 em erro.
+   `ottrpg_ability_learn` retorna OTTRPG_OK (0) ao aprender, OTTRPG_ERR_INVALID_STATE (-4) se negado, ou < 0 em outros erros. */
 OTTRPG_API int32_t ottrpg_ability_can_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
 OTTRPG_API int32_t ottrpg_ability_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
 OTTRPG_API int32_t ottrpg_ability_can_use(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
@@ -427,6 +429,7 @@ OTTRPG_API int32_t ottrpg_dice_last_format(OttrpgEncounter* encounter, char* buf
 /* ------------------------------------------------------------------------- */
 
 OTTRPG_API int32_t ottrpg_map_configure(OttrpgEncounter* encounter, int32_t width, int32_t height);
+OTTRPG_API int32_t ottrpg_map_resize(OttrpgEncounter* encounter, int32_t width, int32_t height);
 OTTRPG_API int32_t ottrpg_map_clear(OttrpgEncounter* encounter);
 OTTRPG_API int32_t ottrpg_map_get_info(OttrpgEncounter* encounter, int32_t* out_active,
                                        int32_t* out_width, int32_t* out_height);

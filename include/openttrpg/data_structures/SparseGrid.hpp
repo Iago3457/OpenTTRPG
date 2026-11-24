@@ -52,12 +52,15 @@ private:
     }
 
     void copyFrom(const SparseGrid& other) {
-        bucketCount_ = other.bucketCount_ > 0 ? other.bucketCount_ : 1;
-        buckets_ = new LinkedList<Entry>[bucketCount_];
-        itemCount_ = other.itemCount_;
+        const std::size_t newCount = other.bucketCount_ > 0 ? other.bucketCount_ : 1;
+        auto* newBuckets = new LinkedList<Entry>[newCount];
         for (std::size_t i = 0; i < other.bucketCount_; ++i) {
-            buckets_[i] = other.buckets_[i];
+            newBuckets[i] = other.buckets_[i];
         }
+        delete[] buckets_;
+        buckets_ = newBuckets;
+        bucketCount_ = newCount;
+        itemCount_ = other.itemCount_;
     }
 
 public:
@@ -73,14 +76,12 @@ public:
         itemCount_ = 0;
     }
 
-    SparseGrid(const SparseGrid& other) {
+    SparseGrid(const SparseGrid& other) : buckets_(nullptr), bucketCount_(0), itemCount_(0) {
         copyFrom(other);
     }
 
     SparseGrid& operator=(const SparseGrid& other) {
         if (this != &other) {
-            delete[] buckets_;
-            buckets_ = nullptr;
             copyFrom(other);
         }
         return *this;
@@ -88,8 +89,8 @@ public:
 
     SparseGrid(SparseGrid&& other) noexcept
         : buckets_(other.buckets_), bucketCount_(other.bucketCount_), itemCount_(other.itemCount_) {
-        other.buckets_ = new LinkedList<Entry>[1];
-        other.bucketCount_ = 1;
+        other.buckets_ = nullptr;
+        other.bucketCount_ = 0;
         other.itemCount_ = 0;
     }
 
@@ -99,15 +100,17 @@ public:
             buckets_ = other.buckets_;
             bucketCount_ = other.bucketCount_;
             itemCount_ = other.itemCount_;
-            other.buckets_ = new LinkedList<Entry>[1];
-            other.bucketCount_ = 1;
+            other.buckets_ = nullptr;
+            other.bucketCount_ = 0;
             other.itemCount_ = 0;
         }
         return *this;
     }
 
     void set(GridCoord coord, const T& value) {
-        if (itemCount_ >= bucketCount_ * 2) {
+        if (buckets_ == nullptr || bucketCount_ == 0) {
+            rehash(16);
+        } else if (itemCount_ >= bucketCount_ * 2) {
             rehash(bucketCount_ * 2);
         }
         const std::size_t idx = bucketIndex(coord);

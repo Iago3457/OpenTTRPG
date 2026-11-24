@@ -146,7 +146,7 @@ namespace OpenTTRPG.Tormenta20
             new(T20Class.Druida, "Druida", baseHpLevel1: 16, hpPerLevel: 4, pmPerLevel: 4,
                 AttributeType.Wisdom, addsKeyAttrToPm: true,
                 new[] { "Sobrevivência", "Vontade", "Adestramento" },
-                "Forma Selvagem", "Assume a forma de um animal feroz (+3 FOR, +2 Defesa, garras 1d8)", 3, T20ActionType.Full, false, "1d8"),
+                "Forma Selvagem", "Assume a forma de um animal feroz (+3 FOR, +2 Defesa, garras 1d8)", 3, T20ActionType.Movement, false, "1d8"),
 
             new(T20Class.Inventor, "Inventor", baseHpLevel1: 12, hpPerLevel: 3, pmPerLevel: 4,
                 AttributeType.Intelligence, addsKeyAttrToPm: false,
@@ -156,7 +156,7 @@ namespace OpenTTRPG.Tormenta20
             new(T20Class.Ladino, "Ladino", baseHpLevel1: 12, hpPerLevel: 3, pmPerLevel: 4,
                 AttributeType.Intelligence, addsKeyAttrToPm: false,
                 new[] { "Ladinagem", "Reflexos", "Furtividade" },
-                "Ataque Furtivo", "Causa +1d6 de dano extra contra alvos desprevenidos ou flanqueados", 1, T20ActionType.Free, false, "1d6"),
+                "Ataque Furtivo", "Causa +1d6 de dano extra contra alvos desprevenidos ou flanqueados", 0, T20ActionType.Free, false, "1d6"),
 
             new(T20Class.Lutador, "Lutador", baseHpLevel1: 20, hpPerLevel: 5, pmPerLevel: 3,
                 AttributeType.Strength, addsKeyAttrToPm: false,
@@ -191,8 +191,8 @@ namespace OpenTTRPG.Tormenta20
             new(T20Race.Osteon,       "Osteon",         0, +1, -1, +1, +1,  0, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 0, naturalDefenseBonus: 0, "Memória Póstuma (RD 5 Corte/Frio/Perfuração, CON -1)"),
             new(T20Race.SereiaTritao, "Sereia/Tritão", +1, +1,  0,  0,  0, +1, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 0, naturalDefenseBonus: 0, "Mestre do Tridente e Canção dos Mares"),
             new(T20Race.Silfide,      "Sílfide",       -2, +1,  0,  0,  0, +2, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 1, naturalDefenseBonus: 0, "Espírito da Natureza (+1 PM, CAR +2, DES +1, FOR -2)"),
-            new(T20Race.Suraggel,     "Suraggel",       0, +1,  0,  0, +2, +1, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 0, naturalDefenseBonus: 0, "Herança Planar (SAB +2, DES +1, CAR +1)"),
-            new(T20Race.Trog,         "Trog",          +1,  0, +2, -1,  0,  0, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 1, naturalDefenseBonus: 1, "Couro Escamoso (+1 na Defesa, CON +2, FOR +1)")
+            new(T20Race.Suraggel,     "Suraggel",       0,  0,  0,  0, +2, +1, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 0, naturalDefenseBonus: 0, "Herança Planar (Aggelus: SAB +2, CAR +1)"),
+            new(T20Race.Trog,         "Trog",          +1,  0, +2, -1,  0,  0, extraHpLevel1: 0, extraHpPerLevel: 0, extraPmPerLevel: 0, extraPmFlat: 0, naturalDefenseBonus: 1, "Couro Escamoso (+1 na Defesa, CON +2, FOR +1)")
         };
 
         public static T20ClassTemplate GetClassTemplate(T20Class classType)
@@ -341,12 +341,19 @@ namespace OpenTTRPG.Tormenta20
         public static void RecalculateSheetResources(CharacterSheetData sheet, bool refillCurrent = false)
         {
             if (sheet == null) throw new ArgumentNullException(nameof(sheet));
+            if (sheet.IsEnemy) return;
 
             var classTpl = GetClassTemplateByName(sheet.CharacterClass);
             var raceTpl = GetRaceTemplateByName(sheet.Race);
 
-            sheet.SpellKeyAttribute = classTpl.SpellKeyAttribute;
-            int keyAttrMod = sheet.GetAttribute(classTpl.SpellKeyAttribute).Modifier;
+            if (classTpl.ClassType != T20Class.Arcanista ||
+                (sheet.SpellKeyAttribute != AttributeType.Intelligence &&
+                 sheet.SpellKeyAttribute != AttributeType.Wisdom &&
+                 sheet.SpellKeyAttribute != AttributeType.Charisma))
+            {
+                sheet.SpellKeyAttribute = classTpl.SpellKeyAttribute;
+            }
+            int keyAttrMod = sheet.GetAttribute(sheet.SpellKeyAttribute).Modifier;
 
             int oldMaxHp = sheet.MaxHp;
             int oldMaxPm = sheet.MaxPm;
@@ -356,7 +363,6 @@ namespace OpenTTRPG.Tormenta20
 
             sheet.MaxHp = newMaxHp;
             sheet.MaxPm = newMaxPm;
-            sheet.DefenseBonusMisc = Math.Max(sheet.DefenseBonusMisc, raceTpl.NaturalDefenseBonus);
 
             if (refillCurrent)
             {
