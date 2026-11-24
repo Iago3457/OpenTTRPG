@@ -3729,8 +3729,8 @@ public partial class MainUi : Control
 				{
 					RollResult r = _combatManager.Session.Roll(sk.BaseFormula.Trim());
 					bool isCure = sk.Name.Contains("Curar", StringComparison.OrdinalIgnoreCase) ||
-					              sk.Description.Contains("restaurar", StringComparison.OrdinalIgnoreCase) ||
-					              sk.Description.Contains("Recupera", StringComparison.OrdinalIgnoreCase);
+								  sk.Description.Contains("restaurar", StringComparison.OrdinalIgnoreCase) ||
+								  sk.Description.Contains("Recupera", StringComparison.OrdinalIgnoreCase);
 					if (isCure)
 					{
 						_selectedCharacter.HealHp(r.Total);
@@ -6706,8 +6706,8 @@ public partial class MainUi : Control
 					int nx = dest.X + d.X;
 					int ny = dest.Y + d.Y;
 					if (nx >= 0 && nx < _combatManager.Session.MapWidth &&
-					    ny >= 0 && ny < _combatManager.Session.MapHeight &&
-					    _combatManager.Session.GetMapCell(nx, ny).TerrainType != MapTerrainType.Blocked)
+						ny >= 0 && ny < _combatManager.Session.MapHeight &&
+						_combatManager.Session.GetMapCell(nx, ny).TerrainType != MapTerrainType.Blocked)
 					{
 						adjFree = new GridPos(nx, ny);
 						break;
