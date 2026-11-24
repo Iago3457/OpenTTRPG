@@ -45,6 +45,7 @@ namespace OpenTTRPG.Tormenta20
         public int Price { get; set; }
         public bool Equipped { get; set; }
         public int AttackBonus { get; set; }
+        public bool IsHeavyArmor { get; set; }
     }
 
     public sealed class CharacterSheetDto
@@ -72,7 +73,7 @@ namespace OpenTTRPG.Tormenta20
 
         public int DefenseBonusMisc { get; set; }
         public int Tibares { get; set; }
-        public AttributeType SpellKeyAttribute { get; set; }
+        public AttributeType SpellKeyAttribute { get; set; } = AttributeType.Intelligence;
         public bool IsBleedingOut { get; set; }
 
         // Campos de Ficha de Inimigo / Ameaça
@@ -228,7 +229,8 @@ namespace OpenTTRPG.Tormenta20
                     ArmorPenalty = item.ArmorPenalty,
                     Price = item.Price,
                     Equipped = item.Equipped,
-                    AttackBonus = item.AttackBonus
+                    AttackBonus = item.AttackBonus,
+                    IsHeavyArmor = item.IsHeavyArmor
                 });
             }
 
@@ -278,7 +280,7 @@ namespace OpenTTRPG.Tormenta20
                 DefenseBonusMisc = dto.DefenseBonusMisc,
                 Tibares = dto.Tibares,
                 SpellKeyAttribute = dto.SpellKeyAttribute,
-                IsBleedingOut = dto.IsBleedingOut || (!dto.IsEnemy && dto.CurrentHp <= 0 && dto.CurrentHp > -Math.Max(10, dto.MaxHp / 2)),
+                IsBleedingOut = dto.IsBleedingOut,
                 IsEnemy = dto.IsEnemy,
                 ChallengeRating = string.IsNullOrWhiteSpace(dto.ChallengeRating) ? "1" : dto.ChallengeRating,
                 CreatureType = string.IsNullOrWhiteSpace(dto.CreatureType) ? "Humanoide" : dto.CreatureType,
@@ -298,21 +300,22 @@ namespace OpenTTRPG.Tormenta20
                 ThreatNotes = dto.ThreatNotes ?? string.Empty
             };
 
-            foreach (var itemDto in dto.Inventory)
+            foreach (var itemDto in dto.Inventory ?? new List<CharacterItemDto>())
             {
+                bool? heavyFlag = itemDto.IsHeavyArmor ? true : (itemDto.Type == ItemType.Armor && (itemDto.DefenseBonus >= 5 || itemDto.ArmorPenalty <= -4) ? true : (bool?)null);
                 sheet.Inventory.Add(new CharacterItem(
                     itemDto.Name, itemDto.Description, itemDto.Type, itemDto.Slots,
                     itemDto.Damage, itemDto.Critical, itemDto.DefenseBonus,
                     itemDto.ArmorPenalty, itemDto.Price, itemDto.Equipped,
-                    itemDto.DamageType, itemDto.IsRanged, itemDto.AttackBonus));
+                    itemDto.DamageType, itemDto.IsRanged, itemDto.AttackBonus, heavyFlag));
             }
 
-            foreach (var skDto in dto.Skills)
+            foreach (var skDto in dto.Skills ?? new List<CharacterSkillDto>())
             {
                 var skill = new CharacterSkill(
                     skDto.Name, skDto.Description, skDto.PmCost, skDto.Action,
                     skDto.Modifier, skDto.TreeKey, skDto.IsSpell, skDto.BaseFormula);
-                foreach (var enhDto in skDto.Enhancements)
+                foreach (var enhDto in skDto.Enhancements ?? new List<SpellEnhancementDto>())
                 {
                     skill.Enhancements.Add(new SpellEnhancement(
                         enhDto.ExtraPmCost, enhDto.Description, enhDto.ExtraDice));
@@ -320,12 +323,12 @@ namespace OpenTTRPG.Tormenta20
                 sheet.Skills.Add(skill);
             }
 
-            sheet.UnlockedTreeKeys.AddRange(dto.UnlockedTreeKeys);
-            foreach (string tr in dto.TrainedSkills)
+            sheet.UnlockedTreeKeys.AddRange(dto.UnlockedTreeKeys ?? new List<string>());
+            foreach (string tr in dto.TrainedSkills ?? new List<string>())
             {
                 sheet.TrainedSkills.Add(tr);
             }
-            foreach (var kv in dto.SkillMiscBonuses)
+            foreach (var kv in dto.SkillMiscBonuses ?? new Dictionary<string, int>())
             {
                 sheet.SkillMiscBonuses[kv.Key] = kv.Value;
             }

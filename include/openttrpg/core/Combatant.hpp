@@ -99,6 +99,7 @@ public:
 
     // ----- Histórico de Ações Executadas no Turno Atual -----
     void recordActionInTurn(const std::string& actionKey);
+    bool unrecordActionInTurn(const std::string& actionKey);
     [[nodiscard]] bool hasUsedActionInTurn(const std::string& actionKey) const;
     void clearTurnActionHistory();
     [[nodiscard]] const ds::LinkedList<std::string>& turnActionHistory() const;

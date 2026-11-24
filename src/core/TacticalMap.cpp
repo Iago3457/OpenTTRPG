@@ -61,11 +61,16 @@ void TacticalMap::placeToken(EntityId entityId, ds::GridCoord pos, int sizeCells
     if (sizeCells < 1) {
         throw std::invalid_argument("Tamanho do token no grid deve ser >= 1.");
     }
-    if (!inBounds(pos)) {
-        throw std::out_of_range("Posição inicial fora dos limites do mapa tático.");
-    }
-    if (getCell(pos).terrain == TerrainType::Blocked) {
-        throw std::invalid_argument("Não é possível posicionar token em célula bloqueada.");
+    for (int dy = 0; dy < sizeCells; ++dy) {
+        for (int dx = 0; dx < sizeCells; ++dx) {
+            const ds::GridCoord cellPos{pos.x + dx, pos.y + dy};
+            if (!inBounds(cellPos)) {
+                throw std::out_of_range("Posição inicial fora dos limites do mapa tático.");
+            }
+            if (getCell(cellPos).terrain == TerrainType::Blocked) {
+                throw std::invalid_argument("Não é possível posicionar token em célula bloqueada.");
+            }
+        }
     }
 
     TokenPlacement* existing = tokens_.find_if([entityId](const TokenPlacement& t) {
@@ -86,18 +91,24 @@ void TacticalMap::moveToken(EntityId entityId, ds::GridCoord newPos) {
     if (!active_) {
         throw std::logic_error("Mapa tático não foi configurado.");
     }
-    if (!inBounds(newPos)) {
-        throw std::out_of_range("Destino fora dos limites do mapa tático.");
-    }
-    if (getCell(newPos).terrain == TerrainType::Blocked) {
-        throw std::invalid_argument("Não é possível mover token para célula bloqueada.");
-    }
-
     TokenPlacement* existing = tokens_.find_if([entityId](const TokenPlacement& t) {
         return t.entityId == entityId;
     });
     if (existing == nullptr) {
         throw std::out_of_range("Token não encontrado no mapa tático.");
+    }
+
+    const int sz = std::max(1, existing->sizeCells);
+    for (int dy = 0; dy < sz; ++dy) {
+        for (int dx = 0; dx < sz; ++dx) {
+            const ds::GridCoord cellPos{newPos.x + dx, newPos.y + dy};
+            if (!inBounds(cellPos)) {
+                throw std::out_of_range("Destino fora dos limites do mapa tático.");
+            }
+            if (getCell(cellPos).terrain == TerrainType::Blocked) {
+                throw std::invalid_argument("Não é possível mover token para célula bloqueada.");
+            }
+        }
     }
 
     tokenIndex_.update(existing->pos, newPos, entityId);
@@ -126,13 +137,26 @@ const TokenPlacement* TacticalMap::getToken(EntityId entityId) const {
 }
 
 void TacticalMap::queryTokensInRect(ds::GridRect rect, ds::LinkedList<EntityId>& outIds) const {
-    if (!active_) {
+    if (!active_ || rect.isEmpty()) {
         return;
     }
     ds::LinkedList<ds::QuadTree<EntityId>::QuadEntry> hits;
     tokenIndex_.queryRect(rect, hits);
     hits.for_each([&](const ds::QuadTree<EntityId>::QuadEntry& e, std::size_t) {
-        outIds.push_back(e.value);
+        if (outIds.find_if([&](const EntityId& id) { return id == e.value; }) == nullptr) {
+            outIds.push_back(e.value);
+        }
+    });
+    // Também inclui tokens grandes (sizeCells > 1) cuja origem está fora do retângulo, mas o footprint o intersecta
+    tokens_.for_each([&](const TokenPlacement& tok, std::size_t) {
+        if (tok.sizeCells <= 1) {
+            return;
+        }
+        const ds::GridRect footprint{tok.pos.x, tok.pos.y, tok.sizeCells, tok.sizeCells};
+        if (footprint.intersects(rect) &&
+            outIds.find_if([&](const EntityId& id) { return id == tok.entityId; }) == nullptr) {
+            outIds.push_back(tok.entityId);
+        }
     });
 }
 
@@ -140,11 +164,20 @@ void TacticalMap::queryTokensInRadius(ds::GridCoord center, int radiusChebyshev,
     if (!active_ || radiusChebyshev < 0) {
         return;
     }
-    ds::LinkedList<ds::QuadTree<EntityId>::QuadEntry> hits;
-    tokenIndex_.queryRadius(center, radiusChebyshev, hits);
-    hits.for_each([&](const ds::QuadTree<EntityId>::QuadEntry& e, std::size_t) {
-        outIds.push_back(e.value);
-    });
+    const long long qMinX = std::max(0LL, static_cast<long long>(center.x) - radiusChebyshev);
+    const long long qMinY = std::max(0LL, static_cast<long long>(center.y) - radiusChebyshev);
+    const long long qMaxX = std::min<long long>(width_, static_cast<long long>(center.x) + radiusChebyshev + 1LL);
+    const long long qMaxY = std::min<long long>(height_, static_cast<long long>(center.y) + radiusChebyshev + 1LL);
+    if (qMaxX <= qMinX || qMaxY <= qMinY) {
+        return;
+    }
+    const ds::GridRect area{
+        static_cast<int>(qMinX),
+        static_cast<int>(qMinY),
+        static_cast<int>(qMaxX - qMinX),
+        static_cast<int>(qMaxY - qMinY)
+    };
+    queryTokensInRect(area, outIds);
 }
 
 } // namespace openttrpg::core

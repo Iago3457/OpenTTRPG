@@ -211,7 +211,7 @@ public:
           leafCapacity_(other.leafCapacity_),
           maxDepth_(other.maxDepth_),
           itemCount_(other.itemCount_) {
-        other.root_ = new QuadNode(other.root_ != nullptr ? other.root_->bounds : GridRect{0, 0, 16, 16});
+        other.root_ = nullptr;
         other.itemCount_ = 0;
     }
 
@@ -222,7 +222,7 @@ public:
             leafCapacity_ = other.leafCapacity_;
             maxDepth_ = other.maxDepth_;
             itemCount_ = other.itemCount_;
-            other.root_ = new QuadNode(root_ != nullptr ? root_->bounds : GridRect{0, 0, 16, 16});
+            other.root_ = nullptr;
             other.itemCount_ = 0;
         }
         return *this;
@@ -257,10 +257,12 @@ public:
             return false;
         }
         if (oldPos == newPos) {
-            return true;
+            LinkedList<QuadEntry> atPos;
+            queryRect(GridRect{oldPos.x, oldPos.y, 1, 1}, atPos);
+            return atPos.find_if([&](const QuadEntry& e) { return e.value == value; }) != nullptr;
         }
-        if (!removeAt(oldPos, value)) {
-            remove(value);
+        if (!removeAt(oldPos, value) && !remove(value)) {
+            return false;
         }
         return insert(newPos, value);
     }
@@ -273,11 +275,26 @@ public:
     }
 
     void queryRadius(GridCoord center, int radiusChebyshev, LinkedList<QuadEntry>& outResults) const {
-        if (radiusChebyshev < 0) {
+        if (root_ == nullptr || radiusChebyshev < 0) {
             return;
         }
-        const int span = radiusChebyshev * 2 + 1;
-        const GridRect area{center.x - radiusChebyshev, center.y - radiusChebyshev, span, span};
+        const long long bMinX = root_->bounds.x;
+        const long long bMinY = root_->bounds.y;
+        const long long bMaxX = bMinX + root_->bounds.width;
+        const long long bMaxY = bMinY + root_->bounds.height;
+        const long long qMinX = std::max(bMinX, static_cast<long long>(center.x) - radiusChebyshev);
+        const long long qMinY = std::max(bMinY, static_cast<long long>(center.y) - radiusChebyshev);
+        const long long qMaxX = std::min(bMaxX, static_cast<long long>(center.x) + radiusChebyshev + 1LL);
+        const long long qMaxY = std::min(bMaxY, static_cast<long long>(center.y) + radiusChebyshev + 1LL);
+        if (qMaxX <= qMinX || qMaxY <= qMinY) {
+            return;
+        }
+        const GridRect area{
+            static_cast<int>(qMinX),
+            static_cast<int>(qMinY),
+            static_cast<int>(qMaxX - qMinX),
+            static_cast<int>(qMaxY - qMinY)
+        };
         queryRect(area, outResults);
     }
 

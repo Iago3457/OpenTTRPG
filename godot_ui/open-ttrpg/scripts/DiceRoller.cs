@@ -22,10 +22,11 @@ public partial class DiceRoller : Node
 		}
 
 		bool success = _combatManager.RollTest(expression, out result, out error);
-		if (success)
+		if (success && !string.IsNullOrEmpty(expression))
 		{
-			bool isCrit = result.NaturalMaxCount > 0 && expression.Contains("d20");
-			bool isFumble = result.NaturalMinCount > 0 && expression.Contains("d20");
+			bool hasD20 = expression.Contains("d20", StringComparison.OrdinalIgnoreCase);
+			bool isCrit = result.NaturalMaxCount > 0 && hasD20;
+			bool isFumble = result.NaturalMinCount > 0 && hasD20;
 			EmitSignal(SignalName.DiceRolled, expression, result.Total, isCrit, isFumble);
 		}
 		return success;

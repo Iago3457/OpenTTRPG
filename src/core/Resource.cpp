@@ -1,6 +1,7 @@
 #include "openttrpg/core/Resource.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -70,7 +71,8 @@ void ResourcePool::setTemp(int value) {
 
 void ResourcePool::addTemp(int amount) {
     requireNonNegative(amount, "Valor temporário adicionado");
-    temp_ += amount;
+    const long long sum = static_cast<long long>(temp_) + amount;
+    temp_ = static_cast<int>(std::min<long long>(sum, std::numeric_limits<int>::max()));
 }
 
 bool ResourcePool::canSpend(int amount) const {
@@ -93,8 +95,10 @@ int ResourcePool::restore(int amount) {
         return 0;
     }
     const int before = current_;
-    // Evita overflow de int quando amount é muito grande
-    current_ = (amount >= max_ - current_) ? max_ : current_ + amount;
+    const long long cap = static_cast<long long>(max_) - current_;
+    current_ = (static_cast<long long>(amount) >= cap)
+        ? max_
+        : static_cast<int>(static_cast<long long>(current_) + amount);
     return current_ - before;
 }
 
@@ -107,9 +111,10 @@ ResourceChange ResourcePool::reduce(int amount) {
     change.absorbedByTemp = fromTemp;
 
     const int remaining = amount - fromTemp;
-    const int room = current_ - minimum_; // quanto ainda pode descer
-    const int applied = std::min(remaining, std::max(0, room));
-    current_ -= applied;
+    const long long room = static_cast<long long>(current_) - minimum_;
+    const long long appliedLL = std::min<long long>(remaining, std::max<long long>(0, room));
+    const int applied = static_cast<int>(appliedLL);
+    current_ = static_cast<int>(static_cast<long long>(current_) - applied);
     change.appliedToCurrent = applied;
     change.overflow = remaining - applied;
     return change;

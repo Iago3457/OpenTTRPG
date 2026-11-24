@@ -207,7 +207,7 @@ namespace OpenTTRPG.Tormenta20
                                  def.Name.Equals("Vontade", StringComparison.OrdinalIgnoreCase);
             bool hasInexpugnable = sheet.UnlockedTreeKeys.Contains("inexpugnavel") ||
                 (session != null && combatantId > 0 && session.HasAbility(combatantId, "inexpugnavel"));
-            if (isSavingThrow && hasInexpugnable)
+            if (isSavingThrow && hasInexpugnable && sheet.IsWearingHeavyArmor())
             {
                 miscBonus += 2;
             }
@@ -298,7 +298,7 @@ namespace OpenTTRPG.Tormenta20
                                      def.Name.Equals("Vontade", StringComparison.OrdinalIgnoreCase);
                 bool hasInexpugnable = sheet.UnlockedTreeKeys.Contains("inexpugnavel") ||
                     (combatantId > 0 && session.HasAbility(combatantId, "inexpugnavel"));
-                if (isSavingThrow && hasInexpugnable)
+                if (isSavingThrow && hasInexpugnable && sheet.IsWearingHeavyArmor())
                 {
                     otherMod += 2;
                 }

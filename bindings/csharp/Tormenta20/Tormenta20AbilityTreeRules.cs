@@ -176,6 +176,8 @@ namespace OpenTTRPG.Tormenta20
             session.AddAbilityRequirementNode("magia_ilimitada", isUsageRequirement: false,
                 RootRequirementNodeId, RequirementKind.StatAtLeast, "INT", threshold: 1);
             session.AddAbilityRequirementNode("magia_ilimitada", isUsageRequirement: false,
+                RootRequirementNodeId, RequirementKind.StatAtLeast, "SAB", threshold: 1);
+            session.AddAbilityRequirementNode("magia_ilimitada", isUsageRequirement: false,
                 RootRequirementNodeId, RequirementKind.StatAtLeast, "CAR", threshold: 1);
 
             session.SetAbilityRequirementRoot("surto_arcano", isUsageRequirement: true, RequirementKind.AnyOf);
@@ -210,7 +212,15 @@ namespace OpenTTRPG.Tormenta20
 
             if (unlockedAbilityKeys != null)
             {
-                foreach (string key in unlockedAbilityKeys)
+                var unlockedSet = new HashSet<string>(unlockedAbilityKeys, StringComparer.OrdinalIgnoreCase);
+                foreach (var p in CanonicalPowers)
+                {
+                    if (!unlockedSet.Contains(p.Key))
+                    {
+                        session.RevokeAbility(combatantId, p.Key);
+                    }
+                }
+                foreach (string key in unlockedSet)
                 {
                     if (!string.IsNullOrWhiteSpace(key))
                     {

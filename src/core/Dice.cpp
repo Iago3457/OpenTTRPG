@@ -111,16 +111,18 @@ public:
                     if (!readNumber(n, error) && !error.empty()) {
                         return false;
                     }
-                    if (n > term.count) {
-                        n = term.count;
-                    }
                     if (kind == 'k') {
+                        if (n > term.count) {
+                            n = term.count;
+                        }
                         term.keep = (direction == 'h') ? KeepMode::Highest : KeepMode::Lowest;
                         term.keepCount = static_cast<int>(n);
                     } else {
-                        // "drop lowest N" == "keep highest (count - N)"
-                        term.keep = (direction == 'l') ? KeepMode::Highest : KeepMode::Lowest;
-                        term.keepCount = term.count - static_cast<int>(n);
+                        if (n < 0) {
+                            n = 0;
+                        }
+                        term.keep = (direction == 'l') ? KeepMode::DropLowest : KeepMode::DropHighest;
+                        term.keepCount = static_cast<int>(n);
                     }
                 }
 
@@ -275,7 +277,13 @@ void DiceEngine::rollTermInto(const DiceTerm& term, DiceRollResult& result) {
 
     if (term.keep != KeepMode::All) {
         const int total = static_cast<int>(termRolls.size());
-        const int toKeep = term.keepCount > total ? total : term.keepCount;
+        const bool keepHighest = (term.keep == KeepMode::Highest || term.keep == KeepMode::DropLowest);
+        int toKeep = 0;
+        if (term.keep == KeepMode::Highest || term.keep == KeepMode::Lowest) {
+            toKeep = term.keepCount > total ? total : term.keepCount;
+        } else {
+            toKeep = std::max(0, total - term.keepCount);
+        }
 
         termRolls.for_each_mut([](DieRoll& d, std::size_t) { d.kept = false; });
 
@@ -288,8 +296,8 @@ void DiceEngine::rollTermInto(const DiceTerm& term, DiceRollResult& result) {
                     return;
                 }
                 const bool better = (best == ds::LinkedList<DieRoll>::npos) ||
-                                    (term.keep == KeepMode::Highest ? d.value > bestValue
-                                                                    : d.value < bestValue);
+                                    (keepHighest ? d.value > bestValue
+                                                 : d.value < bestValue);
                 if (better) {
                     best = idx;
                     bestValue = d.value;

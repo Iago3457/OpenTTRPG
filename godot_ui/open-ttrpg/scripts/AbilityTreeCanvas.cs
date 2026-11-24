@@ -26,6 +26,7 @@ public partial class AbilityTreeCanvas : Control
 	}
 
 	private readonly Dictionary<string, NodeEvalState> _nodes = new();
+	private readonly Dictionary<string, (StyleBoxFlat style, NodeEvalState state)> _cardStyles = new();
 	private readonly List<(string parentKey, string childKey)> _edges = new();
 	private string _selectedNodeKey = "estilo_uma_arma";
 	private CpuParticles2D _unlockParticles;
@@ -49,7 +50,8 @@ public partial class AbilityTreeCanvas : Control
 			InitialVelocityMax = 180f,
 			ScaleAmountMin = 3.0f,
 			ScaleAmountMax = 6.5f,
-			Color = new Color(1f, 0.86f, 0.25f, 1f)
+			Color = new Color(1f, 0.86f, 0.25f, 1f),
+			ZIndex = 10
 		};
 		AddChild(_unlockParticles);
 	}
@@ -78,6 +80,7 @@ public partial class AbilityTreeCanvas : Control
 		}
 
 		_nodes.Clear();
+		_cardStyles.Clear();
 		_edges.Clear();
 
 		if (character == null)
@@ -291,6 +294,7 @@ public partial class AbilityTreeCanvas : Control
 			ShadowSize = (st.IsUnlocked || st.CanLearn) ? 8 : 4
 		};
 		card.AddThemeStyleboxOverride("panel", style);
+		_cardStyles[st.Definition.Key] = (style, st);
 
 		var vbox = new VBoxContainer();
 		vbox.AddThemeConstantOverride("separation", 3);
@@ -345,7 +349,7 @@ public partial class AbilityTreeCanvas : Control
 		else
 		{
 			string footer = st.IsUnlocked
-				? (st.Definition.PmCost > 0 ? $"Ativo ({st.Definition.ActionType})" : "Bônus Passivo Ativo")
+				? (st.Definition.PmCost > 0 ? $"Ativo ({Tormenta20ActionRules.GetActionTypeName(st.Definition.ActionType)})" : "Bônus Passivo Ativo")
 				: ShortenRequirement(st.UnmetLearnReasons);
 			var lblFooter = new Label
 			{
@@ -365,6 +369,7 @@ public partial class AbilityTreeCanvas : Control
 			if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
 			{
 				_selectedNodeKey = st.Definition.Key;
+				UpdateCardSelectionVisuals();
 				NodeSelected?.Invoke(st);
 				if (mb.DoubleClick && st.CanLearn)
 				{
@@ -374,6 +379,30 @@ public partial class AbilityTreeCanvas : Control
 		};
 
 		AddChild(card);
+		if (_unlockParticles != null && IsInsideTree())
+		{
+			MoveChild(_unlockParticles, GetChildCount() - 1);
+		}
+	}
+
+	private void UpdateCardSelectionVisuals()
+	{
+		foreach (var (key, entry) in _cardStyles)
+		{
+			bool sel = key == _selectedNodeKey;
+			var st = entry.state;
+			Color border = st.IsUnlocked
+				? (sel ? new Color(1f, 0.96f, 0.55f) : new Color(0.95f, 0.76f, 0.22f))
+				: (st.CanLearn
+					? (sel ? new Color(0.55f, 1f, 0.72f) : new Color(0.25f, 0.85f, 0.48f))
+					: (sel ? new Color(0.75f, 0.45f, 0.45f) : new Color(0.28f, 0.30f, 0.36f)));
+			entry.style.BorderColor = border;
+			int w = sel ? 3 : 2;
+			entry.style.BorderWidthLeft = w;
+			entry.style.BorderWidthTop = w;
+			entry.style.BorderWidthRight = w;
+			entry.style.BorderWidthBottom = w;
+		}
 	}
 
 	private static string ShortenRequirement(string unmet)
@@ -403,7 +432,7 @@ public partial class AbilityTreeCanvas : Control
 		string reqInfo = st.IsUnlocked
 			? "Todos os pré-requisitos cumpridos."
 			: (st.CanLearn ? "Pré-requisitos cumpridos! Clique para aprender." : $"Pendente: {st.UnmetLearnReasons}");
-		return $"{st.Definition.Name} [{status}]\n{parentInfo}\nCusto: {st.Definition.PmCost} PM | Ação: {st.Definition.ActionType}\n\n{st.Definition.Description}\n\n{reqInfo}";
+		return $"{st.Definition.Name} [{status}]\n{parentInfo}\nCusto: {st.Definition.PmCost} PM | Ação: {Tormenta20ActionRules.GetActionTypeName(st.Definition.ActionType)}\n\n{st.Definition.Description}\n\n{reqInfo}";
 	}
 
 	public override void _Draw()

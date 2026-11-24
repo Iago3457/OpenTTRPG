@@ -58,6 +58,7 @@ public:
     bool startCombat();
     EntityId nextTurn();   // Encerra o turno atual e passa para o próximo ativo
     void endCombat();      // Limpa a ordem (os combatentes permanecem)
+    bool restoreCombatState(int round, EntityId currentTurnId); // Restaura rodada e turno sem ticks
     [[nodiscard]] bool isCombatActive() const;
     [[nodiscard]] EntityId currentTurn() const;
     [[nodiscard]] int round() const;

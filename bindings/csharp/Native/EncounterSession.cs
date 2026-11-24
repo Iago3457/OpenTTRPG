@@ -135,7 +135,11 @@ namespace OpenTTRPG.Native
         public string GetCombatantName(int combatantId)
         {
             EnsureNotDisposed();
-            NativeMethods.ottrpg_combatant_get_name(_handle, combatantId, null!, 0, out int required);
+            int probe = NativeMethods.ottrpg_combatant_get_name(_handle, combatantId, null!, 0, out int required);
+            if (probe != (int)OttrpgStatus.Ok && probe != (int)OttrpgStatus.ErrBufferTooSmall)
+            {
+                throw new InvalidOperationException($"Erro ao consultar nome do combatente: {GetLastError()}");
+            }
             if (required <= 0)
             {
                 return string.Empty;
@@ -184,6 +188,12 @@ namespace OpenTTRPG.Native
         {
             EnsureNotDisposed();
             NativeMethods.ottrpg_combat_end(_handle);
+        }
+
+        public bool RestoreCombatState(int round, int currentTurnId)
+        {
+            EnsureNotDisposed();
+            return NativeMethods.ottrpg_combat_restore_state(_handle, round, currentTurnId) == (int)OttrpgStatus.Ok;
         }
 
         // ----- Recursos, Dano, Cura e Condições -----
@@ -570,9 +580,17 @@ namespace OpenTTRPG.Native
             var list = new QueuedActionEntry[count];
             for (int i = 0; i < count; i++)
             {
-                NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out QueuedActionInfo info, null!, 0, out int req);
+                int probe = NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out QueuedActionInfo info, null!, 0, out int req);
+                if (probe != (int)OttrpgStatus.Ok && probe != (int)OttrpgStatus.ErrBufferTooSmall)
+                {
+                    throw new InvalidOperationException($"Erro ao consultar ação na fila: {GetLastError()}");
+                }
                 byte[] buf = new byte[Math.Max(1, req)];
-                NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out info, buf, buf.Length, out _);
+                int res = NativeMethods.ottrpg_action_queue_get(_handle, combatantId, i, out info, buf, buf.Length, out _);
+                if (res != (int)OttrpgStatus.Ok)
+                {
+                    throw new InvalidOperationException($"Erro ao ler ação da fila: {GetLastError()}");
+                }
                 string name = req > 1 ? Encoding.UTF8.GetString(buf, 0, req - 1) : string.Empty;
                 list[i] = new QueuedActionEntry(info, name);
             }
@@ -588,7 +606,11 @@ namespace OpenTTRPG.Native
                 entry = null!;
                 return false;
             }
-            NativeMethods.ottrpg_action_queue_get(_handle, combatantId, 0, out _, null!, 0, out int req);
+            int probe = NativeMethods.ottrpg_action_queue_get(_handle, combatantId, 0, out _, null!, 0, out int req);
+            if (probe != (int)OttrpgStatus.Ok && probe != (int)OttrpgStatus.ErrBufferTooSmall)
+            {
+                throw new InvalidOperationException($"Erro ao consultar próxima ação da fila: {GetLastError()}");
+            }
             byte[] buf = new byte[Math.Max(1, req)];
             int res = NativeMethods.ottrpg_action_queue_pop(_handle, combatantId, out QueuedActionInfo info, buf, buf.Length, out _);
             if (res != (int)OttrpgStatus.Ok)
@@ -645,6 +667,21 @@ namespace OpenTTRPG.Native
             {
                 throw new InvalidOperationException($"Erro ao conceder habilidade '{abilityKey}': {GetLastError()}");
             }
+        }
+
+        public bool RevokeAbility(int combatantId, string abilityKey)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_revoke_ability(_handle, combatantId, abilityKey);
+            if (res == (int)OttrpgStatus.Ok)
+            {
+                return true;
+            }
+            if (res == (int)OttrpgStatus.ErrNotFound)
+            {
+                return false;
+            }
+            throw new InvalidOperationException($"Erro ao revogar habilidade '{abilityKey}': {GetLastError()}");
         }
 
         public bool HasAbility(int combatantId, string abilityKey)
@@ -719,6 +756,10 @@ namespace OpenTTRPG.Native
             {
                 unmetReasons = string.Empty;
                 return true;
+            }
+            if (res != (int)OttrpgStatus.ErrInvalidState)
+            {
+                throw new InvalidOperationException($"Erro ao aprender habilidade '{abilityKey}': {GetLastError()}");
             }
             unmetReasons = GetLastError();
             return false;
@@ -869,9 +910,32 @@ namespace OpenTTRPG.Native
             return ids;
         }
 
-        public int CurrentTurn => NativeMethods.ottrpg_combat_current(_handle);
-        public int Round => NativeMethods.ottrpg_combat_round(_handle);
-        public bool IsActive => NativeMethods.ottrpg_combat_is_active(_handle) != 0;
+        public int CurrentTurn
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return NativeMethods.ottrpg_combat_current(_handle);
+            }
+        }
+
+        public int Round
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return NativeMethods.ottrpg_combat_round(_handle);
+            }
+        }
+
+        public bool IsActive
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return NativeMethods.ottrpg_combat_is_active(_handle) != 0;
+            }
+        }
 
         private void EnsureNotDisposed()
         {

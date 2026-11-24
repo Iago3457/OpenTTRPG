@@ -78,17 +78,23 @@ int ConditionTracker::tick(TickTiming timing, ds::LinkedList<std::string>* expir
         }
     });
 
-    // 2ª passada: remove expiradas (de trás para frente para manter índices válidos)
+    // 2ª passada: remove expiradas preservando a ordem relativa sem inverter acúmulos prévios
+    ds::LinkedList<std::string> newlyExpired;
     int expired = 0;
     for (std::size_t i = conditions_.size(); i > 0; --i) {
         const Condition& c = conditions_.get(i - 1);
         if (c.duration == 0) {
             if (expiredKeys != nullptr) {
-                expiredKeys->push_front(c.key); // push_front preserva a ordem original
+                newlyExpired.push_front(c.key);
             }
             conditions_.remove_at(i - 1);
             ++expired;
         }
+    }
+    if (expiredKeys != nullptr) {
+        newlyExpired.for_each([expiredKeys](const std::string& key, std::size_t) {
+            expiredKeys->push_back(key);
+        });
     }
     return expired;
 }

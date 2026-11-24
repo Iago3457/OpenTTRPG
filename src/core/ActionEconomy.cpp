@@ -30,6 +30,15 @@ bool ActionEconomy::removeActionType(ActionTypeId id) {
         return false;
     }
     slots_.remove_at(idx);
+    slots_.for_each_mut([id](ActionTypeSlot& s, std::size_t) {
+        for (;;) {
+            const std::size_t fbIdx = s.fallbackProviders.find_index([id](ActionTypeId p) { return p == id; });
+            if (fbIdx == ds::LinkedList<ActionTypeId>::npos) {
+                break;
+            }
+            s.fallbackProviders.remove_at(fbIdx);
+        }
+    });
     return true;
 }
 
@@ -113,6 +122,8 @@ bool ActionEconomy::setMaxPerTurn(ActionTypeId id, int maxPerTurn, bool refillCu
     s->maxPerTurn = maxPerTurn;
     if (refillCurrent || maxPerTurn < 0) {
         s->current = maxPerTurn;
+    } else if (s->current < 0) {
+        s->current = 0;
     } else if (s->current > maxPerTurn) {
         s->current = maxPerTurn;
     }
@@ -166,11 +177,11 @@ const ActionTypeSlot* ActionEconomy::findAvailableFallback(const ActionTypeSlot&
 }
 
 bool ActionEconomy::canUse(ActionTypeId requiredType, int amount, ActionTypeId* outConsumedType) const {
-    if (amount <= 0) {
+    if (amount < 0) {
         if (outConsumedType != nullptr) {
-            *outConsumedType = requiredType;
+            *outConsumedType = kInvalidActionType;
         }
-        return true;
+        return false;
     }
 
     const ActionTypeSlot* req = slot(requiredType);
@@ -179,6 +190,13 @@ bool ActionEconomy::canUse(ActionTypeId requiredType, int amount, ActionTypeId* 
             *outConsumedType = kInvalidActionType;
         }
         return false;
+    }
+
+    if (amount == 0) {
+        if (outConsumedType != nullptr) {
+            *outConsumedType = req->id;
+        }
+        return true;
     }
 
     // 1. Verifica saldo direto no próprio tipo de ação exigido
@@ -205,11 +223,11 @@ bool ActionEconomy::canUse(ActionTypeId requiredType, int amount, ActionTypeId* 
 }
 
 bool ActionEconomy::spend(ActionTypeId requiredType, int amount, ActionTypeId* outConsumedType) {
-    if (amount <= 0) {
+    if (amount < 0) {
         if (outConsumedType != nullptr) {
-            *outConsumedType = requiredType;
+            *outConsumedType = kInvalidActionType;
         }
-        return true;
+        return false;
     }
 
     ActionTypeId consumedId = kInvalidActionType;
@@ -218,6 +236,13 @@ bool ActionEconomy::spend(ActionTypeId requiredType, int amount, ActionTypeId* o
             *outConsumedType = kInvalidActionType;
         }
         return false;
+    }
+
+    if (amount == 0) {
+        if (outConsumedType != nullptr) {
+            *outConsumedType = consumedId;
+        }
+        return true;
     }
 
     ActionTypeSlot* consumedSlot = slot(consumedId);
@@ -235,7 +260,8 @@ bool ActionEconomy::spend(ActionTypeId requiredType, int amount, ActionTypeId* o
     return true;
 }
 
-bool ActionEconomy::spendCompound(const ActionTypeId* requiredTypes, std::size_t count) {
+bool ActionEconomy::spendCompound(const ActionTypeId* requiredTypes, std::size_t count,
+                                  ds::LinkedList<ActionCostTerm>* outConsumed) {
     if (count == 0) {
         return true;
     }
@@ -244,22 +270,35 @@ bool ActionEconomy::spendCompound(const ActionTypeId* requiredTypes, std::size_t
     }
 
     ds::LinkedList<ActionTypeSlot> snapshot = slots_;
+    ds::LinkedList<ActionCostTerm> spentTerms;
     for (std::size_t i = 0; i < count; ++i) {
-        if (!spend(requiredTypes[i], 1, nullptr)) {
+        ActionTypeId consumedId = kInvalidActionType;
+        if (!spend(requiredTypes[i], 1, &consumedId)) {
             slots_ = snapshot;
             return false;
         }
+        if (consumedId != kInvalidActionType) {
+            spentTerms.push_back(ActionCostTerm{consumedId, 1});
+        }
+    }
+    if (outConsumed != nullptr) {
+        spentTerms.for_each([outConsumed](const ActionCostTerm& term, std::size_t) {
+            outConsumed->push_back(term);
+        });
     }
     return true;
 }
 
 bool ActionEconomy::refund(ActionTypeId consumedType, int amount) {
-    if (amount <= 0) {
-        return true;
+    if (amount < 0) {
+        return false;
     }
     ActionTypeSlot* s = slot(consumedType);
     if (s == nullptr) {
         return false;
+    }
+    if (amount == 0) {
+        return true;
     }
     if (!s->isUnlimited()) {
         s->current += amount;
@@ -292,6 +331,7 @@ int ActionEconomy::enqueueAction(ActionTypeId requiredType, const std::string& n
     action.requiredType = requiredType;
     action.consumedType = consumedId;
     action.cost = cost;
+    action.consumedCosts.push_back(ActionCostTerm{consumedId, cost});
     action.targetId = targetId;
     action.priority = reqSlot->priority;
 
@@ -301,16 +341,21 @@ int ActionEconomy::enqueueAction(ActionTypeId requiredType, const std::string& n
 
 int ActionEconomy::enqueueCompoundAction(const ActionTypeId* requiredTypes, std::size_t count,
                                          int executionPriority, const std::string& name, int targetId) {
-    if (!spendCompound(requiredTypes, count)) {
+    if (count == 0 || requiredTypes == nullptr) {
+        return 0;
+    }
+    ds::LinkedList<ActionCostTerm> consumedTerms;
+    if (!spendCompound(requiredTypes, count, &consumedTerms)) {
         return 0;
     }
 
     QueuedAction action;
     action.actionId = nextActionId_++;
     action.name = name;
-    action.requiredType = (count > 0 && requiredTypes != nullptr) ? requiredTypes[0] : kInvalidActionType;
-    action.consumedType = action.requiredType;
+    action.requiredType = requiredTypes[0];
+    action.consumedType = !consumedTerms.is_empty() ? consumedTerms.get(0).actionType : action.requiredType;
     action.cost = static_cast<int>(count);
+    action.consumedCosts = consumedTerms;
     action.targetId = targetId;
     action.priority = executionPriority;
 
@@ -342,8 +387,16 @@ bool ActionEconomy::cancelQueuedAction(int actionId, bool refundSlot) {
     if (!found) {
         return false;
     }
-    if (refundSlot && removed.consumedType != kInvalidActionType) {
-        refund(removed.consumedType, removed.cost);
+    if (refundSlot) {
+        if (!removed.consumedCosts.is_empty()) {
+            removed.consumedCosts.for_each([this](const ActionCostTerm& term, std::size_t) {
+                if (term.actionType != kInvalidActionType && term.amount > 0) {
+                    refund(term.actionType, term.amount);
+                }
+            });
+        } else if (removed.consumedType != kInvalidActionType) {
+            refund(removed.consumedType, removed.cost);
+        }
     }
     return true;
 }
@@ -351,7 +404,13 @@ bool ActionEconomy::cancelQueuedAction(int actionId, bool refundSlot) {
 void ActionEconomy::clearQueue(bool refundSlots) {
     if (refundSlots) {
         actionQueue_.for_each([this](const QueuedAction& a, int, std::size_t) {
-            if (a.consumedType != kInvalidActionType) {
+            if (!a.consumedCosts.is_empty()) {
+                a.consumedCosts.for_each([this](const ActionCostTerm& term, std::size_t) {
+                    if (term.actionType != kInvalidActionType && term.amount > 0) {
+                        refund(term.actionType, term.amount);
+                    }
+                });
+            } else if (a.consumedType != kInvalidActionType) {
                 refund(a.consumedType, a.cost);
             }
         });

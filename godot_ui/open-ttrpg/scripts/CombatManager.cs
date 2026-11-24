@@ -250,18 +250,27 @@ public partial class CombatManager : Node
 			string path = GetEnemiesSavePath();
 			if (File.Exists(path))
 			{
+				var legacyMigrated = Enemies.ToList();
 				var loaded = Tormenta20Persistence.LoadCharactersFromFile(path);
 				foreach (var e in loaded)
 				{
 					e.IsEnemy = true;
 				}
 				Enemies = loaded;
+				foreach (var leg in legacyMigrated)
+				{
+					if (!Enemies.Any(e => e.Id == leg.Id))
+						Enemies.Add(leg);
+				}
 				GD.Print($"[OpenTTRPG] {Enemies.Count} inimigos carregados de: {path}");
 			}
 			else
 			{
-				GD.Print("[OpenTTRPG] Arquivo de bestiário não encontrado. Criando ameaças iniciais...");
-				SeedDefaultEnemies();
+				if (Enemies.Count == 0)
+				{
+					GD.Print("[OpenTTRPG] Arquivo de bestiário não encontrado. Criando ameaças iniciais...");
+					SeedDefaultEnemies();
+				}
 				SaveEnemies();
 			}
 
@@ -406,6 +415,30 @@ public partial class CombatManager : Node
 		return copy;
 	}
 
+	private void RemoveCombatantFromActiveSession(int cid)
+	{
+		if (!IsInCombat || _session == null) return;
+		bool wasCurrentTurn = _session.CurrentTurn == cid;
+		try { _session.SetForcedOut(cid, true); } catch { }
+		try { _session.RemoveFromInitiative(cid); } catch { }
+		try { _session.RemoveToken(cid); } catch { }
+		CombatantIdToSheet.Remove(cid);
+
+		if (wasCurrentTurn)
+		{
+			if (_session.GetInitiativeOrder().Length == 0 || !AdvanceToNextValidTurn())
+			{
+				EndCombat();
+				return;
+			}
+		}
+		Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
+		if (wasCurrentTurn)
+		{
+			NotifyTurnChanged();
+		}
+	}
+
 	public bool DeleteEnemy(int id)
 	{
 		var target = Enemies.FirstOrDefault(e => e.Id == id);
@@ -413,9 +446,8 @@ public partial class CombatManager : Node
 
 		if (IsInCombat && SheetIdToCombatantId.TryGetValue(id, out int cid))
 		{
-			try { _session?.SetForcedOut(cid, true); } catch { }
 			SheetIdToCombatantId.Remove(id);
-			CombatantIdToSheet.Remove(cid);
+			RemoveCombatantFromActiveSession(cid);
 		}
 
 		Enemies.Remove(target);
@@ -438,13 +470,8 @@ public partial class CombatManager : Node
 
 		if (IsInCombat && SheetIdToCombatantId.TryGetValue(id, out int cid))
 		{
-			try
-			{
-				_session?.SetForcedOut(cid, true);
-			}
-			catch { }
 			SheetIdToCombatantId.Remove(id);
-			CombatantIdToSheet.Remove(cid);
+			RemoveCombatantFromActiveSession(cid);
 		}
 
 		Characters.Remove(target);
@@ -590,6 +617,12 @@ public partial class CombatManager : Node
 
 		_session.StartCombat();
 		IsInCombat = true;
+
+		// Se o 1º sorteado já estiver morto/removido, avança para o primeiro combatente válido (vivo ou Morrendo)
+		if (!IsCombatantEligibleForTurn(_session.CurrentTurn))
+		{
+			AdvanceToNextValidTurn();
+		}
 
 		EnsureMapInitialized(resetTerrain: false);
 
@@ -865,18 +898,19 @@ public partial class CombatManager : Node
 
 			_session.StartCombat();
 			IsInCombat = true;
+			if (targetTurnCid > 0)
+			{
+				_session.RestoreCombatState(Math.Max(1, snap.Round), targetTurnCid);
+			}
+			else if (snap.Round > 1)
+			{
+				_session.RestoreCombatState(snap.Round, _session.CurrentTurn);
+			}
 			EnsureMapInitialized(resetTerrain: false);
 
-			int safety = 0;
-			while (targetTurnCid > 0 && _session.CurrentTurn != targetTurnCid && safety < 30)
-			{
-				_session.NextTurn();
-				safety++;
-			}
-
 			Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
-			LogCombat($"Combate restaurado ({CombatantIdToSheet.Count} participantes).", "#66d9ef");
-			NotifyTurnChanged();
+			LogCombat($"Combate restaurado (Rodada {_session.Round}, {CombatantIdToSheet.Count} participantes).", "#66d9ef");
+			NotifyTurnChanged(processStartOfTurn: false);
 			return true;
 		}
 		catch (Exception ex)
@@ -884,6 +918,35 @@ public partial class CombatManager : Node
 			GD.PushError($"[OpenTTRPG] Erro ao carregar combate: {ex.Message}");
 			return false;
 		}
+	}
+
+	private bool IsCombatantEligibleForTurn(int cid)
+	{
+		if (cid <= 0 || !CombatantIdToSheet.TryGetValue(cid, out var sheet) || sheet == null)
+			return false;
+		// Heróis Morrendo (0 >= PV > DeathThreshold) ainda agem no turno para testar CON CD 15;
+		// Mortos (ou inimigos <= 0 PV) não recebem turno.
+		return sheet.CurrentHp > sheet.GetDeathThreshold();
+	}
+
+	private bool AdvanceToNextValidTurn()
+	{
+		if (_session == null) return false;
+		int maxSteps = Math.Max(1, _session.GetInitiativeOrder().Length + 1);
+		for (int i = 0; i < maxSteps; i++)
+		{
+			try
+			{
+				int nextCid = _session.NextTurn();
+				if (IsCombatantEligibleForTurn(nextCid))
+					return true;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+		return false;
 	}
 
 	public void NextTurn()
@@ -900,22 +963,39 @@ public partial class CombatManager : Node
 			LogCombat($"Ações concluídas ({actorName}): {string.Join(" -> ", drained.Select(a => a.Name))}", "#c5e1a5");
 		}
 
-		_session.NextTurn();
+		if (!AdvanceToNextValidTurn())
+		{
+			LogCombat("Nenhum combatente ativo ou morrendo restante para agir.", "#ffb74d");
+			EndCombat();
+			return;
+		}
 		Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
-		NotifyTurnChanged();
+		NotifyTurnChanged(processStartOfTurn: true);
 	}
 
 	public void EndCombat()
 	{
-		if (_session != null && IsInCombat)
+		if (_session != null)
 		{
 			try
 			{
-				_session.EndCombat();
+				foreach (var tok in _session.GetAllTokens())
+				{
+					_session.RemoveToken(tok.EntityId);
+				}
 			}
 			catch { }
+			if (IsInCombat)
+			{
+				try
+				{
+					_session.EndCombat();
+				}
+				catch { }
+			}
 		}
 
+		FogTracker.Clear();
 		IsInCombat = false;
 		SheetIdToCombatantId.Clear();
 		CombatantIdToSheet.Clear();
@@ -925,7 +1005,7 @@ public partial class CombatManager : Node
 		EmitSignal(SignalName.TurnChanged, 0, "Nenhum", 0);
 	}
 
-	private void NotifyTurnChanged()
+	private void NotifyTurnChanged(bool processStartOfTurn = true)
 	{
 		if (_session == null) return;
 
@@ -941,7 +1021,7 @@ public partial class CombatManager : Node
 		LogCombat($"Vez de [b]{name}[/b] (Rodada {_session.Round})", "#a6e22e");
 
 		// Processa condições de início de turno (ex.: teste de Constituição contra Sangrando)
-		if (cid > 0)
+		if (processStartOfTurn && cid > 0)
 		{
 			var condLogs = Tormenta20ConditionRules.ProcessStartOfTurnConditions(_session, cid, currentSheet);
 			foreach (string log in condLogs)

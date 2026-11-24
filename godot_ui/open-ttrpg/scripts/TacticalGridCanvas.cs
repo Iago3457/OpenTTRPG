@@ -29,6 +29,9 @@ public partial class TacticalGridCanvas : Control
 	public bool IsEditorMode { get; set; }
 	public bool RulerMode { get; set; }
 	public bool FogOfWarEnabled { get; set; }
+	public bool InputBlocked { get; set; }
+	public Func<bool> ExternalInputBlocker { get; set; }
+	public bool SuppressCellClickOnTokenInEditor { get; set; }
 	public float TargetZoom => _targetZoom;
 
 	private float _zoom = 1.0f;
@@ -108,8 +111,8 @@ public partial class TacticalGridCanvas : Control
 
 		bool changed = false;
 
-		// Navegação suave via teclado (WASD / Setas) quando o mapa está visível e nenhum campo de texto está focado
-		if (IsVisibleInTree() && !IsTextInputFocused())
+		// Navegação suave via teclado (WASD / Setas) quando o mapa está visível e nenhum campo de texto ou modal está aberto
+		if (IsVisibleInTree() && !InputBlocked && !(ExternalInputBlocker?.Invoke() ?? false) && !IsTextInputFocused())
 		{
 			Vector2 keyDir = Vector2.Zero;
 			if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up)) keyDir.Y += 1f;
@@ -350,7 +353,7 @@ public partial class TacticalGridCanvas : Control
 				{
 					_visualPositions[tok.EntityId] = new Vector2(pos.X, pos.Y);
 				}
-				else if (_moveTween == null || !_moveTween.IsRunning())
+				else if (tok.EntityId != _animatingEntityId || _moveTween == null || !_moveTween.IsRunning())
 				{
 					_visualPositions[tok.EntityId] = new Vector2(pos.X, pos.Y);
 				}
@@ -373,16 +376,34 @@ public partial class TacticalGridCanvas : Control
 			{
 				_visualPositions.Remove(oldId);
 			}
+			if (_animatingEntityId > 0 && !aliveIds.Contains(_animatingEntityId))
+			{
+				_moveTween?.Kill();
+				_animatingEntityId = 0;
+			}
 		}
 
+		if (_hoverCell.HasValue)
+		{
+			UpdateHoverPreview();
+		}
 		QueueRedraw();
 	}
+
+	private int _animatingEntityId = 0;
 
 	public void AnimateTokenMove(int entityId, List<GridPos> path)
 	{
 		if (path == null || path.Count == 0) return;
 
+		if (_animatingEntityId > 0)
+		{
+			var prevTok = _tokens.FirstOrDefault(t => t.EntityId == _animatingEntityId);
+			if (prevTok != null)
+				_visualPositions[_animatingEntityId] = new Vector2(prevTok.GridPos.X, prevTok.GridPos.Y);
+		}
 		_moveTween?.Kill();
+		_animatingEntityId = entityId;
 		_moveTween = CreateTween();
 		_visualPositions[entityId] = new Vector2(path[0].X, path[0].Y);
 
@@ -393,6 +414,7 @@ public partial class TacticalGridCanvas : Control
 			_moveTween.TweenMethod(
 				Callable.From<Vector2>(v =>
 				{
+					if (_animatingEntityId != entityId) return;
 					_visualPositions[entityId] = v;
 					QueueRedraw();
 				}),
@@ -400,6 +422,10 @@ public partial class TacticalGridCanvas : Control
 				nextCoord,
 				stepDuration);
 		}
+		_moveTween.TweenCallback(Callable.From(() =>
+		{
+			if (_animatingEntityId == entityId) _animatingEntityId = 0;
+		}));
 	}
 
 	private static string BuildInitials(string name)
@@ -528,7 +554,10 @@ public partial class TacticalGridCanvas : Control
 						else if (tok != null && IsEditorMode)
 						{
 							TokenClicked?.Invoke(tok.EntityId);
-							CellClicked?.Invoke(cell);
+							if (!SuppressCellClickOnTokenInEditor)
+							{
+								CellClicked?.Invoke(cell);
+							}
 						}
 						else
 						{

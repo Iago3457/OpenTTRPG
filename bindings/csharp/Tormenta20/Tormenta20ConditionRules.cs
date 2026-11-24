@@ -67,7 +67,7 @@ namespace OpenTTRPG.Tormenta20
             T20Condition.Fraco => "-2 em Força, Destreza e Constituição e perícias desses atributos",
             T20Condition.Imovel => "Deslocamento reduzido a 0m (não pode se movimentar)",
             T20Condition.Inconsciente => "Indefeso (-10 na Defesa) e não pode realizar ações",
-            T20Condition.Lento => "Deslocamento reduzido à metade e ações limitadas (1 Padrão ou Movimento)",
+            T20Condition.Lento => "Deslocamento reduzido à metade e não pode correr ou investir",
             T20Condition.Ofuscado => "-2 em testes de ataque e de Percepção",
             T20Condition.Sangrando => "No início do turno, testa CON (CD 15) ou sofre 1d6 de dano",
             T20Condition.Sobrecarregado => "Penalidade de armadura aumenta em -5 e deslocamento -3m",
@@ -91,6 +91,11 @@ namespace OpenTTRPG.Tormenta20
             }
 
             string key = GetConditionKey(condition);
+            if (condition == T20Condition.Apavorado)
+            {
+                session.RemoveCondition(combatantId, ShakenKey);
+            }
+
             TickTiming timing = (condition == T20Condition.Sangrando || condition == T20Condition.Inconsciente)
                 ? TickTiming.Manual
                 : TickTiming.TurnEnd;
@@ -102,21 +107,7 @@ namespace OpenTTRPG.Tormenta20
                 session.AddCondition(combatantId, SlowedKey, durationTurns, 1, TickTiming.TurnEnd, StackPolicy.Refresh, sourceId);
             }
 
-            if (condition == T20Condition.Inconsciente)
-            {
-                session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 0, refillCurrent: true);
-                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: true);
-            }
-            else if (condition == T20Condition.Enjoado || condition == T20Condition.Lento || condition == T20Condition.Cego)
-            {
-                Tormenta20ActionRules.ApplySlowedCondition(session, combatantId);
-            }
-
-            if (condition == T20Condition.Imovel)
-            {
-                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: true);
-            }
-
+            RecalculateActionSlots(session, combatantId);
             SyncConditionStats(session, combatantId);
             return $"[CONDIÇÃO T20] '{key}' aplicada ({GetConditionDescription(condition)}).";
         }
@@ -128,19 +119,35 @@ namespace OpenTTRPG.Tormenta20
             string key = GetConditionKey(condition);
             session.RemoveCondition(combatantId, key);
 
-            bool stillUnconscious = session.HasCondition(combatantId, UnconsciousKey);
-            bool stillSlowedOrNauseated = session.HasCondition(combatantId, SlowedKey) ||
-                                          session.HasCondition(combatantId, NauseatedKey) ||
-                                          session.HasCondition(combatantId, BlindedKey);
-            bool stillImmobile = session.HasCondition(combatantId, ImmobileKey);
-
-            if (!stillUnconscious && !stillSlowedOrNauseated && !stillImmobile)
+            if (condition == T20Condition.Cego)
             {
-                session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 1, refillCurrent: true);
-                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 1, refillCurrent: true);
+                session.RemoveCondition(combatantId, FlatFootedKey);
+                session.RemoveCondition(combatantId, SlowedKey);
             }
 
+            RecalculateActionSlots(session, combatantId);
             SyncConditionStats(session, combatantId);
+        }
+
+        public static void RecalculateActionSlots(EncounterSession session, int combatantId)
+        {
+            if (session == null || combatantId <= 0) return;
+
+            if (session.HasCondition(combatantId, UnconsciousKey))
+            {
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 0, refillCurrent: false);
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: false);
+            }
+            else if (session.HasCondition(combatantId, NauseatedKey))
+            {
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 1, refillCurrent: false);
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 0, refillCurrent: false);
+            }
+            else
+            {
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Standard, 1, refillCurrent: false);
+                session.SetActionSlotMax(combatantId, (int)T20ActionType.Movement, 1, refillCurrent: false);
+            }
         }
 
         /// <summary>
@@ -261,16 +268,28 @@ namespace OpenTTRPG.Tormenta20
                     if (sheet != null)
                     {
                         ResourceInfo hp = session.GetResource(combatantId, Tormenta20ActionRules.HealthResourceId);
-                        // Se o pool do Core estava limitado a 0 (ex.: combatente criado sem mínimo negativo), desconta na ficha até o limite de morte
                         if (hp.Minimum == 0 && sheet.CurrentHp <= 0)
                         {
                             sheet.TakeDamage(bleedRoll.Total);
                         }
+                        else if (hp.Minimum == 0 && dmg.Overflow > 0)
+                        {
+                            sheet.CurrentHp = Math.Max(sheet.GetDeathThreshold(), hp.Current - dmg.Overflow);
+                            sheet.TempHp = hp.Temp;
+                        }
                         else
                         {
                             sheet.CurrentHp = hp.Current;
-                            if (sheet.CurrentHp <= sheet.GetDeathThreshold())
-                                sheet.IsBleedingOut = false;
+                            sheet.TempHp = hp.Temp;
+                        }
+
+                        if (sheet.CurrentHp <= sheet.GetDeathThreshold())
+                        {
+                            sheet.IsBleedingOut = false;
+                        }
+                        else if (sheet.CurrentHp <= 0)
+                        {
+                            sheet.IsBleedingOut = true;
                         }
                     }
                 }
@@ -280,7 +299,7 @@ namespace OpenTTRPG.Tormenta20
                 }
 
                 bool died = sheet != null && sheet.CurrentHp <= sheet.GetDeathThreshold();
-                if (died && combatantId > 0 && sheet != null)
+                if (combatantId > 0 && sheet != null && sheet.CurrentHp <= 0)
                 {
                     SyncDyingAndUnconsciousState(session, combatantId, sheet);
                 }
@@ -369,10 +388,16 @@ namespace OpenTTRPG.Tormenta20
                 mod -= 5;
             }
 
-            if (session.HasCondition(combatantId, FlatFootedKey) &&
-                skill.Name.Equals("Reflexos", StringComparison.OrdinalIgnoreCase))
+            if (skill.Name.Equals("Reflexos", StringComparison.OrdinalIgnoreCase))
             {
-                mod -= 5;
+                if (session.HasCondition(combatantId, UnconsciousKey))
+                {
+                    mod -= 10;
+                }
+                else if (session.HasCondition(combatantId, FlatFootedKey) || session.HasCondition(combatantId, BlindedKey))
+                {
+                    mod -= 5;
+                }
             }
 
             if (session.HasCondition(combatantId, DazzledKey) &&
@@ -396,6 +421,7 @@ namespace OpenTTRPG.Tormenta20
         {
             var logs = new List<string>();
             if (session == null || combatantId <= 0) return logs;
+            if (sheet != null && sheet.CurrentHp <= sheet.GetDeathThreshold()) return logs;
 
             bool isBleeding = session.HasCondition(combatantId, BleedingKey) || (sheet != null && sheet.IsBleedingOut && sheet.CurrentHp <= 0);
             if (isBleeding)

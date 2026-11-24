@@ -72,6 +72,7 @@ public:
     bool start();            // Rodada 1, primeiro ativo da lista. false se não houver ativos
     EntityId next();         // Avança para o próximo ativo; retorna kInvalidId se impossível
     void reset();            // Mantém a lista, mas volta ao estado "não iniciado"
+    bool restoreState(int round, EntityId currentTurnId); // Restaura rodada e turno atual sem ticks
 
     [[nodiscard]] bool isStarted() const;
     [[nodiscard]] EntityId current() const; // kInvalidId se não iniciado/removido

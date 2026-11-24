@@ -108,7 +108,10 @@ namespace OpenTTRPG.Tormenta20
         {
             if (string.IsNullOrWhiteSpace(raceName)) return 9f;
             string norm = raceName.Trim().ToLowerInvariant();
-            if (norm.Contains("anão") || norm.Contains("anao") || norm.Contains("goblin") || norm.Contains("hynne"))
+            if (norm.Contains("anão") || norm.Contains("anao") ||
+                norm.Contains("hynne") ||
+                norm.Contains("golem") ||
+                norm.Contains("sílfide") || norm.Contains("silfide"))
                 return 6f;
             if (norm.Contains("elfo"))
                 return 12f;
@@ -119,6 +122,7 @@ namespace OpenTTRPG.Tormenta20
         {
             if (sheet == null) return 0;
             if (sheet.CurrentHp <= 0) return 0;
+            if (sheet.IsAboveHardLoadLimit()) return 0;
 
             if (session != null && combatantId > 0)
             {
@@ -135,26 +139,20 @@ namespace OpenTTRPG.Tormenta20
 
             if (!sheet.IsEnemy)
             {
-                bool hasHeavyArmor = false;
-                foreach (var item in sheet.Inventory)
-                {
-                    if (item.Equipped && item.Type == ItemType.Armor && item.ArmorPenalty <= -4)
-                    {
-                        hasHeavyArmor = true;
-                        break;
-                    }
-                }
+                string normRace = sheet.Race?.Trim().ToLowerInvariant() ?? string.Empty;
+                bool immuneToEncumbranceSpeedPenalty = normRace.Contains("anão") || normRace.Contains("anao") || normRace.Contains("golem");
+                bool hasHeavyArmor = sheet.IsWearingHeavyArmor();
 
                 bool hasFanatico = sheet.UnlockedTreeKeys.Contains("fanatico") ||
                                    (session != null && combatantId > 0 && session.HasAbility(combatantId, "fanatico"));
-                if (hasHeavyArmor && !hasFanatico)
+                if (hasHeavyArmor && !hasFanatico && !immuneToEncumbranceSpeedPenalty)
                 {
                     meters -= 3f;
                 }
 
                 bool overburdened = sheet.IsOverburdened() ||
                                     (session != null && combatantId > 0 && session.HasCondition(combatantId, Tormenta20ConditionRules.OverburdenedKey));
-                if (overburdened)
+                if (overburdened && !immuneToEncumbranceSpeedPenalty)
                 {
                     meters -= 3f;
                 }
@@ -162,11 +160,16 @@ namespace OpenTTRPG.Tormenta20
 
             int squares = Math.Max(1, (int)Math.Round(Math.Max(MetersPerSquare, meters) / MetersPerSquare));
 
-            if (session != null && combatantId > 0 &&
-                (session.HasCondition(combatantId, Tormenta20ConditionRules.SlowedKey) ||
-                 session.HasCondition(combatantId, Tormenta20ConditionRules.ProneKey)))
+            if (session != null && combatantId > 0)
             {
-                squares = Math.Max(1, squares / 2);
+                if (session.HasCondition(combatantId, Tormenta20ConditionRules.ProneKey))
+                {
+                    return 1;
+                }
+                if (session.HasCondition(combatantId, Tormenta20ConditionRules.SlowedKey))
+                {
+                    squares = Math.Max(1, squares / 2);
+                }
             }
 
             return squares;
@@ -217,6 +220,10 @@ namespace OpenTTRPG.Tormenta20
             if (info.IsDefeated != 0) return false;
             try
             {
+                if (session.HasCondition(entityId, Tormenta20ConditionRules.UnconsciousKey))
+                {
+                    return false;
+                }
                 return session.GetResource(entityId, Tormenta20ActionRules.HealthResourceId).Current > 0;
             }
             catch
@@ -499,11 +506,17 @@ namespace OpenTTRPG.Tormenta20
                     bool isCornerEnd = (ix + 1 == nx) && (iy + 1 == ny);
                     var sideA = snap.GetCell(new GridPos(px + signX, py));
                     var sideB = snap.GetCell(new GridPos(px, py + signY));
-                    if (sideA.IsSightBlocked && sideB.IsSightBlocked)
+                    bool sideABlocked = sideA.IsSightBlocked || sideA.CoverLevel >= 2 || sideA.TerrainType == MapTerrainType.Blocked;
+                    bool sideBBlocked = sideB.IsSightBlocked || sideB.CoverLevel >= 2 || sideB.TerrainType == MapTerrainType.Blocked;
+                    if (sideABlocked && sideBBlocked)
                     {
                         blocked = true;
                         bestCover = T20CoverLevel.Total;
                         break;
+                    }
+                    if (sideABlocked || sideBBlocked || sideA.CoverLevel == 1 || sideB.CoverLevel == 1)
+                    {
+                        if (bestCover < T20CoverLevel.Light) bestCover = T20CoverLevel.Light;
                     }
                     px += signX;
                     py += signY;
@@ -561,14 +574,35 @@ namespace OpenTTRPG.Tormenta20
                 int dAllyY = tok.Y - tgtPos.Y;
                 if (Math.Max(Math.Abs(dAllyX), Math.Abs(dAllyY)) != 1) continue;
 
-                // Posições em lados opostos ao redor do alvo
-                int dot = dAtkX * dAllyX + dAtkY * dAllyY;
-                if (dot < 0)
+                // Posições estritamente em lados opostos ao redor do alvo (ex: N vs S, NE vs SO)
+                if (dAllyX == -dAtkX && dAllyY == -dAtkY)
                 {
                     return true;
                 }
             }
 
+            return false;
+        }
+
+        public static bool IsTargetEngagedInMelee(EncounterSession session, int attackerId, int targetId)
+        {
+            if (session == null || !session.IsMapActive || attackerId == targetId) return false;
+            if (!session.TryGetToken(targetId, out var tgtTok)) return false;
+
+            int atkTeam = session.GetCombatantInfo(attackerId).Team;
+            foreach (var tok in session.GetAllTokens())
+            {
+                if (tok.EntityId == attackerId || tok.EntityId == targetId) continue;
+                var info = session.GetCombatantInfo(tok.EntityId);
+                if (info.Team != atkTeam || !IsEntityStanding(session, tok.EntityId, info)) continue;
+
+                int dx = Math.Abs(tok.X - tgtTok.X);
+                int dy = Math.Abs(tok.Y - tgtTok.Y);
+                if (Math.Max(dx, dy) == 1)
+                {
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -641,7 +675,19 @@ namespace OpenTTRPG.Tormenta20
             int baseSquares = GetMovementSpeedSquares(moverSheet, session, moverId);
             if (baseSquares <= 0)
             {
-                return new TacticalMoveResult { Success = false, Message = $"{moverSheet.Name} está incapacitado ou imóvel e não pode se mover." };
+                return new TacticalMoveResult { Success = false, Message = $"{moverSheet.Name} está incapacitado, sobrecarregado acima do limite máximo ou imóvel e não pode se mover." };
+            }
+
+            if (useFullRunAction &&
+                (session.HasCondition(moverId, Tormenta20ConditionRules.SlowedKey) ||
+                 session.HasCondition(moverId, Tormenta20ConditionRules.BlindedKey) ||
+                 session.HasCondition(moverId, Tormenta20ConditionRules.ProneKey)))
+            {
+                return new TacticalMoveResult
+                {
+                    Success = false,
+                    Message = $"{moverSheet.Name} está sob condição que impede Correr (Lento, Cego ou Caído)."
+                };
             }
 
             int maxSquares = useFullRunAction ? baseSquares * 2 : baseSquares;

@@ -8,7 +8,9 @@
 #include "openttrpg/core/Resource.hpp"
 #include <iostream>
 #include <cassert>
+#include <climits>
 #include <string>
+#include <utility>
 
 void testLinkedList() {
     std::cout << "[TEST] Executando testes de LinkedList (Lista Encadeada AED1)... ";
@@ -255,6 +257,40 @@ void testAgnosticCorePrimitives() {
     std::cout << "SUCESSO!\n";
 }
 
+void testMoveSemanticsAndEdgeCases() {
+    std::cout << "[TEST] Move semantics e limites extremos em SparseGrid/QuadTree/GridRect... ";
+    using namespace openttrpg::ds;
+
+    // SparseGrid move constructor + reutilização após move
+    SparseGrid<int> sg1;
+    sg1.set(GridCoord{2, 3}, 42);
+    SparseGrid<int> sg2(std::move(sg1));
+    assert(sg1.size() == 0);
+    assert(sg2.contains(GridCoord{2, 3}) && *sg2.get(GridCoord{2, 3}) == 42);
+    sg1.set(GridCoord{5, 6}, 99);
+    assert(sg1.contains(GridCoord{5, 6}) && *sg1.get(GridCoord{5, 6}) == 99);
+
+    // QuadTree move + update inexistente não deve inserir silenciosamente + queryRadius extremo
+    QuadTree<int> qt1(GridRect{0, 0, 100, 100});
+    qt1.insert(GridCoord{10, 10}, 7);
+    QuadTree<int> qt2(std::move(qt1));
+    assert(qt1.size() == 0);
+    assert(qt2.size() == 1);
+    assert(!qt2.update(GridCoord{10, 10}, GridCoord{20, 20}, 999));
+    assert(qt2.size() == 1);
+
+    LinkedList<QuadTree<int>::QuadEntry> largeRad;
+    qt2.queryRadius(GridCoord{50, 50}, INT_MAX / 2, largeRad);
+    assert(largeRad.size() == 1);
+
+    // GridRect overflow guard
+    GridRect bigRect{INT_MAX - 10, INT_MAX - 10, 20, 20};
+    assert(bigRect.contains(GridCoord{INT_MAX - 1, INT_MAX - 1}));
+    assert(!bigRect.contains(GridCoord{-1, -1}));
+
+    std::cout << "SUCESSO!\n";
+}
+
 int main() {
     std::cout << "=== BATERIA DE TESTES — ESTRUTURAS DE DADOS (AED1) ===\n";
     testLinkedList();
@@ -264,6 +300,7 @@ int main() {
     testSparseGrid();
     testQuadTree();
     testAgnosticCorePrimitives();
+    testMoveSemanticsAndEdgeCases();
     std::cout << "\n>>> TODOS OS TESTES DE ESTRUTURAS DE DADOS PASSARAM COM ÊXITO! <<<\n";
     return 0;
 }

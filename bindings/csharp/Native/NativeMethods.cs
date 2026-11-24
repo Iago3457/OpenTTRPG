@@ -176,6 +176,9 @@ namespace OpenTTRPG.Native
         public static extern int ottrpg_combat_end(IntPtr encounter);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combat_restore_state(IntPtr encounter, int round, int currentTurnId);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_combat_is_team_defeated(IntPtr encounter, int team);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]

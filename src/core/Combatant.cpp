@@ -179,6 +179,16 @@ void Combatant::recordActionInTurn(const std::string& actionKey) {
     }
 }
 
+bool Combatant::unrecordActionInTurn(const std::string& actionKey) {
+    const std::size_t idx = turnActionHistory_.find_index([&actionKey](const std::string& k) {
+        return k == actionKey;
+    });
+    if (idx == ds::LinkedList<std::string>::npos) {
+        return false;
+    }
+    return turnActionHistory_.remove_at(idx);
+}
+
 bool Combatant::hasUsedActionInTurn(const std::string& actionKey) const {
     return turnActionHistory_.find_if([&actionKey](const std::string& k) { return k == actionKey; }) != nullptr;
 }

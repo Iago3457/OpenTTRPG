@@ -26,8 +26,11 @@ namespace OpenTTRPG.CLI
             {
                 CharacterSheetData c = _characters[i];
                 Tormenta20SkillRules.TryCalculateSkillModifier(c, "Iniciativa", out int initMod, out _);
-                int eid = session.AddCombatant(c.Name, initMod, c.MaxHp, 1);
+                int eid = session.AddCombatant(c.Name, initMod, c.MaxHp, c.IsEnemy ? 2 : 1);
+                session.AddResource(eid, HealthResourceId, "Vida", c.MaxHp, c.GetDeathThreshold());
                 session.SetResourceCurrent(eid, HealthResourceId, c.CurrentHp);
+                if (c.TempHp > 0) session.SetResourceTemp(eid, HealthResourceId, c.TempHp);
+                if (c.DamageReduction > 0) session.SetGlobalDamageReduction(eid, c.DamageReduction);
                 session.AddResource(eid, ManaResourceId, "PM", c.MaxPm, 0);
                 session.SetResourceCurrent(eid, ManaResourceId, c.CurrentPm);
                 Tormenta20ActionRules.ConfigureTurnActions(session, eid, standardActions: 1, movementActions: 1, freeActions: -1);
@@ -41,6 +44,7 @@ namespace OpenTTRPG.CLI
                 {
                     Tormenta20ConditionRules.ApplyCondition(session, eid, T20Condition.Sobrecarregado);
                 }
+                Tormenta20ConditionRules.SyncDyingAndUnconsciousState(session, eid, c);
 
                 charEntityIds.Add(eid);
 
@@ -119,6 +123,7 @@ namespace OpenTTRPG.CLI
                     ResourceInfo hp = session.GetResource(charEntityIds[i], HealthResourceId);
                     ResourceInfo pm = session.GetResource(charEntityIds[i], ManaResourceId);
                     _characters[i].CurrentHp = hp.Current;
+                    _characters[i].TempHp = hp.Temp;
                     _characters[i].CurrentPm = pm.Current;
                 }
             }
@@ -325,10 +330,19 @@ namespace OpenTTRPG.CLI
                     };
                     Console.Write("Custo em PM: ");
                     int pmCost = Math.Max(0, ParseSignedInt(GetCleanLine(), 1));
-
-                    var fallbackRes = Tormenta20ActionRules.EnqueueTurnAction(session, currentId, reqActionType, "Poder/Magia", 0, pmCost);
-                    SyncBackToSheets();
-                    Console.WriteLine(fallbackRes.Message);
+                    if (currentSheet != null)
+                    {
+                        var manualSkill = new CharacterSkill("Poder/Magia", "", pmCost, reqActionType, 0);
+                        var fallbackRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, currentId, currentSheet, manualSkill, 0);
+                        SyncBackToSheets();
+                        Console.WriteLine(fallbackRes.Message);
+                    }
+                    else
+                    {
+                        var fallbackRes = Tormenta20ActionRules.EnqueueTurnAction(session, currentId, reqActionType, "Poder/Magia", 0, pmCost);
+                        SyncBackToSheets();
+                        Console.WriteLine(fallbackRes.Message);
+                    }
                 }
                 else if (action == 5)
                 {
@@ -351,9 +365,17 @@ namespace OpenTTRPG.CLI
                         int dmgAmt = ParsePositiveInt(GetCleanLine(), 0);
                         DamageResult res = session.DealDamage(targetId, dmgAmt);
                         SyncBackToSheets();
+                        int tIdx = charEntityIds.IndexOf(targetId);
                         string targetName = session.GetCombatantName(targetId);
-                        string fallenMsg = res.IsDepleted ? " >>> O ALVO CAIU (0 PV) E SERÁ PULADO NA INICIATIVA!" : "";
-                        Console.WriteLine($"[OK] {targetName} sofreu {res.FinalAmount} de dano!{fallenMsg}");
+                        string extraMsg = string.Empty;
+                        if (tIdx >= 0)
+                        {
+                            var tSheet = _characters[tIdx];
+                            if (tSheet.CurrentHp <= tSheet.GetDeathThreshold()) tSheet.IsBleedingOut = false;
+                            else if (tSheet.CurrentHp <= 0) tSheet.IsBleedingOut = true;
+                            extraMsg = " " + Tormenta20ConditionRules.SyncDyingAndUnconsciousState(session, targetId, tSheet);
+                        }
+                        Console.WriteLine($"[OK] {targetName} sofreu {res.FinalAmount} de dano!{extraMsg}");
                     }
                 }
                 else if (action == 7)
@@ -361,11 +383,22 @@ namespace OpenTTRPG.CLI
                     int targetId = SelectParticipantTarget("Selecione o ALVO que receberá a cura:");
                     if (targetId > 0)
                     {
+                        int tIdx = charEntityIds.IndexOf(targetId);
+                        if (tIdx >= 0 && _characters[tIdx].CurrentHp <= _characters[tIdx].GetDeathThreshold())
+                        {
+                            Console.WriteLine($"[BLOQUEADO] {_characters[tIdx].Name} já atingiu o limite de morte e não pode receber cura comum.");
+                            continue;
+                        }
                         Console.Write("Quantidade de cura (PV): ");
                         int healAmt = ParsePositiveInt(GetCleanLine(), 0);
                         int healed = session.Heal(targetId, healAmt);
                         SyncBackToSheets();
                         string targetName = session.GetCombatantName(targetId);
+                        if (tIdx >= 0 && healAmt > 0)
+                        {
+                            _characters[tIdx].IsBleedingOut = false;
+                            Tormenta20ConditionRules.SyncDyingAndUnconsciousState(session, targetId, _characters[tIdx]);
+                        }
                         Console.WriteLine($"[OK] {targetName} recuperou {healed} PV!");
                     }
                 }
