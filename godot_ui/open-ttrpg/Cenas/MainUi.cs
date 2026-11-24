@@ -207,6 +207,12 @@ public partial class MainUi : Control
 	private TacticalGridCanvas _tacticalGridCanvas;
 	private TabContainer _tabsMapaLateral;
 	private Button _btnMapaZoomLabel;
+	private Button _btnMapaTamanho;
+	private Window _dlgTamanhoMapa;
+	private SpinBox _spinMapaLargura;
+	private SpinBox _spinMapaAltura;
+	private CheckBox _chkMapaRegenerarCenario;
+	private Label _lblMapaDimensaoMetros;
 	private Button _btnMapaAjuda;
 	private OptionButton _optArenaPreset;
 	private Button _btnModoEditorMapa;
@@ -3009,6 +3015,7 @@ public partial class MainUi : Control
 
 		if (_currentMainView == "Mapa" && _tacticalGridCanvas != null && !IsAnyPopupOrModalOpen())
 		{
+			if (_dlgTamanhoMapa != null && _dlgTamanhoMapa.Visible) return;
 			Control focused = GetViewport()?.GuiGetFocusOwner();
 			if (focused is LineEdit or TextEdit or SpinBox) return;
 
@@ -5641,6 +5648,15 @@ public partial class MainUi : Control
 		};
 		toolBar.AddChild(_optArenaPreset);
 
+		_btnMapaTamanho = new Button
+		{
+			Text = "Grid: 16x12",
+			TooltipText = "Alterar o tamanho base do tabuleiro (ex.: 12x12, 30x30, 60x60)"
+		};
+		_btnMapaTamanho.AddThemeColorOverride("font_color", new Color(0.65f, 0.90f, 1f));
+		_btnMapaTamanho.Pressed += AbrirDialogTamanhoMapa;
+		toolBar.AddChild(_btnMapaTamanho);
+
 		_btnModoEditorMapa = new Button
 		{
 			Text = "Modo: Combate",
@@ -6049,6 +6065,175 @@ public partial class MainUi : Control
 			ShowToast("Imagem de fundo aplicada ao mapa!");
 		};
 		AddChild(_fileDlgMapaFundo);
+
+		_dlgTamanhoMapa = BuildTamanhoMapaDialog();
+		AddChild(_dlgTamanhoMapa);
+	}
+
+	private void AbrirDialogTamanhoMapa()
+	{
+		if (_dlgTamanhoMapa == null) return;
+		int curW = (_combatManager.Session != null && _combatManager.Session.IsMapActive)
+			? _combatManager.Session.MapWidth
+			: _combatManager.DefaultMapWidth;
+		int curH = (_combatManager.Session != null && _combatManager.Session.IsMapActive)
+			? _combatManager.Session.MapHeight
+			: _combatManager.DefaultMapHeight;
+		if (_spinMapaLargura != null) _spinMapaLargura.Value = Math.Clamp(curW, CombatManager.MinMapSize, CombatManager.MaxMapSize);
+		if (_spinMapaAltura != null) _spinMapaAltura.Value = Math.Clamp(curH, CombatManager.MinMapSize, CombatManager.MaxMapSize);
+		if (_chkMapaRegenerarCenario != null) _chkMapaRegenerarCenario.ButtonPressed = false;
+		AtualizarPreviewTamanhoMapa();
+		_dlgTamanhoMapa.PopupCentered();
+	}
+
+	private void AtualizarPreviewTamanhoMapa()
+	{
+		if (_lblMapaDimensaoMetros == null || _spinMapaLargura == null || _spinMapaAltura == null) return;
+		int w = (int)_spinMapaLargura.Value;
+		int h = (int)_spinMapaAltura.Value;
+		string metersW = (w * 1.5).ToString("0.0").Replace('.', ',');
+		string metersH = (h * 1.5).ToString("0.0").Replace('.', ',');
+		_lblMapaDimensaoMetros.Text = $"Dimensão: {w} x {h} quadrados ({metersW}m x {metersH}m)";
+	}
+
+	private Window BuildTamanhoMapaDialog()
+	{
+		var win = new Window
+		{
+			Title = "Tamanho Base do Tabletop",
+			InitialPosition = Window.WindowInitialPosition.CenterMainWindowScreen,
+			Size = new Vector2I(430, 340),
+			Exclusive = true
+		};
+		win.CloseRequested += () => win.Hide();
+
+		var margin = new MarginContainer();
+		margin.SetAnchorsPreset(LayoutPreset.FullRect);
+		margin.AddThemeConstantOverride("margin_left", 16);
+		margin.AddThemeConstantOverride("margin_right", 16);
+		margin.AddThemeConstantOverride("margin_top", 14);
+		margin.AddThemeConstantOverride("margin_bottom", 14);
+		win.AddChild(margin);
+
+		var vbox = new VBoxContainer();
+		vbox.AddThemeConstantOverride("separation", 10);
+		margin.AddChild(vbox);
+
+		var lblDesc = new Label
+		{
+			Text = $"Defina a largura e altura da grade ({CombatManager.MinMapSize} a {CombatManager.MaxMapSize} quadrados). O tamanho escolhido também vale como base para novos combates.",
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		lblDesc.AddThemeColorOverride("font_color", new Color(0.86f, 0.89f, 0.96f));
+		lblDesc.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(lblDesc);
+
+		var lblPresets = new Label { Text = "Tamanhos Rápidos:" };
+		lblPresets.AddThemeColorOverride("font_color", new Color(0.95f, 0.85f, 0.45f));
+		lblPresets.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(lblPresets);
+
+		var gridPresets = new GridContainer { Columns = 4 };
+		gridPresets.AddThemeConstantOverride("h_separation", 8);
+		gridPresets.AddThemeConstantOverride("v_separation", 6);
+		vbox.AddChild(gridPresets);
+
+		(int pw, int ph)[] quickSizes =
+		{
+			(12, 12), (16, 12), (20, 20), (30, 30),
+			(40, 40), (60, 60), (80, 80), (100, 100)
+		};
+		foreach (var (pw, ph) in quickSizes)
+		{
+			var btnPreset = new Button
+			{
+				Text = $"{pw}x{ph}",
+				SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+			};
+			int capW = pw;
+			int capH = ph;
+			btnPreset.Pressed += () =>
+			{
+				if (_spinMapaLargura != null) _spinMapaLargura.Value = capW;
+				if (_spinMapaAltura != null) _spinMapaAltura.Value = capH;
+				AtualizarPreviewTamanhoMapa();
+			};
+			gridPresets.AddChild(btnPreset);
+		}
+
+		var gridInputs = new GridContainer { Columns = 2 };
+		gridInputs.AddThemeConstantOverride("h_separation", 14);
+		gridInputs.AddThemeConstantOverride("v_separation", 6);
+		vbox.AddChild(gridInputs);
+
+		var vbW = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+		vbW.AddChild(new Label { Text = "Largura (Colunas):" });
+		_spinMapaLargura = new SpinBox
+		{
+			MinValue = CombatManager.MinMapSize,
+			MaxValue = CombatManager.MaxMapSize,
+			Step = 1,
+			Value = 16,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_spinMapaLargura.ValueChanged += (_) => AtualizarPreviewTamanhoMapa();
+		vbW.AddChild(_spinMapaLargura);
+		gridInputs.AddChild(vbW);
+
+		var vbH = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill };
+		vbH.AddChild(new Label { Text = "Altura (Linhas):" });
+		_spinMapaAltura = new SpinBox
+		{
+			MinValue = CombatManager.MinMapSize,
+			MaxValue = CombatManager.MaxMapSize,
+			Step = 1,
+			Value = 12,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill
+		};
+		_spinMapaAltura.ValueChanged += (_) => AtualizarPreviewTamanhoMapa();
+		vbH.AddChild(_spinMapaAltura);
+		gridInputs.AddChild(vbH);
+
+		_lblMapaDimensaoMetros = new Label { Text = "Dimensão: 16 x 12 quadrados (24,0m x 18,0m)" };
+		_lblMapaDimensaoMetros.AddThemeColorOverride("font_color", new Color(0.55f, 0.88f, 1f));
+		_lblMapaDimensaoMetros.AddThemeFontSizeOverride("font_size", 12);
+		vbox.AddChild(_lblMapaDimensaoMetros);
+
+		_chkMapaRegenerarCenario = new CheckBox
+		{
+			Text = "Regenerar obstáculos do cenário selecionado",
+			ButtonPressed = false,
+			TooltipText = "Desmarcado: preserva paredes, terrenos e tokens já posicionados dentro da nova área."
+		};
+		vbox.AddChild(_chkMapaRegenerarCenario);
+
+		var hBtns = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+		hBtns.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(hBtns);
+
+		var btnCancel = new Button { Text = "Cancelar" };
+		btnCancel.Pressed += () => win.Hide();
+		hBtns.AddChild(btnCancel);
+
+		var btnAplicar = new Button { Text = "Aplicar Tamanho" };
+		btnAplicar.AddThemeColorOverride("font_color", new Color(0.45f, 0.98f, 0.60f));
+		btnAplicar.Pressed += () =>
+		{
+			int w = (int)_spinMapaLargura.Value;
+			int h = (int)_spinMapaAltura.Value;
+			bool regen = _chkMapaRegenerarCenario.ButtonPressed;
+			_combatManager.ResizeMap(w, h, resetTerrain: regen);
+			RefreshTacticalMapView();
+			_tacticalGridCanvas?.CenterView(animate: true);
+			win.Hide();
+			string metersW = (w * 1.5).ToString("0.0").Replace('.', ',');
+			string metersH = (h * 1.5).ToString("0.0").Replace('.', ',');
+			ShowToast($"Tabuleiro redimensionado para {w}x{h} ({metersW}m x {metersH}m).");
+		};
+		hBtns.AddChild(btnAplicar);
+
+		win.Hide();
+		return win;
 	}
 
 	private Control BuildTacticalHelpTab()
@@ -6096,6 +6281,7 @@ public partial class MainUi : Control
 			"- [b]Correr (2x Desloc.):[/b] Dobra a área azul por 1 Ação Completa.\n" +
 			"- [b]Régua (ou tecla M):[/b] Mede distância em metros e testa Linha de Visão/Cobertura até o cursor.\n\n" +
 			"[color=#80d8ff][b]Modo Editor de Mapa[/b][/color]\n" +
+			"- [b]Grid (LxA):[/b] Altera o tamanho base do tabuleiro (de 6x6 até 120x120 quadrados), preservando obstáculos e combatentes.\n" +
 			"- Clique ou arraste com o botão esquerdo para pintar Chão Livre, Parede Sólida, Cobertura Leve (+5 Def) ou Terreno Difícil (custo x2).\n" +
 			"- Pincel [b]Reposicionar Token[/b]: clique em um token e depois clique na nova célula livre.\n\n" +
 			"[color=#80d8ff][b]Regras Táticas (Tormenta20 JdA)[/b][/color]\n" +
@@ -6318,6 +6504,13 @@ public partial class MainUi : Control
 			if (_btnMapaHabilidade != null) _btnMapaHabilidade.Disabled = true;
 		}
 
+		if (_btnMapaTamanho != null)
+		{
+			int gw = _combatManager.Session.IsMapActive ? _combatManager.Session.MapWidth : _combatManager.DefaultMapWidth;
+			int gh = _combatManager.Session.IsMapActive ? _combatManager.Session.MapHeight : _combatManager.DefaultMapHeight;
+			_btnMapaTamanho.Text = $"Grid: {gw}x{gh}";
+		}
+
 		if (_btnFogToggle != null && _btnFogToggle.ButtonPressed != _combatManager.FogOfWarEnabled)
 		{
 			_btnFogToggle.SetPressedNoSignal(_combatManager.FogOfWarEnabled);
@@ -6470,6 +6663,22 @@ public partial class MainUi : Control
 			_tacticalGridCanvas.ZoomBy(1.2f);
 			if (Mathf.IsEqualApprox(_tacticalGridCanvas.TargetZoom, 1.0f))
 				throw new InvalidOperationException("Controle de zoom do Tabletop não atualizou TargetZoom!");
+
+			// Redimensionamento dinâmico do grid base (16x12 -> 60x60 -> 16x12) preservando tokens
+			_combatManager.ResizeMap(60, 60);
+			RefreshTacticalMapView();
+			if (_combatManager.Session.MapWidth != 60 || _combatManager.Session.MapHeight != 60)
+				throw new InvalidOperationException("ResizeMap(60, 60) não atualizou as dimensões do mapa na sessão!");
+			if (!_combatManager.Session.TryGetToken(currentActor, out _))
+				throw new InvalidOperationException("Token do combatente ativo foi perdido após ResizeMap(60, 60)!");
+			if (_btnMapaTamanho == null || _btnMapaTamanho.Text != "Grid: 60x60")
+				throw new InvalidOperationException("Botão Grid do Tabletop não atualizou para 'Grid: 60x60'!");
+			_tacticalGridCanvas.CenterView(animate: false);
+
+			_combatManager.ResizeMap(16, 12);
+			RefreshTacticalMapView();
+			if (_combatManager.Session.MapWidth != 16 || _combatManager.Session.MapHeight != 12)
+				throw new InvalidOperationException("ResizeMap(16, 12) não restaurou as dimensões do mapa!");
 			_tacticalGridCanvas.CenterView(animate: false);
 
 			_combatManager.FogOfWarEnabled = true;

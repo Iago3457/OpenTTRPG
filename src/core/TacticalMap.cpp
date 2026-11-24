@@ -16,6 +16,51 @@ void TacticalMap::configure(int width, int height) {
     tokenIndex_.resetBounds(ds::GridRect{0, 0, width, height});
 }
 
+void TacticalMap::resize(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        throw std::invalid_argument("Dimensões do mapa tático devem ser maiores que zero.");
+    }
+    if (!active_) {
+        configure(width, height);
+        return;
+    }
+
+    struct SavedCell {
+        ds::GridCoord pos;
+        MapCell cell;
+    };
+    ds::LinkedList<SavedCell> preservedCells;
+    cells_.for_each([&](const ds::GridCoord& pos, const MapCell& cell) {
+        if (pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height && !cell.isDefault()) {
+            preservedCells.push_back(SavedCell{pos, cell});
+        }
+    });
+
+    ds::LinkedList<TokenPlacement> preservedTokens;
+    tokens_.for_each([&](const TokenPlacement& tok, std::size_t) {
+        if (tok.pos.x >= 0 && tok.pos.y >= 0 &&
+            tok.pos.x + tok.sizeCells <= width &&
+            tok.pos.y + tok.sizeCells <= height) {
+            preservedTokens.push_back(tok);
+        }
+    });
+
+    width_ = width;
+    height_ = height;
+    active_ = true;
+    cells_.clear();
+    tokens_.clear();
+    tokenIndex_.resetBounds(ds::GridRect{0, 0, width, height});
+
+    preservedCells.for_each([&](const SavedCell& sc, std::size_t) {
+        cells_.set(sc.pos, sc.cell);
+    });
+    preservedTokens.for_each([&](const TokenPlacement& tok, std::size_t) {
+        tokens_.push_back(tok);
+        tokenIndex_.insert(tok.pos, tok.entityId);
+    });
+}
+
 void TacticalMap::clear() {
     active_ = false;
     width_ = 0;

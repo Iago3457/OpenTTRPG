@@ -318,6 +318,9 @@ namespace OpenTTRPG.Native
         public static extern int ottrpg_map_configure(IntPtr encounter, int width, int height);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_resize(IntPtr encounter, int width, int height);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_map_clear(IntPtr encounter);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]

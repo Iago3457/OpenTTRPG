@@ -23,8 +23,13 @@ public partial class CombatManager : Node
 
 	public bool IsInCombat { get; private set; } = false;
 
+	public const int MinMapSize = 6;
+	public const int MaxMapSize = 120;
+
 	public TacticalFogTracker FogTracker { get; } = new();
 	public T20ArenaPreset CurrentArenaPreset { get; set; } = T20ArenaPreset.PillaredDungeon;
+	public int DefaultMapWidth { get; set; } = 16;
+	public int DefaultMapHeight { get; set; } = 12;
 	public string CurrentMapBackgroundPath { get; set; } = string.Empty;
 	public bool FogOfWarEnabled { get; set; } = false;
 
@@ -532,8 +537,8 @@ public partial class CombatManager : Node
 
 		// Preserva terreno customizado caso o usuário já tenha editado o mapa antes de iniciar o combate
 		bool hadActiveMap = _session != null && _session.IsMapActive;
-		int prevW = hadActiveMap ? _session.MapWidth : 16;
-		int prevH = hadActiveMap ? _session.MapHeight : 12;
+		int prevW = hadActiveMap ? _session.MapWidth : DefaultMapWidth;
+		int prevH = hadActiveMap ? _session.MapHeight : DefaultMapHeight;
 		MapCellInfo[] prevCells = hadActiveMap ? _session.GetNonDefaultMapCells() : Array.Empty<MapCellInfo>();
 
 		// Sempre reinicia a sessão nativa do zero para liberar combatentes antigos e evitar IDs fantasmas
@@ -548,7 +553,7 @@ public partial class CombatManager : Node
 		}
 		else
 		{
-			Tormenta20TacticalRules.ApplyArenaPreset(_session, CurrentArenaPreset, 16, 12);
+			Tormenta20TacticalRules.ApplyArenaPreset(_session, CurrentArenaPreset, DefaultMapWidth, DefaultMapHeight);
 		}
 		FogTracker.Clear();
 
@@ -636,7 +641,7 @@ public partial class CombatManager : Node
 
 		if (!_session.IsMapActive || resetTerrain)
 		{
-			Tormenta20TacticalRules.ApplyArenaPreset(_session, CurrentArenaPreset, 16, 12);
+			Tormenta20TacticalRules.ApplyArenaPreset(_session, CurrentArenaPreset, DefaultMapWidth, DefaultMapHeight);
 			FogTracker.Clear();
 		}
 
@@ -704,6 +709,80 @@ public partial class CombatManager : Node
 			}
 		}
 		return null;
+	}
+
+	private GridPos? FindNearestFreeCellAround(int targetX, int targetY, int w, int h, HashSet<GridPos> occupied)
+	{
+		int maxRadius = Math.Max(w, h);
+		for (int radius = 0; radius <= maxRadius; radius++)
+		{
+			for (int dy = -radius; dy <= radius; dy++)
+			{
+				for (int dx = -radius; dx <= radius; dx++)
+				{
+					if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != radius) continue;
+					int x = targetX + dx;
+					int y = targetY + dy;
+					if (x < 0 || x >= w || y < 0 || y >= h) continue;
+					var p = new GridPos(x, y);
+					if (occupied.Contains(p)) continue;
+					if (_session.GetMapCell(x, y).TerrainType == MapTerrainType.Blocked) continue;
+					return p;
+				}
+			}
+		}
+		return null;
+	}
+
+	public void ResizeMap(int newWidth, int newHeight, bool resetTerrain = false)
+	{
+		int w = Math.Clamp(newWidth, MinMapSize, MaxMapSize);
+		int h = Math.Clamp(newHeight, MinMapSize, MaxMapSize);
+		DefaultMapWidth = w;
+		DefaultMapHeight = h;
+
+		if (_session == null) return;
+
+		if (!_session.IsMapActive || resetTerrain)
+		{
+			EnsureMapInitialized(resetTerrain: true);
+			return;
+		}
+
+		var prevTokens = _session.GetAllTokens();
+		_session.ResizeMap(w, h);
+
+		var occupied = new HashSet<GridPos>();
+		foreach (var tok in _session.GetAllTokens())
+		{
+			occupied.Add(new GridPos(tok.X, tok.Y));
+		}
+
+		foreach (var tok in prevTokens)
+		{
+			if (_session.TryGetToken(tok.EntityId, out _)) continue;
+			int anchorX = Math.Clamp(tok.X, 0, w - 1);
+			int anchorY = Math.Clamp(tok.Y, 0, h - 1);
+			GridPos? spawn = FindNearestFreeCellAround(anchorX, anchorY, w, h, occupied);
+			if (spawn.HasValue)
+			{
+				_session.PlaceToken(tok.EntityId, spawn.Value.X, spawn.Value.Y, Math.Max(1, tok.SizeCells));
+				occupied.Add(spawn.Value);
+			}
+		}
+
+		foreach (var exp in FogTracker.ExploredCells.Where(p => p.X < 0 || p.X >= w || p.Y < 0 || p.Y >= h).ToList())
+		{
+			FogTracker.ExploredCells.Remove(exp);
+		}
+		foreach (var vis in FogTracker.VisibleCells.Where(p => p.X < 0 || p.X >= w || p.Y < 0 || p.Y >= h).ToList())
+		{
+			FogTracker.VisibleCells.Remove(vis);
+		}
+		if (IsInCombat)
+		{
+			Tormenta20TacticalRules.UpdateFogOfWar(_session, FogTracker, alliedTeam: 1);
+		}
 	}
 
 	public string GetCombatSnapshotPath()
@@ -821,7 +900,11 @@ public partial class CombatManager : Node
 
 			if (snap.TacticalMap != null)
 			{
-				_session.ConfigureMap(Math.Max(4, snap.TacticalMap.Width), Math.Max(4, snap.TacticalMap.Height));
+				int mapW = Math.Clamp(snap.TacticalMap.Width, MinMapSize, MaxMapSize);
+				int mapH = Math.Clamp(snap.TacticalMap.Height, MinMapSize, MaxMapSize);
+				DefaultMapWidth = mapW;
+				DefaultMapHeight = mapH;
+				_session.ConfigureMap(mapW, mapH);
 				CurrentMapBackgroundPath = snap.TacticalMap.BackgroundImagePath ?? string.Empty;
 				FogOfWarEnabled = snap.TacticalMap.FogOfWarEnabled;
 				foreach (var cell in snap.TacticalMap.Cells)
