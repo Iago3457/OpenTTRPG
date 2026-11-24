@@ -176,6 +176,9 @@ namespace OpenTTRPG.Native
         public static extern int ottrpg_combat_end(IntPtr encounter);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combat_restore_state(IntPtr encounter, int round, int currentTurnId);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_combat_is_team_defeated(IntPtr encounter, int team);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -309,6 +312,43 @@ namespace OpenTTRPG.Native
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_ability_can_use(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        // Mapa Tático Espacial (SparseGrid + QuadTree no Core)
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_configure(IntPtr encounter, int width, int height);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_clear(IntPtr encounter);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_get_info(IntPtr encounter, out int outActive, out int outWidth, out int outHeight);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_set_cell(IntPtr encounter, int x, int y, int terrain, int coverLevel, int blocksSight);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_get_cell(IntPtr encounter, int x, int y, out MapCellInfo outCell);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_get_non_default_cells(IntPtr encounter, [Out] MapCellInfo[]? outCells, int capacity, out int outCount);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_place_token(IntPtr encounter, int entityId, int x, int y, int sizeCells);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_move_token(IntPtr encounter, int entityId, int x, int y);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_remove_token(IntPtr encounter, int entityId);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_get_token(IntPtr encounter, int entityId, out MapTokenInfo outToken);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_get_all_tokens(IntPtr encounter, [Out] MapTokenInfo[]? outTokens, int capacity, out int outCount);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_map_query_radius(IntPtr encounter, int centerX, int centerY, int radius, [Out] int[]? outIds, int capacity, out int outCount);
     }
 }
 

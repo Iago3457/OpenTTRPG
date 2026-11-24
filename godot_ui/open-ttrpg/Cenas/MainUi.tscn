@@ -153,15 +153,15 @@ layout_mode = 2
 
 [node name="BtnViewFicha" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=305169308]
 layout_mode = 2
-text = "📜 Ficha do Personagem"
+text = "Ficha"
 
 [node name="BtnViewCombate" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=2093714098]
 layout_mode = 2
-text = "⚔️ Mesa de Combate"
+text = "Combate"
 
 [node name="BtnViewDados" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1425063247]
 layout_mode = 2
-text = "🎲 Bandeja de Dados"
+text = "Dados"
 
 [node name="Spacer" type="Control" parent="MarginContainer/VBoxMain/TopBar" unique_id=1179051571]
 layout_mode = 2
@@ -170,46 +170,48 @@ size_flags_horizontal = 3
 [node name="BtnNovoPersonagem" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1219846237]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
-text = "➕ Novo"
+text = "+ Novo"
 
 [node name="BtnExcluirPersonagem" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1219846238]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
-text = "🗑️ Excluir"
+text = "Excluir"
 
 [node name="BtnSalvarFichas" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=1219846236]
 layout_mode = 2
-text = "💾 Salvar Fichas"
+text = "Salvar"
 
 [node name="BtnVoltarMenu" type="Button" parent="MarginContainer/VBoxMain/TopBar" unique_id=2106940914]
 layout_mode = 2
-text = "🚪 Menu Principal"
+text = "Menu"
 
 [node name="MainContent" type="VBoxContainer" parent="MarginContainer/VBoxMain" unique_id=806716699]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="ViewFicha" type="ScrollContainer" parent="MarginContainer/VBoxMain/MainContent" unique_id=499887881]
+[node name="ViewFicha" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent" unique_id=499887881]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-horizontal_scroll_mode = 0
 
 [node name="CenterBox" type="MarginContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha" unique_id=1571944537]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="HSplitFicha" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox" unique_id=605660867]
+[node name="HSplitFicha" type="HSplitContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox" unique_id=605660867]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/separation = 14
+theme_override_constants/separation = 10
 
 [node name="LeftCol" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha" unique_id=687708686]
+custom_minimum_size = Vector2(360, 0)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
+size_flags_stretch_ratio = 1.45
 theme_override_constants/separation = 8
 
 [node name="CardHeader" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=1180259545]
@@ -272,7 +274,7 @@ layout_mode = 2
 size_flags_horizontal = 0
 theme_override_colors/font_color = Color(0.6, 0.88, 1, 1)
 theme_override_font_sizes/font_size = 12
-text = "🏕️ Descansar (Recuperar PV/PM)"
+text = "Descansar (Recuperar PV/PM)"
 
 [node name="HBoxCircles" type="HBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardHeader/Margin/HBoxHeader" unique_id=1569109899]
 layout_mode = 2
@@ -555,31 +557,31 @@ theme_override_constants/separation = 4
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 12
-text = "🗡️ Ataques"
+text = "Ataques"
 
 [node name="BtnDefesa" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=1824865087]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 12
-text = "🛡️ Defesa"
+text = "Defesa"
 
 [node name="BtnPoderes" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=1855155071]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 12
-text = "✨ Poderes"
+text = "Poderes"
 
 [node name="BtnMagias" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=388874920]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 12
-text = "🔮 Magias"
+text = "Magias"
 
 [node name="BtnEquip" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/HBoxSubTabs" unique_id=390874631]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 12
-text = "🎒 Equip."
+text = "Equip."
 
 [node name="PanelContent" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox" unique_id=1691537458]
 layout_mode = 2
@@ -629,13 +631,13 @@ text = "Equipar / Desequipar"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
 theme_override_font_sizes/font_size = 11
-text = "➕ Novo Item"
+text = "+ Novo Item"
 
 [node name="BtnSubAcao3" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol/CardInterativo/VBox/PanelContent/HBoxSubActions" unique_id=696581512]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
 theme_override_font_sizes/font_size = 11
-text = "🗑️ Remover"
+text = "Remover"
 
 [node name="CardProficiencias" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/LeftCol" unique_id=1132233772]
 layout_mode = 2
@@ -680,9 +682,11 @@ theme_override_font_sizes/font_size = 11
 text = "  Armaduras Leves  "
 
 [node name="RightCol" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha" unique_id=1506453723]
+custom_minimum_size = Vector2(280, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+size_flags_stretch_ratio = 1.0
 
 [node name="CardPericias" type="PanelContainer" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol" unique_id=1733275742]
 layout_mode = 2
@@ -707,7 +711,7 @@ horizontal_alignment = 1
 
 [node name="TxtBuscaPericia" type="LineEdit" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=273444363]
 layout_mode = 2
-placeholder_text = "🔍 Buscar perícia..."
+placeholder_text = "Buscar perícia..."
 
 [node name="LblResumoNivelTreino" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewFicha/CenterBox/HSplitFicha/RightCol/CardPericias/VBox" unique_id=796337838]
 layout_mode = 2
@@ -781,12 +785,12 @@ theme_override_constants/separation = 16
 
 [node name="BtnIniciarCombate" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/TopBar" unique_id=1061279718]
 layout_mode = 2
-text = "⚔️ Iniciar / Rolar Iniciativa"
+text = "Iniciar / Rolar Iniciativa"
 
 [node name="BtnProximoTurno" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/TopBar" unique_id=1632591154]
 layout_mode = 2
 disabled = true
-text = "⏭️ Encerrar Turno (Próximo)"
+text = "Encerrar Turno (Próximo)"
 
 [node name="ScrollIniciativa" type="ScrollContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox" unique_id=1744275849]
 custom_minimum_size = Vector2(0, 48)
@@ -816,6 +820,7 @@ size_flags_vertical = 3
 split_offset = 280
 
 [node name="LeftActions" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=1339745429]
+custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
 theme_override_constants/separation = 10
 
@@ -830,31 +835,32 @@ theme_override_constants/separation = 4
 [node name="LblAlvo" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions/VBoxAlvo" unique_id=1709134279]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "🎯 Selecionar Alvo:"
+text = "Selecionar Alvo:"
 
 [node name="OptAlvoCombate" type="OptionButton" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions/VBoxAlvo" unique_id=1745211754]
 layout_mode = 2
 
 [node name="BtnAtacar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=1912734224]
 layout_mode = 2
-text = "🗡️ Atacar Alvo (Ação Padrão)"
+text = "Atacar Alvo (Ação Padrão)"
 
 [node name="BtnMovimento" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=874732427]
 layout_mode = 2
-text = "🏃 Avanço Tático (Ação Movimento)"
+text = "Avanço Tático (Ação Movimento)"
 
 [node name="BtnUsarHabilidade" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/LeftActions" unique_id=874732428]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.55, 0.85, 1, 1)
-text = "✨ Usar Poder / Magia (Gasta PM)"
+text = "Usar Poder / Magia (Gasta PM)"
 
 [node name="RightLog" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate" unique_id=2043962233]
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="LblLogTitulo" type="Label" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/RightLog" unique_id=1235917354]
 layout_mode = 2
-text = "📜 Histórico de Combate"
+text = "Histórico de Combate"
 
 [node name="TxtLogCombate" type="RichTextLabel" parent="MarginContainer/VBoxMain/MainContent/ViewCombate/VBox/HSplitCombate/RightLog" unique_id=1174753397]
 layout_mode = 2
@@ -929,7 +935,7 @@ placeholder_text = "Digite uma fórmula (ex: 2d20kh1+5, 1d20+7, 4d6dl1)"
 [node name="BtnRolar" type="Button" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox/InputBox" unique_id=384894996]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
-text = "🎲 Rolar"
+text = "Rolar"
 
 [node name="DisplayBox" type="VBoxContainer" parent="MarginContainer/VBoxMain/MainContent/ViewDados/VBox" unique_id=1764602478]
 layout_mode = 2
@@ -1044,7 +1050,7 @@ horizontal_alignment = 1
 visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "★ 20 NATURAL! CRÍTICO! ★"
+text = "20 NATURAL! CRÍTICO!"
 horizontal_alignment = 1
 
 [node name="LblPopupFormula" type="Label" parent="PopupPericia/Center/PanelDialog/Margin/VBox" unique_id=731099329]

@@ -81,12 +81,28 @@
   - [x] Bandeja de rolagem de dados em **Pop-up sobreposto** consumindo `session.Roll(...)` com renderizador visual de dados poliedrais (`DiceVisualCanvas`: `CanvasItem._Draw()`, `Tween` e `CpuParticles2D`) e destaque animado para Críticos Naturais e Falhas Críticas.
 
 ---
-## 6. Opcional / Última Etapa: Grid Tático Espacial e Mapa de Batalha
-> **Nota:** Funcionalidade opcional a ser desenvolvida somente após todas as etapas anteriores do sistema de fichas, regras em C# e HUD de combate estarem completas.
+## 6. Opcional / Última Etapa: Grid Tático Espacial e Mapa de Batalha (Concluído)
+> **Nota:** Todas as etapas anteriores do sistema de fichas, regras em C#, HUD de combate e agora o Tabletop Tático estão 100% implementadas e testadas.
 
-- [ ] *(Opcional)* **Estrutura de Dados Espacial no Core C++ (`QuadTree` / Matriz Esparsa)**:
-  - [ ] Representação agnóstica de coordenadas e células do mapa tático no Core C++.
-- [ ] *(Opcional)* **Movimentação e Alcance no Grid (Godot + Core)**:
-  - [ ] Renderização de tabuleiro em grid quadrado ou hexagonal no Godot, validação de deslocamento por ação de movimento e cálculo de distância para ataques corpo a corpo e à distância.
-- [ ] *(Opcional)* **Linha de Visão (*Line of Sight*) e *Fog of War***:
-  - [ ] Cálculo de obstáculos/cobertura e visibilidade de tokens no mapa tático.
+- [x] **Estrutura de Dados Espacial no Core C++ (`QuadTree` / Matriz Esparsa)**:
+  - [x] `SpatialTypes.hpp`, `SparseGrid<T>` e `QuadTree<T>` manuais de AED1 integrados em `TacticalMap` + `Encounter` + C ABI (`ottrpg_map_*`) com auditoria `AddressSanitizer` (`0 memory leaks`).
+- [x] **Movimentação e Alcance no Grid (Godot + Core)**:
+  - [x] Tabuleiro interativo em grid quadrado no Godot (`TacticalGridCanvas.cs`, zoom/pan, imagem de fundo opcional, animações `Tween` e Editor de Cenários), cálculo oficial de diagonais alternadas `1-2-1-2` (`1 quadrado = 1,5m`), pathfinding Dijkstra/A\* e validação de alcance corpo a corpo / à distância em `Tormenta20TacticalRules.cs`.
+- [x] **Linha de Visão (*Line of Sight*) e *Fog of War***:
+  - [x] Raycasting Supercover em grid avaliando paredes bloqueadas, Cobertura Leve (`+5 Defesa`), Flanqueamento (`+2 Ataque`) e Névoa de Guerra (*Unseen / Explored / Visible*) com alternância entre Visão do Mestre e Visão dos Heróis e persistência em JSON.
+
+---
+
+## 7. Polimento de UX, Bestiário e Experiência de Mesa (Concluído)
+- [x] **Ficha Própria de Inimigos / Ameaças e Bestiário (`Tormenta20Bestiary.cs`)**:
+  - [x] Aba dedicada **Inimigos** na `MainUi` com 8 presets canônicos de Tormenta20 JdA (`Goblin Salteador` ND 1/4 até `Dragão Jovem` ND 7), criação de ameaça em branco, Defesa Fixa, Redução de Dano (RD), bônus de ataque (`AttackBonus` sem somar Força duplicada), overrides de perícias (Iniciativa, Percepção, Fortitude, Reflexos, Vontade) e persistência dedicada em `saves/enemies.json`.
+  - [x] Suporte a seleção de múltiplos clones de inimigos no Combate (`x1..x8`) com snapshot inline (`InlineSheet`) preservado ao salvar e restaurar encontros.
+- [x] **Limpeza Visual e Redimensionamento de Interface**:
+  - [x] Remoção completa de emojis dos textos visíveis da UI Godot e remoção de comentários técnicos de programador visíveis para o jogador.
+  - [x] Partições redimensionáveis na Ficha de Personagens (`HSplitFicha` entre coluna esquerda/direita e `VSplitLeftCol` entre lista de personagens e atributos/recursos).
+- [x] **Aba de Ajuda e Câmera Suave no Tabletop (`TacticalGridCanvas.cs`)**:
+  - [x] Aba **Ajuda** integrada ao painel lateral do Mapa Tático com atalhos de câmera, cliques de movimentação/ataque, leitura de marcadores e regras táticas (`1q = 1,5m`, `1-2-1-2`, cobertura e flanqueamento).
+  - [x] Câmera tática refinada com zoom interpolado exponencialmente centrado no cursor (`ZoomBy` / `TargetZoom`), pan fluido (botão direito/meio ou `Espaço + arrastar`) e clique esquerdo inteligente sem deslocar tokens acidentalmente ao arrastar.
+- [x] **Empacotamento e Validação Multiplataforma (Linux & Windows)**:
+  - [x] Geração e validação de releases em `make release-all` (Linux `x86_64` + Windows `win-x64` com `openttrpg_core.dll` estática e fallback offline `.NET 8.0.32`), passando `make test`, `make test_asan` (`0` leaks) e `--self-test` (**8/8** etapas).
+

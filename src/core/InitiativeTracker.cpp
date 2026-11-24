@@ -220,6 +220,7 @@ bool InitiativeTracker::start() {
 
 EntityId InitiativeTracker::next() {
     if (!started_ || activeCount() == 0) {
+        currentRemoved_ = true;
         return kInvalidId;
     }
 
@@ -249,6 +250,25 @@ void InitiativeTracker::reset() {
     currentIndex_ = 0;
     round_ = 0;
     turnCount_ = 0;
+}
+
+bool InitiativeTracker::restoreState(int round, EntityId currentTurnId) {
+    if (entries_.is_empty()) {
+        return false;
+    }
+    std::size_t idx = indexOf(currentTurnId);
+    if (idx == npos) {
+        idx = entries_.find_index([](const InitiativeEntry& e) { return e.active; });
+        if (idx == npos) {
+            idx = 0;
+        }
+    }
+    started_ = true;
+    currentRemoved_ = false;
+    currentIndex_ = idx;
+    round_ = round > 0 ? round : 1;
+    turnCount_ = 1;
+    return true;
 }
 
 bool InitiativeTracker::isStarted() const { return started_; }

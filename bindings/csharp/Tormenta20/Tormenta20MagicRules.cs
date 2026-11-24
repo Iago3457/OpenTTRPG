@@ -28,6 +28,16 @@ namespace OpenTTRPG.Tormenta20
             return limit;
         }
 
+        public static int GetArcanoDeBatalhaBonus(CharacterSheetData sheet, EncounterSession? session = null, int combatantId = 0)
+        {
+            if (sheet == null) return 0;
+            bool hasArcanoBatalha = sheet.UnlockedTreeKeys.Contains("arcano_de_batalha") ||
+                (session != null && combatantId > 0 && session.HasAbility(combatantId, "arcano_de_batalha"));
+            if (!hasArcanoBatalha) return 0;
+
+            return Math.Max(0, sheet.GetAttribute(sheet.SpellKeyAttribute).Modifier);
+        }
+
         public static T20ActionResult EnqueueSkillWithEnhancements(
             EncounterSession session,
             int combatantId,
@@ -63,8 +73,9 @@ namespace OpenTTRPG.Tormenta20
 
             int totalPm = skill.PmCost + enhancementPm;
             int pmLimit = GetPmSpendLimit(sheet, session, combatantId);
+            int effectiveLimit = Math.Max(pmLimit, skill.PmCost);
 
-            if (totalPm > pmLimit)
+            if (totalPm > effectiveLimit)
             {
                 bool hasUnlimited = sheet.UnlockedTreeKeys.Contains("magia_ilimitada") ||
                                     session.HasAbility(combatantId, "magia_ilimitada");
@@ -76,7 +87,7 @@ namespace OpenTTRPG.Tormenta20
                     Success = false,
                     RequiredType = skill.Action,
                     Message = $"[LIMITE DE PM EXCEDIDO] '{skill.Name}' com +{enhancementPm} PM de aprimoramento custaria {totalPm} PM, " +
-                              $"mas o limite de gasto de {sheet.Name} é {pmLimit} PM por uso{hint}."
+                              $"mas o limite de gasto de {sheet.Name} é {effectiveLimit} PM por uso{hint}."
                 };
             }
 
@@ -87,9 +98,13 @@ namespace OpenTTRPG.Tormenta20
             var res = Tormenta20ActionRules.EnqueueTurnAction(
                 session, combatantId, skill.Action, displayActionName, targetId, totalPm);
 
-            if (res.Success && enhancementPm > 0)
+            if (res.Success)
             {
-                session.RecordActionInTurn(combatantId, skill.Name);
+                sheet.CurrentPm = session.GetResource(combatantId, Tormenta20ActionRules.ManaResourceId).Current;
+                if (enhancementPm > 0)
+                {
+                    session.RecordActionInTurn(combatantId, skill.Name);
+                }
             }
 
             return res;

@@ -99,6 +99,7 @@ release: $(SHARED_TARGET)
 	@cp -f $(SHARED_TARGET) $(BIN_DIR)/release/linux-x64/libopenttrpg_core.so
 	@cp -f $(SHARED_TARGET) $(BIN_DIR)/release/linux-x64/data_OpenTTRPG_linuxbsd_x86_64/libopenttrpg_core.so
 	@if [ -f saves/characters.json ]; then cp -f saves/characters.json $(BIN_DIR)/release/linux-x64/saves/characters.json; fi
+	@if [ -f saves/enemies.json ]; then cp -f saves/enemies.json $(BIN_DIR)/release/linux-x64/saves/enemies.json; fi
 	@set -e; \
 	[ -w "$$HOME" ] || export HOME=/tmp; \
 	[ -w "$$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/tmp; \
@@ -138,6 +139,7 @@ release-windows:
 		echo "Aviso: 'x86_64-w64-mingw32-g++' (mingw-w64-gcc) não instalado. No Windows execute 'build_windows.bat' ou no Linux instale 'mingw-w64-gcc'."; \
 	fi
 	@if [ -f saves/characters.json ]; then cp -f saves/characters.json $(BIN_DIR)/release/win-x64/saves/characters.json; fi
+	@if [ -f saves/enemies.json ]; then cp -f saves/enemies.json $(BIN_DIR)/release/win-x64/saves/enemies.json; fi
 	@set -e; \
 	[ -w "$$HOME" ] || export HOME=/tmp; \
 	[ -w "$$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/tmp; \

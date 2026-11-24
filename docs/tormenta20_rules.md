@@ -1,113 +1,162 @@
 # Regras de Tormenta20 (Edição Jogo do Ano) no OpenTTRPG
 
-Este documento descreve como as regras canônicas de **Tormenta20 — Edição Jogo do Ano (T20 JdA)** foram modeladas no pacote modular C# (`bindings/csharp/Tormenta20/`) e integradas ao motor agnóstico em C++17 do **OpenTTRPG**.
+Este documento especifica como as regras canônicas de **Tormenta20 — Edição Jogo do Ano (T20 JdA)** estão implementadas nos **13 módulos** do pacote [`bindings/csharp/Tormenta20/`](../bindings/csharp/Tormenta20/) e conectadas ao Core agnóstico em C++17.
 
 ---
 
 ## 1. Atributos Canônicos (Modificador Direto) — `Tormenta20Models.cs`
 
-Diferente do d20 clássico (que utilizava valores de 10 a 18 e calculava `(valor - 10) / 2`), o **Tormenta20 Jogo do Ano** adota o padrão moderno onde **o valor do atributo é o próprio modificador**:
+O **Tormenta20 Jogo do Ano** utiliza **modificadores diretos** como valor de atributo:
 
-* **Força (FOR):** Dano corpo a corpo, testes de Luta/Atletismo e capacidade de carga (Espaços).
-* **Destreza (DES):** Defesa, Iniciativa, testes de Pontaria, Acrobacia, Furtividade e Reflexos.
-* **Constituição (CON):** Pontos de Vida (PV), testes de Fortitude e resistência a Sangramento.
-* **Inteligência (INT):** Perícias treinadas, magias arcanas e testes de Misticismo/Conhecimento.
-* **Sabedoria (SAB):** Percepção, Vontade, Cura e conjuração divina.
-* **Carisma (CAR):** Interação social (Enganação, Diplomacia, Intimidação) e conjuração de Feiticeiros/Bardos.
+* **Força (FOR):** Ataques e dano corpo a corpo, Luta/Atletismo e capacidade de carga (Espaços).
+* **Destreza (DES):** Defesa, Iniciativa, Pontaria, Acrobacia, Furtividade, Ladinagem e Reflexos.
+* **Constituição (CON):** Pontos de Vida (PV), Fortitude e testes de estabilização ao sangrar/morrer.
+* **Inteligência (INT):** Perícias treinadas, magias arcanas e testes de Misticismo/Conhecimento/Guerra.
+* **Sabedoria (SAB):** Percepção, Vontade, Cura, Sobrevivência e conjuração divina.
+* **Carisma (CAR):** Perícias sociais (Enganação, Diplomacia, Intimidação, Atuação) e conjuração de Feiticeiros/Bardos.
 
-> **Compatibilidade Automática:** `Attribute.NormalizeT20Value(int)` aceita tanto o modificador direto de T20 JdA (`+3`, `-1`) quanto converte valores legados $\ge 10$ automaticamente (`16` $\rightarrow$ `+3`).
+> **Compatibilidade:** `Attribute.NormalizeT20Value(int)` aceita modificadores diretos (`+3`, `-1`) e converte automaticamente valores legados $\ge 10$ (`16` $\rightarrow$ `+3`).
 
 ---
 
-## 2. Recursos Vitais e Defesa — `Tormenta20Models.cs`
+## 2. Criação Automática de Personagens — `Tormenta20CharacterCreationRules.cs` & `Tormenta20Enums.cs`
 
-### Pontos de Vida (PV) e Pontos de Mana (PM)
-* **PV (`T20Resource.Health = 0`):** Suporta PV Atual, PV Máximo e **PV Temporário** (sempre absorvido primeiro pelo `ResourcePool` do Core C++ antes de descontar o PV real).
-* **PM (`T20Resource.Mana = 1`):** Recurso central usado por todas as classes de Arton para poderes de combate (*Ataque Especial*, *Fúria*, *Golpe Divino*) e magias.
+O sistema oferece seletores canônicos completos para criação de fichas de Heróis sem necessidade de calcular fórmulas manualmente:
+* **Catálogo em Enums:** **14 Classes** (`T20Class`), **17 Raças** (`T20Race`), **34 Origens** (`T20Origin`) e **20 Deuses Maiores + Não Devoto** (`T20Deity`).
+* **Cálculo Automático de PV e PM (`CalculateMaxHp` / `CalculateMaxPm`):**
+  - PV no 1º nível = `PV iniciais da Classe + CON (+ bônus racial quando aplicável)`.
+  - PV por nível adicional = `PV por nível da Classe + CON (+ bônus racial por nível, ex.: Golem/Qareen conforme template)`.
+  - PM = `PM por nível da Classe * Nível (+ atributo-chave no 1º nível conforme classe conjuradora)`.
+  - `RecalculateSheetResources(sheet, refillCurrent)` atualiza PV máximo, PM máximo e deslocamento de forma instantânea ao trocar classe, raça, nível ou atributo na ficha.
+
+---
+
+## 3. Recursos Vitais, Defesa e Estado de Morrendo — `Tormenta20Models.cs` & `Tormenta20ConditionRules.cs`
+
+### Pontos de Vida (PV), PV Temporário e PM
+* **PV (`T20Resource.Health = 0`):** Suporta PV atual, máximo e **PV Temporário** (sempre absorvido primeiro pelo `ResourcePool` do Core C++).
+* **PM (`T20Resource.Mana = 1`):** Consumido por poderes de classe, habilidades na ficha e magias com aprimoramentos.
+
+### Estado de Morrendo (T20 JdA) e Limiar de Morte
+Implementado em `CharacterSheetData.GetDeathThreshold()` e integrado a `Tormenta20ConditionRules` / `Tormenta20CombatRules`:
+* **Para Heróis (`IsEnemy == false`):**
+  - Ao chegar a `0 PV` ou menos, mas acima do limiar negativo de morte $-\max(10, \lfloor \text{PV Máx} / 2 \rfloor)$, o herói fica **Inconsciente** e **Sangrando** (`IsBleedingOut = true`, estado `T20HealthState.Morrendo`).
+  - No início de cada turno enquanto estiver sangrando (`ProcessStartOfTurnBleeding`), rola **Constituição (`1d20 + CON >= CD 15`)**: se passar, estabiliza (`Estabilizado`); se falhar, sofre `1d6` de dano de PV.
+  - Ao atingir ou ultrapassar o limiar negativo $-\max(10, \lfloor \text{PV Máx} / 2 \rfloor)$, o estado passa a **Morto** (`T20HealthState.Morto`).
+* **Para Inimigos / Ameaças (`IsEnemy == true`):**
+  - Seguem a regra padrão de ameaças: `GetDeathThreshold() == 0` (ao chegar a `0 PV` são imediatamente derrotados/abatidos em combate).
 
 ### Defesa (DEF)
 Calculada dinamicamente em `CharacterSheetData.GetDefense(session, combatantId)`:
-$$\text{Defesa} = 10 + (\text{DES} + \Delta\text{DES}_{\text{Condições}}) + \text{Armadura} + \text{Escudo} + \text{Poderes} + \text{Outros} + \Delta\text{DEF}_{\text{Condições}}$$
-* **Bônus Automáticos de Poderes na Árvore:**
-  - *Estilo de Uma Arma* (`estilo_uma_arma`): `+2` na Defesa se estiver empunhando 1 arma e nenhum escudo.
-  - *Encouraçado* (`encouracado`): `+2` na Defesa se estiver vestindo armadura pesada (`DefenseBonus >= 5`).
+* **Heróis:** $\text{Defesa} = 10 + (\text{DES} + \Delta\text{DES}_{\text{Cond}}) + \text{Armadura} + \text{Escudo} + \text{Poderes} + \text{Outros} + \Delta\text{DEF}_{\text{Cond}}$.
+  - *Estilo de Uma Arma* (`estilo_uma_arma`): `+2` na Defesa empunhando arma em uma mão sem escudo.
+  - *Encouraçado* (`encouracado`): `+2` na Defesa vestindo armadura pesada (`DefenseBonus >= 5`).
+* **Ameaças com Defesa Fixa (`FixedDefense > 0`):** Utilizam `FixedDefense + modificadores de condições + bônus misc`, respeitando os blocos oficiais do bestiário de T20.
 
 ---
 
-## 3. Capacidade de Carga por Espaços e Sobrecarga — `Tormenta20Models.cs`
+## 4. Ficha Própria de Inimigos & Bestiário — `Tormenta20Bestiary.cs`
 
-Tormenta20 Jogo do Ano utiliza o sistema de **Espaços**:
-* **Limite Normal de Carga:**
-  $$\text{Espaços Máximos} = \begin{cases} 10 + (2 \times \text{FOR}), & \text{se } \text{FOR} \ge 0 \\ 10 + \text{FOR}, & \text{se } \text{FOR} < 0 \end{cases}$$
-* **Sobrecarga (`IsOverburdened()`):** Se os itens equipados/carregados ultrapassarem o limite normal (até o dobro), o personagem fica **Sobrecarregado**, sofrendo penalidade de armadura adicional de `–5` e redução de deslocamento.
+Para representar ameaças fiéis ao livro básico sem precisar simular níveis de classe de jogador, o sistema conta com **8 presets canônicos** (`Tormenta20Bestiary.Presets`) + criação livre (`CreateBlankEnemy`):
+
+| Chave do Preset | Nome da Ameaça | ND (CR) | Tipo / Papel |
+| :--- | :--- | :---: | :--- |
+| `goblin_salteador` | Goblin Salteador | `1/4` | Humanoide / Lacaio |
+| `bandido_estradas` | Bandido de Estradas | `1/2` | Humanoide / Lacaio |
+| `esqueleto_guerreiro` | Esqueleto Guerreiro | `1/2` | Morto-vivo / Lacaio |
+| `lobo_atroz` | Lobo Atroz | `1` | Animal / Solo |
+| `orc_berserker` | Orc Berserker | `2` | Humanoide / Bruto |
+| `cultista_aharadak` | Cultista da Tormenta | `3` | Humanoide / Especial |
+| `golem_ferro` | Golem de Ferro | `5` | Construto / Chefe |
+| `dragao_jovem` | Dragão Jovem | `7` | Monstro / Chefe |
+
+* **Campos dedicados de Ameaça:** `ChallengeRating`, `CreatureType`, `CreatureSize`, `ThreatRole`, `FixedDefense`, `DamageReduction` (RD automática no `EncounterSession`), `SpeedMetersOverride`, `ThreatAttackBonus`, e overrides específicos de perícias-chave (`InitiativeOverride`, `PerceptionOverride`, `FortitudeOverride`, `ReflexOverride`, `WillOverride`).
+* **Ataque de Ameaças (`AttackBonus`):** Armas naturais/ataques de ameaças com `AttackBonus > 0` (ex.: `Mordida +14`) utilizam diretamente esse modificador total de ataque sem somar Força duplicada nem exigir treinamento em Luta/Pontaria.
 
 ---
 
-## 4. Sistema de Perícias — `Tormenta20SkillRules.cs`
+## 5. Capacidade de Carga por Espaços e Sobrecarga — `Tormenta20Models.cs`
 
-Implementa as **30 perícias oficiais** de Tormenta20 Jogo do Ano:
-$$\text{Modificador de Perícia} = \left\lfloor \frac{\text{Nível}}{2} \right\rfloor + \text{Atributo} + \text{Bônus de Treinamento} + \text{Penalidade de Armadura} + \text{Condições} + \text{Outros}$$
+$$\text{Espaços Máximos} = \begin{cases} 10 + (2 \times \text{FOR}), & \text{se } \text{FOR} \ge 0 \\ 10 + \text{FOR}, & \text{se } \text{FOR} < 0 \end{cases}$$
 
-* **Bônus de Treinamento por Patamar:**
-  - Níveis 1 a 6 (*Iniciante*): `+2`
-  - Níveis 7 a 14 (*Veterano*): `+4`
-  - Níveis 15 a 20 (*Campeão*): `+6`
-* **Perícias Somente Treinadas (`TrainedOnly`):** *Adestramento*, *Conhecimento*, *Cura*, *Guerra*, *Jogatina*, *Ladinagem*, *Misticismo*, *Nobreza*, *Ofício*, *Pilotagem* e *Religião* não podem ser roladas sem treinamento.
+Se a soma de espaços carregados ultrapassar o limite normal (`IsOverburdened()`), o personagem sofre penalidade de armadura adicional de `–5` e redução de deslocamento.
+
+---
+
+## 6. Sistema de Perícias — `Tormenta20SkillRules.cs`
+
+Implementa as **29 perícias oficiais** de Tormenta20 Jogo do Ano:
+$$\text{Modificador de Perícia} = \left\lfloor \frac{\text{Nível}}{2} \right\rfloor + \text{Atributo} + \text{Bônus de Treino} + \text{Penalidade de Armadura} + \text{Condições} + \text{Outros}$$
+
+* **Bônus de Treinamento:** Níveis 1–6 (`+2`), Níveis 7–14 (`+4`), Níveis 15–20 (`+6`).
+* **Somente Treinadas (`TrainedOnly`):** Exigem treinamento prévio para rolar (como *Adestramento*, *Conhecimento*, *Cura*, *Guerra*, *Jogatina*, *Ladinagem*, *Misticismo*, *Nobreza*, *Ofício*, *Pilotagem* e *Religião*).
 * **Penalidade de Armadura (`ArmorPenaltyApplies`):** Aplicada automaticamente em *Acrobacia*, *Furtividade* e *Ladinagem*.
+* **Overrides de Ameaças:** Inimigos podem definir valores fixos diretos para *Iniciativa*, *Percepção*, *Fortitude*, *Reflexos* e *Vontade*.
 
 ---
 
-## 5. Economia de Ações e Fila de Prioridades — `Tormenta20ActionRules.cs`
+## 7. Economia de Ações e Árvore de Poderes — `Tormenta20ActionRules.cs` & `Tormenta20AbilityTreeRules.cs`
 
-A cada turno, o combatente recebe:
-* **1 Ação Padrão** (`Prioridade 30`)
-* **1 Ação de Movimento** (`Prioridade 20`)
-* **Ações Livres Ilimitadas** (`Prioridade 10`)
-* **Reações Ilimitadas** (`Prioridade 5`)
+### Economia de Ações (`Tormenta20ActionRules`)
+Por turno: **Reações ilimitadas (`5`)**, **Ações Livres ilimitadas (`10`)**, **1 Ação de Movimento (`20`)**, **1 Ação Padrão (`30`)** e **Ação Completa (`40`)** (consome `Padrão + Movimento`).
+* **Ordem de Execução (`PriorityQueue`):** $\text{Reação} \rightarrow \text{Livre} \rightarrow \text{Movimento} \rightarrow \text{Padrão} \rightarrow \text{Completa}$.
+* **Fallback Unidirecional:** A **Ação Padrão** pode ser gasta para executar uma segunda **Ação de Movimento**, nunca o inverso.
 
-### Regras Oficiais Modeladas:
-1. **Ordem de Execução na Fila de Prioridades (`PriorityQueue`):** Independentemente da ordem em que o jogador clique nas ações durante o planejamento do turno, elas são ordenadas e executadas como:
-   $$\text{1º Ações Livres} \longrightarrow \text{2º Ações de Movimento} \longrightarrow \text{3º Ações Padrão} \longrightarrow \text{4º Ações Completas}$$
-2. **Conversão Unidirecional (`Padrão -> Movimento`):** Se o personagem já gastou sua Ação de Movimento, pode realizar uma segunda Ação de Movimento consumindo sua Ação Padrão. O inverso é proibido.
-3. **Ação Completa:** Consome simultaneamente `1 Ação Padrão + 1 Ação de Movimento` via `EnqueueCompoundAction`.
-
----
-
-## 6. Resolução de Ataques, Críticos e RD — `Tormenta20CombatRules.cs`
-
-O método `Tormenta20CombatRules.ResolveWeaponAttack(...)` automatiza a regra oficial de combate:
-1. **Teste de Ataque:** Rola `1d20 + Luta` (corpo a corpo) ou `1d20 + Pontaria` (à distância) contra a `Defesa` do alvo.
-2. **Acerto e Falha Automáticos:** `20 natural` sempre acerta; `1 natural` sempre erra.
-3. **Margem de Ameaça e Multiplicador de Crítico:**
-   - Interpreta o perfil da arma (`"19/x2"`, `"18/x3"`, `"20/x2"`).
-   - Se o atacante possuir o poder *Ataque Preciso*, recebe `+2` na margem de ameaça (ex.: `19` vira `17`) e `+1` no multiplicador de crítico (ex.: `x2` vira `x3`).
-   - **Regra de Multiplicação Crítica de T20:** No acerto crítico, **apenas os dados base da arma são multiplicados** (ex.: uma espada longa `1d8` com crítico `x2` rola `2d8`), enquanto o modificador de Força e bônus numéricos fixos (como `+5` de *Ataque Poderoso*) são somados apenas uma vez!
-4. **Pipeline de Dano:** O total é enviado a `session.DealDamage(targetId, totalDamage, damageType)`, descontando Redução de Dano (RD), aplicando vulnerabilidades/resistências e absorvendo em PV Temporário antes de reduzir o PV atual.
+### Árvore N-ária de Poderes (`Tormenta20AbilityTreeRules`)
+Estrutura **5 ramos / 17 poderes canônicos**:
+1. **Esgrima (DES):** *Estilo de Uma Arma* $\rightarrow$ *Ataque Preciso* $\rightarrow$ *Finta Aprimorada*.
+2. **Brutalidade (FOR):** *Ataque Poderoso* $\rightarrow$ *Trespassar* ($\rightarrow$ *Golpe Demolidor*) e *Quebrar Aprimorado*.
+3. **Bastião (CON):** *Encouraçado* $\rightarrow$ *Inexpugnável* $\rightarrow$ *Fanático*.
+4. **Arcanismo (INT/CAR):** *Magia Ilimitada* $\rightarrow$ *Surto Arcano* ($\rightarrow$ *Arcano de Batalha*) e *Magia Acelerada*.
+5. **Arquearia (DES):** *Estilo de Disparo* $\rightarrow$ *Disparo Preciso* $\rightarrow$ *Disparo Rápido*.
 
 ---
 
-## 7. Condições Canônicas — `Tormenta20ConditionRules.cs`
+## 8. Combate, Críticos e RD — `Tormenta20CombatRules.cs`
 
-Contém 13 condições oficiais de Tormenta20 integradas ao `ConditionTracker` do Core:
-* **Abalado** (`–2` em perícias; se receber **Abalado** novamente, escala automaticamente para **Apavorado** com `–5`!).
-* **Caído** (`–5` em ataques corpo a corpo e `–5` na Defesa contra ataques corpo a corpo).
-* **Cego** (`–5` na Defesa e `–2` em testes de Força e Destreza).
+`Tormenta20CombatRules.ResolveWeaponAttack(...)` executa:
+1. **Teste de Ataque (`1d20 + Luta/Pontaria` ou `AttackBonus` de ameaça):** `20` natural sempre acerta; `1` natural sempre erra.
+2. **Contexto Tático (`TacticalAttackContext`):** Soma `+2` no ataque ao flanquear o alvo e aplica `+5` na Defesa do alvo se houver Cobertura Leve na Linha de Visão.
+3. **Crítico Exclusivo nos Dados Base:** Interpreta `"19/x2"`, `"18/x3"`, `"20/x2"` (com bônus de *Ataque Preciso* quando aplicável). No crítico, **apenas os dados base da arma são multiplicados**, somando modificador de atributo e bônus fixos uma única vez.
+4. **Pipeline de Dano no Core:** Envia o total a `session.DealDamage(...)`, descontando RD configurada, vulnerabilidades/resistências e PV Temporário, e atualizando o Estado de Morrendo.
+
+---
+
+## 9. Catálogo de 14 Condições Canônicas — `Tormenta20ConditionRules.cs`
+
+Integra **14 condições oficiais** ao `ConditionTracker` e aos stats do Core:
+* **Abalado** (`–2` em perícias; receber *Abalado* novamente escala para **Apavorado** com `–5`).
+* **Apavorado** (`–5` em perícias e restrição de aproximação).
+* **Caído** (`–5` em ataques corpo a corpo e `–5` na Defesa contra corpo a corpo).
+* **Cego** (Desprevenido e Lento; `–5` em perícias de Força/Destreza).
 * **Desprevenido** (`–5` na Defesa e em Reflexos).
-* **Enjoado** (só pode realizar 1 Ação Padrão **ou** 1 de Movimento por turno, nunca ambas).
-* **Fraco** (`–2` em Força, Destreza e Constituição).
-* **Imóvel** / **Lento** (impede deslocamento ou bloqueia Ações Completas).
+* **Enjoado** (apenas 1 Ação Padrão **ou** 1 de Movimento por turno).
+* **Fraco** (`–2` em FOR, DES e CON).
+* **Imóvel** (deslocamento `0m`).
+* **Inconsciente** (Indefeso `–10` na Defesa e sem ações).
+* **Lento** (deslocamento pela metade e bloqueio de Ações Completas).
 * **Ofuscado** (`–2` em ataques e Percepção).
-* **Sangrando** (no início do turno exige teste de Constituição `CD 15`; se falhar, perde `1d6` PV; se passar, remove a condição).
-* **Sobrecarregado** (`–5` de penalidade de armadura e redução de deslocamento).
+* **Sangrando** (`CON CD 15` no início do turno para estancar ou perde `1d6` PV).
+* **Sobrecarregado** (`–5` de penalidade de armadura e `-3m` de deslocamento).
 * **Vulnerável** (`–2` na Defesa).
 
 ---
 
-## 8. Magias, Limite de PM e Descanso — `Tormenta20MagicRules.cs` & `Tormenta20RestRules.cs`
+## 10. Magias e Descanso — `Tormenta20MagicRules.cs` & `Tormenta20RestRules.cs`
 
-* **Limite de Gasto de PM (`Tormenta20MagicRules`):** O custo total de uma magia (custo base + aprimoramentos escolhidos) não pode ultrapassar o **Nível do Personagem** (ou $\text{Nível} + \text{Atributo-Chave}$ se possuir o poder *Magia Ilimitada*).
+* **Limite de PM (`Tormenta20MagicRules`):** O custo total de uma magia (base + aprimoramentos cumulativos) não pode exceder o **Nível do Personagem** (ou $\text{Nível} + \text{Atributo-Chave}$ com *Magia Ilimitada*).
 * **Recuperação por Descanso (`Tormenta20RestRules`):**
-  - **Ruim:** recupera $\max(1, \lfloor \text{Nível}/2 \rfloor)$ PV e PM.
-  - **Normal:** recupera $1 \times \text{Nível}$ PV e PM.
-  - **Confortável:** recupera $2 \times \text{Nível}$ PV e PM.
-  - **Luxuoso:** recupera $3 \times \text{Nível}$ PV e PM.
+  - *Ruim*: $\max(1, \lfloor \text{Nível}/2 \rfloor)$ PV e PM.
+  - *Normal*: $1 \times \text{Nível}$ PV e PM.
+  - *Confortável*: $2 \times \text{Nível}$ PV e PM.
+  - *Luxuoso*: $3 \times \text{Nível}$ PV e PM.
+
+---
+
+## 11. Regras Táticas em Grade — `Tormenta20TacticalRules.cs`
+
+* **Escala e Diagonais (`1q = 1,5m`):** Medição oficial **1-2-1-2** (primeira diagonal custa 1 quadrado, segunda custa 2 quadrados).
+* **Deslocamentos e Custos:** Deslocamento racial padrão (ex.: `9m` = 6q; Anão `6m` = 4q; Sílfide/velocidades customizadas via `SpeedMetersOverride`), ajuste automático de *Sobrecarregado* (`-3m`), *Lento* (metade), *Imóvel* (`0m`) e poder *Fanático* (anula penalidade de armadura pesada). Terreno Difícil custa `2x`; **Correr** dobra o alcance com Ação Completa.
+* **Pathfinding & Alcance:** Dijkstra (`ComputeReachableCells`) e A\* (`FindShortestPath`) respeitando paredes e ocupação de combatentes.
+* **Linha de Visão, Cobertura e Flanqueamento:** Raycasting Supercover avaliando bloqueio de visão (`BlocksSight`), **Cobertura Leve (`+5 Defesa`)** e **Flanqueamento (`+2 Ataque` quando há aliado posicionado em célula oposta/adjacente ao alvo)**.
+* **Arenas & Névoa de Guerra:** **4 presets de arena** em `T20ArenaPreset` + rastreamento *Unseen / Explored / Visible* por visão aliada em `TacticalFogTracker`.

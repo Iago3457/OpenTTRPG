@@ -36,6 +36,9 @@ namespace OpenTTRPG.Tests
             TestDyingAndDeathThresholdMechanics();
             TestAutoCalculatedStatsByClassAndRace();
             TestCharacterPersistence();
+            TestTacticalGridMovementRangeCoverAndFog();
+            TestEnemyThreatSheetsAndBestiary();
+            TestAuditMechanicFixes();
             Console.WriteLine("\n>>> TODOS OS TESTES AUTOMATIZADOS DE C# (TORMENTA20) PASSARAM COM ÊXITO! <<<");
         }
 
@@ -49,18 +52,19 @@ namespace OpenTTRPG.Tests
                 Constitution = 3
             };
 
-            // Compatibilidade com valor clássico (>=10): 16 converte para +3
-            var attrTest = new Tormenta20.Attribute(AttributeType.Strength, 16);
-            AssertEqual(3, attrTest.Modifier, "Conversão de atributo clássico 16 -> +3");
+            // Atributo direto (+12) e helper de conversão clássica (16 -> +3)
+            var attrDirect = new Tormenta20.Attribute(AttributeType.Strength, 12);
+            AssertEqual(12, attrDirect.Modifier, "Atributo direto +12 deve ser preservado sem conversão forçada");
+            AssertEqual(3, Tormenta20.Attribute.NormalizeT20Value(16), "Conversão explícita de atributo clássico 16 -> +3");
 
             // Capacidade de carga: 10 + 2*FOR(3) = 16 espaços
             AssertEqual(16, hero.GetMaxSlots(), "Limite de espaços com FOR +3");
             AssertEqual(12, hero.GetDefense(), "Defesa base (10 + DES 2)");
 
-            // Equipa Couraça (+5 Defesa, -4 Penalidade, 2 espaços) e Escudo Pesado (+2 Defesa, -2 Penalidade, 2 espaços)
-            hero.Inventory.Add(new CharacterItem("Couraça", "Armadura", ItemType.Armor, 2, "", "20/x2", 5, -4, 500, true));
+            // Equipa Couraça (+5 Defesa, -4 Penalidade, Armadura Pesada: não soma DES!) e Escudo Pesado (+2 Defesa, -2 Penalidade)
+            hero.Inventory.Add(new CharacterItem("Couraça", "Armadura pesada", ItemType.Armor, 2, "", "20/x2", 5, -4, 500, true, isHeavyArmor: true));
             hero.Inventory.Add(new CharacterItem("Escudo Pesado", "Escudo", ItemType.Shield, 2, "", "20/x2", 2, -2, 15, true));
-            AssertEqual(19, hero.GetDefense(), "Defesa com Couraça (+5) e Escudo (+2)");
+            AssertEqual(17, hero.GetDefense(), "Defesa com Armadura Pesada Couraça (+5, sem DES) e Escudo (+2)");
             AssertEqual(-6, hero.GetTotalArmorPenalty(), "Penalidade de armadura (-4 -2 = -6)");
             AssertTrue(!hero.IsOverburdened(), "Não deve estar sobrecarregado com 4/16 espaços");
 
@@ -257,10 +261,13 @@ namespace OpenTTRPG.Tests
             Tormenta20ConditionRules.ApplyCondition(session, id, T20Condition.Vulneravel);
             AssertEqual(baseDef - 7, hero.GetDefense(session, id), "Desprevenido (-5) + Vulnerável (-2) = -7 na Defesa");
 
-            // 3. Imóvel bloqueia ações de Movimento
+            // 3. Imóvel zera deslocamento tático mas mantém slot Movimento (sacar arma etc.); Enjoado limita a 1 ação por turno
             Tormenta20ConditionRules.ApplyCondition(session, id, T20Condition.Imovel);
-            var movAttempt = Tormenta20ActionRules.EnqueueTurnAction(session, id, T20ActionType.Movement, "Correr");
-            AssertTrue(!movAttempt.Success, "Imóvel deve bloquear Ação de Movimento");
+            var drawMove = Tormenta20ActionRules.EnqueueTurnAction(session, id, T20ActionType.Movement, "Sacar Arma");
+            AssertTrue(drawMove.Success, "Imóvel não deve impedir ação de Movimento não-locomotora (ex: sacar arma)");
+            Tormenta20ConditionRules.RemoveCondition(session, id, T20Condition.Imovel);
+            Tormenta20ConditionRules.ApplyCondition(session, id, T20Condition.Enjoado);
+            AssertEqual(0, session.GetActionSlot(id, (int)T20ActionType.Movement).Current, "Enjoado reduz economia a 1 ação (gastou Movimento, resta apenas 0)");
 
             // 4. Sangrando no início do turno
             Tormenta20ConditionRules.ApplyCondition(session, id, T20Condition.Sangrando);
@@ -488,6 +495,322 @@ namespace OpenTTRPG.Tests
 
             Console.WriteLine("SUCESSO!");
         }
+
+        private static void TestTacticalGridMovementRangeCoverAndFog()
+        {
+            Console.Write("[TEST C#] Tabletop / Grid Tático T20 (1-2-1-2, Pathfinding, Alcance, Cobertura, Flanqueamento, Fog, JSON)... ");
+
+            // 1. Métrica oficial de diagonais T20 (1-2-1-2)
+            AssertEqual(3, Tormenta20TacticalRules.ComputeT20DistanceSquares(new GridPos(0, 0), new GridPos(2, 2)), "Diagonal 2x2 deve custar 3 quadrados (4,5m)");
+            AssertEqual(6, Tormenta20TacticalRules.ComputeT20DistanceSquares(new GridPos(0, 0), new GridPos(4, 4)), "Diagonal 4x4 deve custar 6 quadrados (9m)");
+
+            // 2. Deslocamento racial + sobrecarga + armadura pesada + Imóvel
+            using var session = new EncounterSession(777);
+            var humano = new CharacterSheetData(1, "Valeros", "Guerreiro", "Humano", "Soldado", "Valkaria", 2, 28, 6);
+            var anao   = new CharacterSheetData(2, "Borin", "Guerreiro", "Anão", "Soldado", "Khalmyr", 2, 32, 6);
+            var elfo   = new CharacterSheetData(3, "Lyra", "Caçador", "Elfo", "Eremita", "Allihanna", 2, 20, 8);
+            AssertEqual(6, Tormenta20TacticalRules.GetMovementSpeedSquares(humano), "Humano deslocamento 9m (6q)");
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(anao), "Anão deslocamento 6m (4q)");
+            AssertEqual(8, Tormenta20TacticalRules.GetMovementSpeedSquares(elfo), "Elfo deslocamento 12m (8q)");
+
+            humano.Inventory.Add(new CharacterItem("Armadura Completa", "Pesada", ItemType.Armor, 5, "", "20/x2", 10, -5, 3000, true));
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(humano), "Armadura pesada reduz deslocamento Humano de 6q para 4q");
+            humano.Inventory.Clear();
+
+            // Equipamento para combate
+            var espada = new CharacterItem("Espada Longa", "Corpo a corpo", ItemType.Weapon, 1, "1d8", "19/x2", 0, 0, 15, true, T20DamageType.Slashing, isRanged: false);
+            var arco   = new CharacterItem("Arco Longo", "Disparo médio", ItemType.Weapon, 2, "1d8", "20/x3", 0, 0, 100, true, T20DamageType.Piercing, isRanged: true);
+            humano.Inventory.Add(espada);
+            humano.Strength = 2;
+            elfo.Inventory.Add(arco);
+            elfo.Dexterity = 4;
+            elfo.TrainedSkills.Add("Pontaria");
+
+            var goblin = new CharacterSheetData(4, "Goblin Arqueiro", "Ladino", "Goblin", "Bandido", "Tenebra", 1, 14, 4);
+            var ally   = new CharacterSheetData(5, "Khor", "Bárbaro", "Humano", "Selvagem", "Megalokk", 2, 30, 6);
+
+            int heroId   = session.AddCombatant(humano.Name, 2, humano.MaxHp, team: 1);
+            int allyId   = session.AddCombatant(ally.Name, 1, ally.MaxHp, team: 1);
+            int elfId    = session.AddCombatant(elfo.Name, 4, elfo.MaxHp, team: 1);
+            int goblinId = session.AddCombatant(goblin.Name, 1, goblin.MaxHp, team: 2);
+
+            foreach (int cid in new[] { heroId, allyId, elfId, goblinId })
+            {
+                session.AddResource(cid, 0, "PV", 30, -15);
+                Tormenta20ActionRules.ConfigureTurnActions(session, cid, 1, 1, -1);
+                session.SetInitiative(cid, 20 - cid);
+            }
+            session.StartCombat();
+
+            // Imóvel bloqueia deslocamento
+            Tormenta20ConditionRules.ApplyCondition(session, allyId, T20Condition.Imovel);
+            AssertEqual(0, Tormenta20TacticalRules.GetMovementSpeedSquares(ally, session, allyId), "Imóvel deve reduzir deslocamento a 0");
+            Tormenta20ConditionRules.RemoveCondition(session, allyId, T20Condition.Imovel);
+
+            // 3. Configurar mapa com parede, mureta (cobertura leve) e terreno difícil
+            session.ConfigureMap(12, 10);
+            session.SetMapCell(4, 3, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+            session.SetMapCell(4, 4, MapTerrainType.Blocked, coverLevel: 2, blocksSight: true);
+            session.SetMapCell(3, 4, MapTerrainType.Difficult, coverLevel: 0, blocksSight: false);
+            session.SetMapCell(5, 6, MapTerrainType.Difficult, coverLevel: 1, blocksSight: false); // mureta
+
+            session.PlaceToken(heroId,   2, 4);
+            session.PlaceToken(goblinId, 6, 4);
+            session.PlaceToken(elfId,    1, 6);
+            session.PlaceToken(allyId,   7, 4);
+
+            // Pathfinding desviando de parede (4,4) e pagando custo dobrado em (3,4)
+            var path = Tormenta20TacticalRules.FindShortestPath(session, heroId, new GridPos(5, 4), maxCostSquares: 10, out int pathCost);
+            AssertTrue(path.Count > 2 && pathCost > 3, "Pathfinding deve desviar da parede em (4,4)");
+            foreach (var step in path)
+            {
+                AssertTrue(step != new GridPos(4, 4), "Caminho não pode atravessar parede bloqueada");
+            }
+
+            var reachable = Tormenta20TacticalRules.ComputeReachableCells(session, heroId, 6);
+            AssertTrue(reachable.ContainsKey(new GridPos(3, 4)), "Célula de terreno difícil adjacente deve ser alcançável");
+            AssertEqual(2, reachable[new GridPos(3, 4)], "Entrar em terreno difícil deve custar 2 quadrados");
+
+            // 4. Ataque corpo a corpo fora de alcance deve falhar SEM gastar Ação Padrão
+            var atkFar = Tormenta20CombatRules.ResolveWeaponAttack(session, humano, heroId, goblin, goblinId, espada);
+            AssertTrue(!atkFar.ActionSucceeded, "Ataque corpo a corpo à distância 4q deve ser bloqueado");
+            AssertEqual(1, session.GetActionSlot(heroId, (int)T20ActionType.Standard).Current, "Ataque bloqueado fora de alcance não deve consumir Ação Padrão");
+
+            // 5. Ataque com parede sólida no meio (goblin 6,4 <- hero 2,4 tem parede em 4,4) bloqueia LoS
+            var atkBehindWall = Tormenta20CombatRules.ResolveWeaponAttack(session, elfo, elfId, goblin, goblinId, arco);
+            AssertTrue(atkBehindWall.ActionSucceeded, "Deve haver LoS de (1,6) até (6,4) sem parede no segmento, mas vamos testar mureta e parede dedicada");
+
+            // Colocar parede exatamente entre (1,6) e (6,6)? Vamos colocar mureta em (3,6) -> já temos (5,6) com CoverLevel=1 entre (1,6) e (7,6)!
+            // Vamos testar parede direta entre (2,4) e (6,4) com arco:
+            var atkWallLoS = Tormenta20CombatRules.ResolveWeaponAttack(session, humano, heroId, goblin, goblinId, arco);
+            AssertTrue(!atkWallLoS.ActionSucceeded && atkWallLoS.BlockingReasonOrMessage(atkWallLoS.Message), "Parede em (4,4) deve bloquear linha de visão de (2,4) até (6,4)");
+
+            // Testar Cobertura Leve (+5 Def): mover goblin para (7,6)? Melhor verificar EvaluateAttackContext com (5,6) CoverLevel=1 entre elfId(1,6) e goblin em (6,6)
+            session.MoveToken(goblinId, 6, 6);
+            var ctxCover = Tormenta20TacticalRules.EvaluateAttackContext(session, elfId, goblinId, arco);
+            AssertTrue(ctxCover.HasLineOfSight && ctxCover.InRange, "Deve ter LoS e alcance até (6,6)");
+            AssertEqual(T20CoverLevel.Light, ctxCover.Cover, "Mureta em (5,6) deve conceder Cobertura Leve");
+            AssertEqual(5, ctxCover.DefenseCoverBonus, "Cobertura Leve em T20 concede +5 na Defesa");
+
+            // 6. ExecuteTacticalMove consome Ação de Movimento e atualiza posição no C++
+            session.MoveToken(goblinId, 6, 4);
+            var moveRes = Tormenta20TacticalRules.ExecuteTacticalMove(session, humano, heroId, new GridPos(5, 4));
+            AssertTrue(moveRes.Success, $"Movimento até (5,4) deve ter sucesso: {moveRes.Message}");
+            AssertEqual(0, session.GetActionSlot(heroId, (int)T20ActionType.Movement).Current, "Movimento deve gastar Ação de Movimento");
+            AssertTrue(session.TryGetToken(heroId, out var movedTok) && movedTok.X == 5 && movedTok.Y == 4, "Posição no C++ atualizada");
+
+            // 7. Flanqueamento (+2 Ataque): hero(5,4) e ally(7,4) em lados opostos de goblin(6,4); adjacentes não-opostos NÃO flanqueiam
+            var ctxFlank = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada);
+            AssertTrue(ctxFlank.IsFlanking, "Herói(5,4) e Aliado(7,4) devem flanquear Goblin(6,4)");
+            AssertEqual(2, ctxFlank.FlankingAttackBonus, "Flanqueamento deve conceder +2 no ataque");
+            session.MoveToken(allyId, 6, 3);
+            var ctxNonOpposite = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada);
+            AssertTrue(!ctxNonOpposite.IsFlanking, "Adjacentes não-opostos (5,4) e (6,3) não devem flanquear");
+            session.MoveToken(allyId, 7, 4);
+
+            // 8. Névoa de Guerra (Unseen -> Visible -> Explored)
+            var fog = new TacticalFogTracker();
+            Tormenta20TacticalRules.UpdateFogOfWar(session, fog, alliedTeam: 1, visionRangeSquares: 5);
+            // (0,0) não é visível inicialmente para elfId(1,6)/hero(5,4)/ally(7,4)
+            AssertEqual(FogState.Unseen, fog.GetState(new GridPos(11, 9)), "Célula distante deve iniciar Unseen");
+            AssertEqual(FogState.Visible, fog.GetState(new GridPos(5, 5)), "Célula próxima deve estar Visible");
+            // Mover todos os aliados para longe de (5,5)? Ao re-atualizar depois de afastar hero para (0,0) e remover os outros:
+            session.RemoveToken(elfId);
+            session.RemoveToken(allyId);
+            session.MoveToken(heroId, 0, 9);
+            Tormenta20TacticalRules.UpdateFogOfWar(session, fog, alliedTeam: 1, visionRangeSquares: 3);
+            AssertEqual(FogState.Explored, fog.GetState(new GridPos(5, 5)), "Célula vista anteriormente deve virar Explored ao sair do alcance");
+
+            // 9. Persistência JSON de EncounterSnapshotDto com TacticalMapSnapshotDto
+            var mapSnap = new EncounterSnapshotDto
+            {
+                CombatStarted = true,
+                Round = 2,
+                CurrentTurnSheetId = 1,
+                TacticalMap = new TacticalMapSnapshotDto
+                {
+                    Width = 12,
+                    Height = 10,
+                    FogOfWarEnabled = true,
+                    Cells = new() { new MapCellDto { X = 4, Y = 4, Terrain = 2, CoverLevel = 2, BlocksSight = true } },
+                    TokenPositions = new() { [1] = new GridPosDto { X = 0, Y = 9 } },
+                    ExploredCells = new() { new GridPosDto { X = 5, Y = 5 } }
+                }
+            };
+            string mapSnapPath = "saves/test_tactical_snapshot.json";
+            Tormenta20Persistence.SaveEncounterSnapshotToFile(mapSnap, mapSnapPath);
+            var loadedMapSnap = Tormenta20Persistence.LoadEncounterSnapshotFromFile(mapSnapPath);
+            AssertTrue(loadedMapSnap?.TacticalMap != null, "TacticalMap deve persistir em JSON");
+            AssertEqual(12, loadedMapSnap!.TacticalMap!.Width, "Largura do mapa restaurada");
+            AssertTrue(loadedMapSnap.TacticalMap.FogOfWarEnabled, "Flag de Névoa restaurada");
+            AssertEqual(9, loadedMapSnap.TacticalMap.TokenPositions[1].Y, "Posição do token restaurada");
+            AssertEqual(1, loadedMapSnap.TacticalMap.ExploredCells.Count, "Células exploradas restauradas");
+            if (System.IO.File.Exists(mapSnapPath)) System.IO.File.Delete(mapSnapPath);
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestEnemyThreatSheetsAndBestiary()
+        {
+            Console.Write("[TEST C#] Ficha de Inimigos / Ameaças (Bestiário T20, RD, Defesa Fixa, Ataque e Persistência)... ");
+            using var session = new EncounterSession(123);
+
+            var golem = Tormenta20Bestiary.CreateFromPreset(1001, "golem_ferro");
+            AssertTrue(golem.IsEnemy, "Golem deve ser marcado como IsEnemy");
+            AssertEqual("5", golem.ChallengeRating, "ND do Golem de Ferro");
+            AssertEqual(22, golem.GetDefense(), "Defesa fixa da ameaça");
+            AssertEqual(10, golem.DamageReduction, "RD natural da ameaça");
+            AssertEqual(0, golem.GetDeathThreshold(), "Ameaça cai derrotada em 0 PV");
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(golem), "Deslocamento 6m = 4q");
+
+            AssertTrue(Tormenta20SkillRules.TryCalculateSkillModifier(golem, "Fortitude", out int fortMod, out _), "Fortitude calculada");
+            AssertEqual(13, fortMod, "Fortitude override da ameaça");
+            AssertTrue(Tormenta20SkillRules.TryCalculateSkillModifier(golem, "Iniciativa", out int iniMod, out _), "Iniciativa calculada");
+            AssertEqual(1, iniMod, "Iniciativa override da ameaça");
+            AssertTrue(Tormenta20SkillRules.TryCalculateSkillModifier(golem, "Percepção", out int percMod, out _), "Percepção calculada");
+            AssertEqual(4, percMod, "Percepção override da ameaça");
+
+            var heroi = new CharacterSheetData(1, "Valeros", "Guerreiro", "Humano", "Soldado", "Valkaria", 5, 60, 10)
+            {
+                Strength = 4,
+                Dexterity = 2
+            };
+            heroi.TrainedSkills.Add("Luta");
+
+            int heroId = session.AddCombatant(heroi.Name, 2, heroi.MaxHp, team: 1);
+            int golemId = session.AddCombatant(golem.Name, iniMod, golem.MaxHp, team: 2);
+            session.AddResource(heroId, 0, "Vida", heroi.MaxHp, heroi.GetDeathThreshold());
+            session.AddResource(golemId, 0, "Vida", golem.MaxHp, golem.GetDeathThreshold());
+            session.SetGlobalDamageReduction(golemId, golem.DamageReduction);
+            Tormenta20ActionRules.ConfigureTurnActions(session, heroId, 1, 1, -1);
+            Tormenta20ActionRules.ConfigureTurnActions(session, golemId, 1, 1, -1);
+            session.RollInitiative(1, 20);
+            session.StartCombat();
+
+            // Golem ataca com Pancada de Ferro (+17, 2d8+10) sem duplicar FOR (+6) no dano
+            var atkRes = Tormenta20CombatRules.ResolveWeaponAttack(session, golem, golemId, heroi, heroId, golem.Inventory[0]);
+            AssertTrue(atkRes.ActionSucceeded, "Ataque da ameaça deve executar");
+            AssertEqual(17, atkRes.AttackModifier, "Bônus de ataque da ameaça deve usar AttackBonus (17)");
+            if (atkRes.Hit)
+            {
+                AssertTrue(atkRes.DamageExpression.EndsWith("+10"), $"Dano da ameaça não deve somar FOR duplicada ({atkRes.DamageExpression})");
+            }
+
+            // Redução de Dano (RD 10) aplicada ao dano recebido pelo Golem
+            DamageResult rdTest = session.DealDamage(golemId, 15, (int)T20DamageType.Slashing);
+            AssertEqual(10, rdTest.ReducedBy, "RD 10 da ameaça deve absorver 10 de dano");
+            AssertEqual(5, rdTest.FinalAmount, "Dano líquido após RD 10 deve ser 5");
+
+            // Clonagem independente e persistência JSON
+            var golemClone = golem.CloneForCombat(9001, "Golem de Ferro #2");
+            AssertEqual(9001, golemClone.Id, "ID do clone");
+            AssertEqual("Golem de Ferro #2", golemClone.Name, "Nome do clone");
+            AssertEqual(22, golemClone.FixedDefense, "Defesa fixa clonada");
+
+            string enemyPath = "saves/test_enemies_roundtrip.json";
+            Tormenta20Persistence.SaveCharactersToFile(new[] { golem, golemClone }, enemyPath);
+            var reloaded = Tormenta20Persistence.LoadCharactersFromFile(enemyPath);
+            AssertEqual(2, reloaded.Count, "Ameaças carregadas do JSON");
+            AssertTrue(reloaded[0].IsEnemy, "Flag IsEnemy preservada");
+            AssertEqual(10, reloaded[0].DamageReduction, "RD preservada no JSON");
+            AssertEqual(17, reloaded[0].Inventory[0].AttackBonus, "AttackBonus da arma preservado no JSON");
+            if (System.IO.File.Exists(enemyPath)) System.IO.File.Delete(enemyPath);
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestAuditMechanicFixes()
+        {
+            Console.Write("[TEST C#] Regressões de auditoria T20 (PM base Lv1, Estabilização, Disparo, Arcano, Raças, Caído)... ");
+
+            using var session = new EncounterSession(404);
+            Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
+
+            // 1. Nível 1 permite pagar custo base da própria habilidade (Fúria = 2 PM) e sincroniza sheet.CurrentPm
+            var barb = new CharacterSheetData(10, "Grim", "Bárbaro", "Humano", "Gladiador", "", 1, 24, 6)
+            {
+                Constitution = 2
+            };
+            int barbId = session.AddCombatant(barb.Name, 1, barb.MaxHp, 1);
+            session.AddResource(barbId, Tormenta20ActionRules.ManaResourceId, "PM", barb.MaxPm, 0);
+            Tormenta20ActionRules.ConfigureTurnActions(session, barbId);
+
+            var furia = new CharacterSkill("Fúria", "Fúria de combate", 2, T20ActionType.Free);
+            var furiaRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, barbId, barb, furia, enhancementPm: 0);
+            AssertTrue(furiaRes.Success, $"Nível 1 deve permitir custo base de 2 PM: {furiaRes.Message}");
+            AssertEqual(4, barb.CurrentPm, "sheet.CurrentPm deve refletir gasto de 2 PM");
+
+            // 2. Cura em Morrendo com PV negativo estabiliza sangramento
+            barb.CurrentHp = -4;
+            barb.IsBleedingOut = true;
+            barb.HealHp(2);
+            AssertEqual(-2, barb.CurrentHp, "Cura em PV negativo deve somar corretamente");
+            AssertTrue(!barb.IsBleedingOut, "Qualquer cura em estado Morrendo deve estabilizar o sangramento");
+
+            // 3. Persistência preserva IsBleedingOut e IsHeavyArmor
+            barb.IsBleedingOut = true;
+            barb.Inventory.Add(new CharacterItem("Armadura Completa", "Pesada", ItemType.Armor, 5, "", "", 10, -5, 3000, true, isHeavyArmor: true));
+            var reloaded = Tormenta20Persistence.FromDto(Tormenta20Persistence.ToDto(barb));
+            AssertTrue(reloaded.IsBleedingOut, "FromDto deve preservar IsBleedingOut");
+            AssertTrue(reloaded.IsWearingHeavyArmor(), "FromDto deve preservar IsHeavyArmor");
+
+            // 4. Inexpugnável (+2 saves) exige armadura pesada
+            barb.UnlockedTreeKeys.Add("inexpugnavel");
+            Tormenta20SkillRules.TryCalculateSkillModifier(barb, "Fortitude", out int fortWithHeavy, out _);
+            barb.Inventory.Clear();
+            Tormenta20SkillRules.TryCalculateSkillModifier(barb, "Fortitude", out int fortWithoutHeavy, out _);
+            AssertEqual(2, fortWithHeavy - fortWithoutHeavy, "Inexpugnável só deve conceder +2 com Armadura Pesada equipada");
+
+            // 5. Magia Ilimitada aceita SAB + Arcano de Batalha usa atributo-chave + Estilo de Disparo soma DES no dano
+            var arcanist = new CharacterSheetData(11, "Syl", "Arcanista", "Elfo", "", "", 4, 20, 28)
+            {
+                Dexterity = 4,
+                Wisdom = 3,
+                SpellKeyAttribute = AttributeType.Wisdom
+            };
+            arcanist.UnlockedTreeKeys.Add("magia_ilimitada");
+            arcanist.UnlockedTreeKeys.Add("arcano_de_batalha");
+            arcanist.UnlockedTreeKeys.Add("estilo_disparo");
+            arcanist.Inventory.Add(new CharacterItem("Arco Longo", "À distância", ItemType.Weapon, 2, "1d8", "20/x3", 0, 0, 100, true, T20DamageType.Piercing, isRanged: true));
+            int arcId = session.AddCombatant(arcanist.Name, 2, arcanist.MaxHp, 1);
+            int targetId = session.AddCombatant("Alvo", 0, 30, 2);
+            session.AddResource(arcId, Tormenta20ActionRules.ManaResourceId, "PM", arcanist.MaxPm, 0);
+            Tormenta20ActionRules.ConfigureTurnActions(session, arcId);
+            Tormenta20ActionRules.ConfigureTurnActions(session, targetId);
+            Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(session, arcId, arcanist.Level, 0, 4, 0, 0, 3, 0);
+
+            AssertTrue(session.TryLearnAbility(arcId, "magia_ilimitada", out _), "Magia Ilimitada deve aceitar SAB >= 1");
+            AssertEqual(3, Tormenta20MagicRules.GetArcanoDeBatalhaBonus(arcanist), "Arcano de Batalha deve somar atributo-chave (SAB 3)");
+
+            var targetSheet = new CharacterSheetData(99, "Alvo", "Guerreiro", "Humano", "", "", 1, 30, 0) { FixedDefense = 10 };
+            var rangedRes = Tormenta20CombatRules.ResolveWeaponAttack(session, arcanist, arcId, targetSheet, targetId, arcanist.Inventory[0], extraAttackBonus: 25);
+            AssertTrue(rangedRes.ActionSucceeded && rangedRes.Hit, "Ataque à distância deve acertar");
+            AssertTrue(rangedRes.DamageExpression.EndsWith("+4"), $"Estilo de Disparo deve somar DES (+4) ao dano ({rangedRes.DamageExpression})");
+
+            // 6. IsEnemy protegido no RecalculateSheetResources + Trog PM + deslocamento Goblin/Golem/Caído
+            var enemy = new CharacterSheetData(12, "Goblin Boss", "Bárbaro", "Goblin", "", "", 3, 99, 5) { IsEnemy = true };
+            Tormenta20CharacterCreationRules.RecalculateSheetResources(enemy, refillCurrent: true);
+            AssertEqual(99, enemy.MaxHp, "RecalculateSheetResources não deve sobrescrever PV de ameaças (IsEnemy)");
+
+            var trog = new CharacterSheetData(13, "Trog", "Guerreiro", "Trog", "", "", 1, 20, 3);
+            Tormenta20CharacterCreationRules.RecalculateSheetResources(trog, refillCurrent: true);
+            AssertEqual(3, trog.MaxPm, "Trog não deve receber PM racial extra");
+
+            var goblinSpd = new CharacterSheetData(14, "Goblin", "Ladino", "Goblin", "", "", 1, 10, 4);
+            AssertEqual(6, Tormenta20TacticalRules.GetMovementSpeedSquares(goblinSpd), "Goblin tem 9m (6q)");
+
+            var golemSpd = new CharacterSheetData(15, "Golem", "Guerreiro", "Golem", "", "", 1, 20, 3);
+            golemSpd.Inventory.Add(new CharacterItem("Armadura Completa", "Pesada", ItemType.Armor, 5, "", "", 10, -5, 3000, true, isHeavyArmor: true));
+            AssertEqual(4, Tormenta20TacticalRules.GetMovementSpeedSquares(golemSpd), "Golem mantém 6m (4q) mesmo de armadura pesada");
+
+            Tormenta20ConditionRules.ApplyCondition(session, arcId, T20Condition.Caido);
+            AssertEqual(1, Tormenta20TacticalRules.GetMovementSpeedSquares(arcanist, session, arcId), "Caído limita deslocamento a 1,5m (1 quadrado)");
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static bool BlockingReasonOrMessage(this T20AttackResolutionResult r, string msg) =>
+            msg.Contains("linha de visão", StringComparison.OrdinalIgnoreCase);
     }
 }
 

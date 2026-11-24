@@ -137,8 +137,15 @@ bool RequirementTree::evaluateSubtree(const ds::TreeNode<RequirementNode>* node,
             return !anyChildTrue;
         }
         case RequirementKind::AtLeastN: {
-            if (req.threshold <= 0 || node->children.is_empty()) {
+            if (req.threshold <= 0) {
                 return true;
+            }
+            if (node->children.is_empty()) {
+                if (outUnmetReasons != nullptr) {
+                    outUnmetReasons->push_back("Requer pelo menos " + std::to_string(req.threshold) +
+                                               " pré-requisitos atendidos (atual: 0)");
+                }
+                return false;
             }
             int passedCount = 0;
             ds::LinkedList<std::string> failedReasons;

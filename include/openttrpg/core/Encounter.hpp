@@ -4,6 +4,7 @@
 #include "openttrpg/core/Dice.hpp"
 #include "openttrpg/core/InitiativeTracker.hpp"
 #include "openttrpg/core/RequirementTree.hpp"
+#include "openttrpg/core/TacticalMap.hpp"
 #include "openttrpg/data_structures/LinkedList.hpp"
 #include <cstdint>
 #include <string>
@@ -57,6 +58,7 @@ public:
     bool startCombat();
     EntityId nextTurn();   // Encerra o turno atual e passa para o próximo ativo
     void endCombat();      // Limpa a ordem (os combatentes permanecem)
+    bool restoreCombatState(int round, EntityId currentTurnId); // Restaura rodada e turno sem ticks
     [[nodiscard]] bool isCombatActive() const;
     [[nodiscard]] EntityId currentTurn() const;
     [[nodiscard]] int round() const;
@@ -105,11 +107,16 @@ public:
 
     DiceEngine& dice();
 
+    // ----- Mapa Tático Espacial (Grid) -----
+    TacticalMap& map();
+    [[nodiscard]] const TacticalMap& map() const;
+
 private:
     ds::LinkedList<Combatant> combatants_;
     InitiativeTracker tracker_;
     DiceEngine dice_;
     AbilityTree abilityTree_;
+    TacticalMap map_;
     EntityId nextId_ = 1;
     bool autoSkipDefeated_ = true;
     bool autoTickConditions_ = true;

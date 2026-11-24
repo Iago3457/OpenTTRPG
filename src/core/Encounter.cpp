@@ -21,11 +21,20 @@ Combatant& Encounter::require(EntityId id) {
 }
 
 int Encounter::rollInitiativeFor(Combatant& combatant, int diceCount, int diceSides) {
+    const bool wasCurrent = tracker_.isStarted() && tracker_.current() == combatant.id();
+    if (wasCurrent) {
+        combatant.actions().clearQueue(false);
+        combatant.clearTurnActionHistory();
+        tickConditions(combatant, TickTiming::TurnEnd);
+    }
     const DiceRollResult roll = dice_.roll(diceCount, diceSides, combatant.initiativeModifier());
     if (tracker_.contains(combatant.id())) {
         tracker_.setInitiative(combatant.id(), roll.total, combatant.initiativeModifier());
     } else {
         tracker_.add(combatant.id(), roll.total, combatant.initiativeModifier());
+    }
+    if (autoSkipDefeated_) {
+        tracker_.setActive(combatant.id(), !combatant.isDefeated());
     }
     return roll.total;
 }
@@ -71,6 +80,7 @@ bool Encounter::removeCombatant(EntityId id) {
         return false;
     }
     tracker_.remove(id);
+    map_.removeToken(id);
     combatants_.remove_at(idx);
     return true;
 }
@@ -125,10 +135,22 @@ bool Encounter::setInitiative(EntityId id, int value) {
     if (c == nullptr) {
         return false;
     }
-    if (tracker_.contains(id)) {
-        return tracker_.setInitiative(id, value, c->initiativeModifier());
+    const bool wasCurrent = tracker_.isStarted() && tracker_.current() == id;
+    if (wasCurrent) {
+        c->actions().clearQueue(false);
+        c->clearTurnActionHistory();
+        tickConditions(*c, TickTiming::TurnEnd);
     }
-    return tracker_.add(id, value, c->initiativeModifier());
+    bool ok = false;
+    if (tracker_.contains(id)) {
+        ok = tracker_.setInitiative(id, value, c->initiativeModifier());
+    } else {
+        ok = tracker_.add(id, value, c->initiativeModifier());
+    }
+    if (ok && autoSkipDefeated_) {
+        tracker_.setActive(id, !c->isDefeated());
+    }
+    return ok;
 }
 
 bool Encounter::setInitiativeOrder(InitiativeOrder order) {
@@ -190,6 +212,12 @@ void Encounter::endCombat() {
     lastExpired_.clear();
 }
 
+bool Encounter::restoreCombatState(int round, EntityId currentTurnId) {
+    lastExpired_.clear();
+    syncActiveFlags();
+    return tracker_.restoreState(round, currentTurnId);
+}
+
 bool Encounter::isCombatActive() const { return tracker_.isStarted(); }
 EntityId Encounter::currentTurn() const { return tracker_.current(); }
 int Encounter::round() const { return tracker_.round(); }
@@ -230,11 +258,21 @@ int Encounter::heal(EntityId target, int amount) {
 }
 
 bool Encounter::spendResource(EntityId target, ResourceId resource, int amount) {
-    return require(target).spend(resource, amount);
+    Combatant& c = require(target);
+    const bool ok = c.spend(resource, amount);
+    if (ok && autoSkipDefeated_) {
+        tracker_.setActive(target, !c.isDefeated());
+    }
+    return ok;
 }
 
 int Encounter::restoreResource(EntityId target, ResourceId resource, int amount) {
-    return require(target).restore(resource, amount);
+    Combatant& c = require(target);
+    const int restored = c.restore(resource, amount);
+    if (autoSkipDefeated_) {
+        tracker_.setActive(target, !c.isDefeated());
+    }
+    return restored;
 }
 
 bool Encounter::addCondition(EntityId target, const Condition& condition, StackPolicy policy) {
@@ -275,7 +313,9 @@ bool Encounter::popNextAction(EntityId actor, QueuedAction& outAction) {
     if (!c.actions().popNextAction(outAction)) {
         return false;
     }
-    c.recordActionInTurn(outAction.name);
+    if (!outAction.name.empty() && !c.hasUsedActionInTurn(outAction.name)) {
+        c.recordActionInTurn(outAction.name);
+    }
     return true;
 }
 
@@ -367,5 +407,7 @@ bool Encounter::autoSkipDefeated() const { return autoSkipDefeated_; }
 bool Encounter::autoTickConditions() const { return autoTickConditions_; }
 
 DiceEngine& Encounter::dice() { return dice_; }
+TacticalMap& Encounter::map() { return map_; }
+const TacticalMap& Encounter::map() const { return map_; }
 
 } // namespace openttrpg::core

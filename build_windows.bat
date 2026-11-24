@@ -19,6 +19,7 @@ g++ -std=c++17 -O2 -shared -Iinclude ^
     src/core/InitiativeTracker.cpp ^
     src/core/RequirementTree.cpp ^
     src/core/Resource.cpp ^
+    src/core/TacticalMap.cpp ^
     src/api/openttrpg_api.cpp ^
     -o bin\release\win-x64\openttrpg_core.dll -static -static-libgcc -static-libstdc++
 

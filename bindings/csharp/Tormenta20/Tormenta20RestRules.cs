@@ -49,9 +49,13 @@ namespace OpenTTRPG.Tormenta20
 
             int oldHp = sheet.CurrentHp;
             int oldPm = sheet.CurrentPm;
+            bool isDead = sheet.CurrentHp <= sheet.GetDeathThreshold();
 
             sheet.HealHp(rate);
-            sheet.RecoverPm(rate);
+            if (!isDead)
+            {
+                sheet.RecoverPm(rate);
+            }
             sheet.TempHp = 0;
 
             int hpRestored = sheet.CurrentHp - oldHp;
@@ -62,6 +66,7 @@ namespace OpenTTRPG.Tormenta20
                 session.SetResourceCurrent(combatantId, Tormenta20ActionRules.HealthResourceId, sheet.CurrentHp);
                 session.SetResourceTemp(combatantId, Tormenta20ActionRules.HealthResourceId, 0);
                 session.SetResourceCurrent(combatantId, Tormenta20ActionRules.ManaResourceId, sheet.CurrentPm);
+                Tormenta20ConditionRules.SyncDyingAndUnconsciousState(session, combatantId, sheet);
             }
 
             return new T20RestResult

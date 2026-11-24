@@ -90,6 +90,49 @@ namespace OpenTTRPG.Tormenta20
             if (attacker == null) throw new ArgumentNullException(nameof(attacker));
             if (defender == null) throw new ArgumentNullException(nameof(defender));
 
+            if (attacker.CurrentHp <= attacker.GetDeathThreshold() ||
+                session.HasCondition(attackerId, Tormenta20ConditionRules.UnconsciousKey))
+            {
+                return new T20AttackResolutionResult
+                {
+                    ActionSucceeded = false,
+                    Message = $"[BLOQUEADO] {attacker.Name} está inconsciente/incapacitado e não pode atacar."
+                };
+            }
+
+            if (defender.CurrentHp <= defender.GetDeathThreshold())
+            {
+                return new T20AttackResolutionResult
+                {
+                    ActionSucceeded = false,
+                    Message = $"[BLOQUEADO] {defender.Name} já está fora de combate/morto."
+                };
+            }
+
+            if (weapon == null)
+            {
+                foreach (var item in attacker.Inventory)
+                {
+                    if (item.Equipped && item.Type == ItemType.Weapon)
+                    {
+                        weapon = item;
+                        break;
+                    }
+                }
+                weapon ??= new CharacterItem("Ataque Desarmado", "Golpe desarmado", ItemType.Weapon, 0, "1d4", "20/x2", 0, 0, 0, true, T20DamageType.Bludgeoning, false);
+            }
+
+            TacticalAttackContext tacticalCtx = Tormenta20TacticalRules.EvaluateAttackContext(
+                session, attackerId, defenderId, weapon);
+            if (tacticalCtx.MapActive && (!tacticalCtx.HasLineOfSight || !tacticalCtx.InRange))
+            {
+                return new T20AttackResolutionResult
+                {
+                    ActionSucceeded = false,
+                    Message = tacticalCtx.BlockingReason
+                };
+            }
+
             if (consumeStandardAction)
             {
                 T20ActionResult actRes = Tormenta20ActionRules.EnqueueTurnAction(
@@ -108,44 +151,64 @@ namespace OpenTTRPG.Tormenta20
                 session.RecordActionInTurn(attackerId, "Agredir (Ataque Padrão)");
             }
 
-            if (weapon == null)
+            string attackSkill = weapon.IsRanged ? "Pontaria" : "Luta";
+            int skillMod;
+            if (attacker.IsEnemy && (weapon.AttackBonus != 0 || attacker.ThreatAttackBonus != 0))
             {
-                foreach (var item in attacker.Inventory)
+                int baseAtk = weapon.AttackBonus != 0 ? weapon.AttackBonus : attacker.ThreatAttackBonus;
+                int condAtkMod = 0;
+                if (Tormenta20SkillRules.TryGetSkillDefinition(attackSkill, out var atkDef))
                 {
-                    if (item.Equipped && item.Type == ItemType.Weapon)
-                    {
-                        weapon = item;
-                        break;
-                    }
+                    condAtkMod = Tormenta20ConditionRules.GetSkillModifier(session, attackerId, atkDef);
                 }
-                weapon ??= new CharacterItem("Ataque Desarmado", "Golpe desarmado", ItemType.Weapon, 0, "1d4", "20/x2", 0, 0, 0, true, T20DamageType.Bludgeoning, false);
+                skillMod = baseAtk + extraAttackBonus + condAtkMod;
+            }
+            else
+            {
+                Tormenta20SkillRules.TryCalculateSkillModifier(
+                    attacker, attackSkill, out skillMod, out _, session, attackerId, extraAttackBonus);
+                if (weapon.AttackBonus != 0)
+                {
+                    skillMod += weapon.AttackBonus;
+                }
             }
 
-            string attackSkill = weapon.IsRanged ? "Pontaria" : "Luta";
-            Tormenta20SkillRules.TryCalculateSkillModifier(
-                attacker, attackSkill, out int skillMod, out _, session, attackerId, extraAttackBonus);
-
-            int weaponCount = 0;
+            int meleeWeaponCount = 0;
+            int totalWeaponCount = 0;
             bool hasShield = false;
             foreach (var item in attacker.Inventory)
             {
                 if (!item.Equipped) continue;
-                if (item.Type == ItemType.Weapon) weaponCount++;
+                if (item.Type == ItemType.Weapon)
+                {
+                    totalWeaponCount++;
+                    if (!item.IsRanged) meleeWeaponCount++;
+                }
                 if (item.Type == ItemType.Shield) hasShield = true;
             }
 
             bool hasOneWeaponStyle = attacker.UnlockedTreeKeys.Contains("estilo_uma_arma") ||
                                      session.HasAbility(attackerId, "estilo_uma_arma");
-            if (hasOneWeaponStyle && weaponCount <= 1 && !hasShield && !weapon.IsRanged)
+            if (hasOneWeaponStyle && meleeWeaponCount == 1 && totalWeaponCount == 1 && !hasShield && !weapon.IsRanged)
             {
                 skillMod += 2;
             }
 
             int flatDamageBonus = extraDamageBonus;
-            if (!weapon.IsRanged)
+            if (!weapon.IsRanged && !attacker.IsEnemy)
             {
                 int strMod = attacker.Strength + Tormenta20ConditionRules.GetAttributeModifier(session, attackerId, AttributeType.Strength);
                 flatDamageBonus += strMod;
+            }
+            else if (weapon.IsRanged && !attacker.IsEnemy)
+            {
+                bool hasEstiloDisparo = attacker.UnlockedTreeKeys.Contains("estilo_disparo") ||
+                                        session.HasAbility(attackerId, "estilo_disparo");
+                if (hasEstiloDisparo)
+                {
+                    int dexMod = attacker.Dexterity + Tormenta20ConditionRules.GetAttributeModifier(session, attackerId, AttributeType.Dexterity);
+                    flatDamageBonus += dexMod;
+                }
             }
 
             bool hasPowerAttack = attacker.UnlockedTreeKeys.Contains("ataque_poderoso") ||
@@ -159,16 +222,38 @@ namespace OpenTTRPG.Tormenta20
             weapon.ParseCritical(out int threatRange, out int critMultiplier);
             bool hasPreciseAttack = attacker.UnlockedTreeKeys.Contains("ataque_preciso") ||
                                     session.HasAbility(attackerId, "ataque_preciso");
-            if (hasPreciseAttack && weaponCount <= 1 && !hasShield && !weapon.IsRanged)
+            if (hasPreciseAttack && meleeWeaponCount == 1 && totalWeaponCount == 1 && !hasShield && !weapon.IsRanged)
             {
                 threatRange = Math.Max(1, threatRange - 2);
                 critMultiplier += 1;
             }
 
-            int baseDef = defender.GetDefense(session, defenderId);
+            int baseDef = defender.GetDefense(session, defenderId) + tacticalCtx.DefenseCoverBonus;
             if (weapon.IsRanged && session.HasCondition(defenderId, Tormenta20ConditionRules.ProneKey))
             {
+                // Tormenta20ConditionRules.GetDefenseModifier já incluiu -5 de Caído (para corpo a corpo),
+                // então +10 transforma o modificador líquido contra ataque à distância em +5 na Defesa.
                 baseDef += 10;
+            }
+            skillMod += tacticalCtx.FlankingAttackBonus;
+
+            bool hasDisparoPreciso = attacker.UnlockedTreeKeys.Contains("disparo_preciso") ||
+                                     session.HasAbility(attackerId, "disparo_preciso");
+            bool engagedInMeleePenalty = false;
+            if (weapon.IsRanged && tacticalCtx.MapActive &&
+                Tormenta20TacticalRules.IsTargetEngagedInMelee(session, attackerId, defenderId) &&
+                !hasDisparoPreciso)
+            {
+                skillMod -= 5;
+                engagedInMeleePenalty = true;
+            }
+
+            string tacticalNotes = string.Empty;
+            if (tacticalCtx.MapActive)
+            {
+                if (tacticalCtx.IsFlanking) tacticalNotes += " [Flanqueando +2 Atk]";
+                if (tacticalCtx.Cover == T20CoverLevel.Light) tacticalNotes += " [Cobertura Leve +5 Def]";
+                if (engagedInMeleePenalty) tacticalNotes += " [Alvo em Corpo a Corpo -5 Atk]";
             }
 
             RollResult d20 = session.Roll("1d20");
@@ -195,7 +280,7 @@ namespace OpenTTRPG.Tormenta20
                     TargetDefense = baseDef,
                     ThreatRange = threatRange,
                     CriticalMultiplier = critMultiplier,
-                    Message = $"[ATAQUE ERROU] {attacker.Name} atacou {defender.Name} com {weapon.Name}: rolou {attackTotal} (1d20={natural}{FormatSigned(skillMod)}) vs Defesa {baseDef}."
+                    Message = $"[ATAQUE ERROU] {attacker.Name} atacou {defender.Name} com {weapon.Name}: rolou {attackTotal} (1d20={natural}{FormatSigned(skillMod)}) vs Defesa {baseDef}{tacticalNotes}."
                 };
             }
 
@@ -205,7 +290,12 @@ namespace OpenTTRPG.Tormenta20
 
             DamageResult dmgRes = session.DealDamage(defenderId, rawDamage, (int)weapon.DamageType);
             ResourceInfo defHp = session.GetResource(defenderId, Tormenta20ActionRules.HealthResourceId);
-            if (defHp.Minimum == 0 && dmgRes.Overflow > 0)
+            defender.TempHp = defHp.Temp;
+            if (defHp.Minimum == 0 && defender.CurrentHp <= 0)
+            {
+                defender.CurrentHp = Math.Max(defender.GetDeathThreshold(), defender.CurrentHp - dmgRes.Overflow);
+            }
+            else if (defHp.Minimum == 0 && dmgRes.Overflow > 0)
             {
                 defender.CurrentHp = Math.Max(defender.GetDeathThreshold(), defHp.Current - dmgRes.Overflow);
             }
@@ -235,8 +325,10 @@ namespace OpenTTRPG.Tormenta20
                 _ => ""
             };
             string downLabel = defender.CurrentHp <= defender.GetDeathThreshold()
-                ? $" >>> 💀 {defender.Name} MORREU ({defender.CurrentHp} PV)!"
-                : (defender.CurrentHp <= 0 ? $" >>> 🩸 {defender.Name} CAIU MORRENDO ({defender.CurrentHp} PV — Inconsciente e Sangrando)!" : "");
+                ? (defender.IsEnemy
+                    ? $" >>> [DERROTADO] {defender.Name} foi derrotado ({defender.CurrentHp} PV)!"
+                    : $" >>> [MORTE] {defender.Name} MORREU ({defender.CurrentHp} PV)!")
+                : (defender.CurrentHp <= 0 ? $" >>> [MORRENDO] {defender.Name} CAIU MORRENDO ({defender.CurrentHp} PV - Inconsciente e Sangrando)!" : "");
 
             return new T20AttackResolutionResult
             {
@@ -254,7 +346,7 @@ namespace OpenTTRPG.Tormenta20
                 DamageExpression = dmgExpr,
                 RawDamageRolled = rawDamage,
                 CoreDamageResult = dmgRes,
-                Message = $"[ATAQUE ACERTOU!] {attacker.Name} atingiu {defender.Name} com {weapon.Name} (Ataque {attackTotal} vs Defesa {baseDef}){critLabel}: " +
+                Message = $"[ATAQUE ACERTOU!] {attacker.Name} atingiu {defender.Name} com {weapon.Name} (Ataque {attackTotal} vs Defesa {baseDef}{tacticalNotes}){critLabel}: " +
                           $"Dano Bruto = {rawDamage}{rdLabel}{respLabel} -> Dano Final Aplicado = {dmgRes.FinalAmount} PV!{downLabel}"
             };
         }
