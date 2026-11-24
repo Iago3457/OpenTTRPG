@@ -71,6 +71,13 @@ Quando o usuário abre o executável final (`OpenTTRPG.x86_64` no Linux ou `Open
 
 ## 2. Como Gerar as Releases (Linux e Windows) da Próxima Vez
 
+### Pré-requisitos (Em um PC Novo / Clone Limpo do Git)
+1. **Compilador C++17**: `g++` (Linux) e `x86_64-w64-mingw32-g++` (`mingw-w64-gcc`) caso deseje cross-compilar a DLL de Windows no Linux;
+2. **SDK .NET** (`dotnet`);
+3. **Godot Engine 4.7 (.NET / Mono)** (`godot-mono` ou `godot` no `PATH`) **com os Export Templates (.NET) instalados**:
+   - No Godot Editor: **Editor → Gerenciar Modelos de Exportação → Baixar e Instalar** (instala os templates da mesma versão `.mono` em `~/.local/share/godot/export_templates/`);
+   - Sem os Export Templates instalados, os binários standalone `OpenTTRPG.x86_64` e `OpenTTRPG.exe` (que ficam fora do Git porque `bin/` está no `.gitignore`) não conseguem ser exportados pelo Godot, embora o `Makefile` gere o `.pck` e os scripts `OpenTTRPG.sh` / `OpenTTRPG_GodotUI.sh` como fallback.
+
 ### Opção A: Comando Único no Linux (Gera Linux + Windows + Executa Auto-Teste)
 
 A partir da raiz do repositório, basta executar:
@@ -84,15 +91,16 @@ O comando `make release-all` executa automaticamente:
    - Compila o Core C++17 em `bin/libopenttrpg_core.so`;
    - Copia `libopenttrpg_core.so` para `godot_ui/open-ttrpg/`, `bin/release/linux-x64/` e `bin/release/linux-x64/data_OpenTTRPG_linuxbsd_x86_64/`;
    - Copia as fichas padrão (`saves/characters.json` e `saves/enemies.json`, se existentes) para `bin/release/linux-x64/saves/`;
-   - Executa o Godot em modo headless (`--export-pack "Linux"`) para atualizar o pacote `OpenTTRPG.pck` e publicar todos os assemblies C# (`.NET 8`) atualizados em `bin/release/linux-x64/data_OpenTTRPG_linuxbsd_x86_64/`;
+   - Executa o Godot em modo headless (`--export-release "Linux"`, com fallback para `--export-pack "Linux"` caso os Export Templates não estejam instalados) para gerar `OpenTTRPG.x86_64`, `OpenTTRPG.pck` e publicar os assemblies C# (`.NET`) em `bin/release/linux-x64/data_OpenTTRPG_linuxbsd_x86_64/`;
+   - Gera automaticamente os launchers executáveis `OpenTTRPG.sh` e `OpenTTRPG_GodotUI.sh` em `bin/release/linux-x64/`;
    - Publica também o executável de terminal `OpenTTRPG.CLI` em `bin/release/linux-x64/`.
 2. **`make release-windows` (Windows x86_64 via Cross-Compilation no Linux)**:
    - Cross-compila o Core C++17 para Windows usando `x86_64-w64-mingw32-g++` gerando `bin/release/win-x64/openttrpg_core.dll` com linkagem estática do runtime MinGW (`-static -static-libgcc -static-libstdc++`);
    - Copia `openttrpg_core.dll` para `godot_ui/open-ttrpg/`, `bin/release/win-x64/` e `bin/release/win-x64/data_OpenTTRPG_windows_x86_64/`;
    - Copia `saves/characters.json` e `saves/enemies.json` (se existentes) para `bin/release/win-x64/saves/`;
-   - Executa o Godot em modo headless (`--export-pack "Windows Desktop"`) para atualizar `bin/release/win-x64/OpenTTRPG.pck` e publicar os assemblies C# de Windows em `bin/release/win-x64/data_OpenTTRPG_windows_x86_64/`.
+   - Executa o Godot em modo headless (`--export-release "Windows Desktop"`, com fallback para `--export-pack`) para gerar `OpenTTRPG.exe`, `OpenTTRPG.pck` e publicar os assemblies C# de Windows em `bin/release/win-x64/data_OpenTTRPG_windows_x86_64/`.
 3. **Auto-Teste End-to-End (`--self-test`)**:
-   - Executa `./bin/release/linux-x64/OpenTTRPG.x86_64 --headless -- --self-test` para validar que a UI, o C# e a biblioteca C++ nativa estão conversando sem nenhum erro.
+   - Executa `./bin/release/linux-x64/OpenTTRPG.x86_64 --headless -- --self-test` (ou via `godot-mono --path godot_ui/open-ttrpg` caso o binário exportado não exista) para validar que a UI, o C# e a biblioteca C++ nativa estão conversando sem nenhum erro.
 
 > **Dica:** Você também pode gerar apenas uma plataforma por vez rodando `make release` (somente Linux) ou `make release-windows` (somente Windows).
 
