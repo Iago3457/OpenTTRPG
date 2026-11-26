@@ -24,15 +24,35 @@ namespace OpenTTRPG.Tormenta20
         public const int HealthResourceId = 0;
         public const int ManaResourceId = 1;
 
+        public const int ReactionPriority = 5;
         public const int FreePriority = 10;
         public const int MovementPriority = 20;
         public const int StandardPriority = 30;
         public const int FullPriority = 40;
 
+        public static int GetActionPriority(T20ActionType type) => type switch
+        {
+            T20ActionType.Reaction => ReactionPriority,
+            T20ActionType.Free => FreePriority,
+            T20ActionType.Movement => MovementPriority,
+            T20ActionType.Standard => StandardPriority,
+            T20ActionType.Full => FullPriority,
+            _ => StandardPriority
+        };
+
         public static void ConfigureTurnActions(EncounterSession session, int combatantId,
-                                                int standardActions = 1, int movementActions = 1, int freeActions = -1)
+                                                int standardActions = 1, int movementActions = 1,
+                                                int freeActions = -1, int reactionActions = -1)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+
+            session.DefineActionType(
+                combatantId,
+                (int)T20ActionType.Reaction,
+                "Reação",
+                ReactionPriority,
+                reactionActions
+            );
 
             session.DefineActionType(
                 combatantId,
@@ -158,9 +178,7 @@ namespace OpenTTRPG.Tormenta20
                 };
             }
 
-            int coreRequired = requiredType == T20ActionType.Reaction
-                ? (int)T20ActionType.Free
-                : (int)requiredType;
+            int coreRequired = (int)requiredType;
 
             if (!session.EnqueueAction(combatantId, coreRequired, actionName, targetId, out int actionId, out int consumedCore))
             {

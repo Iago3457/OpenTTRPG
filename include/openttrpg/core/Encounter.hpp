@@ -94,6 +94,9 @@ public:
                       ds::LinkedList<std::string>* outUnmetReasons = nullptr);
     [[nodiscard]] bool canUseAbility(EntityId actor, const std::string& abilityKey,
                                      ds::LinkedList<std::string>* outUnmetReasons = nullptr) const;
+    int enqueueAbility(EntityId actor, const std::string& abilityKey, int targetId = 0,
+                       ActionTypeId* outConsumedType = nullptr,
+                       ds::LinkedList<std::string>* outUnmetReasons = nullptr);
 
     // ----- Estado geral -----
     [[nodiscard]] bool isTeamDefeated(int team) const; // true se o time existe e todos estão fora

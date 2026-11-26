@@ -592,11 +592,7 @@ public partial class CombatManager : Node
 			}
 
 			Tormenta20ActionRules.ConfigureTurnActions(_session, cid, standardActions: 1, movementActions: 1, freeActions: -1);
-			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-				_session, cid, sheet.Level,
-				sheet.Strength, sheet.Dexterity, sheet.Constitution,
-				sheet.Intelligence, sheet.Wisdom, sheet.Charisma,
-				sheet.UnlockedTreeKeys);
+			Tormenta20AbilityTreeRules.SyncCharacterToCore(_session, cid, sheet);
 
 			if (sheet.IsOverburdened() && !sheet.IsEnemy)
 			{
@@ -948,11 +944,7 @@ public partial class CombatManager : Node
 				}
 
 				Tormenta20ActionRules.ConfigureTurnActions(_session, cid, 1, 1, -1);
-				Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-					_session, cid, sheet.Level,
-					sheet.Strength, sheet.Dexterity, sheet.Constitution,
-					sheet.Intelligence, sheet.Wisdom, sheet.Charisma,
-					sheet.UnlockedTreeKeys);
+				Tormenta20AbilityTreeRules.SyncCharacterToCore(_session, cid, sheet);
 
 				foreach (string condKey in p.ActiveConditions)
 				{

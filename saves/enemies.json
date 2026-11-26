@@ -20,6 +20,7 @@
     "Charisma": -1,
     "DefenseBonusMisc": 0,
     "Tibares": 50,
+    "BonusAbilitySlots": 0,
     "SpellKeyAttribute": "Intelligence",
     "IsBleedingOut": false,
     "IsEnemy": true,
@@ -53,7 +54,8 @@
         "ArmorPenalty": 0,
         "Price": 2,
         "Equipped": true,
-        "AttackBonus": 6
+        "AttackBonus": 6,
+        "IsHeavyArmor": false
       },
       {
         "Name": "Arco Curto",
@@ -68,7 +70,8 @@
         "ArmorPenalty": 0,
         "Price": 30,
         "Equipped": true,
-        "AttackBonus": 6
+        "AttackBonus": 6,
+        "IsHeavyArmor": false
       }
     ],
     "Skills": [
@@ -81,6 +84,8 @@
         "TreeKey": "",
         "IsSpell": false,
         "BaseFormula": "1d6",
+        "MaxUsesPerTurn": 0,
+        "IsPassive": false,
         "Enhancements": []
       }
     ],
@@ -109,6 +114,7 @@
     "Charisma": -2,
     "DefenseBonusMisc": 0,
     "Tibares": 50,
+    "BonusAbilitySlots": 0,
     "SpellKeyAttribute": "Intelligence",
     "IsBleedingOut": false,
     "IsEnemy": true,
@@ -142,7 +148,8 @@
         "ArmorPenalty": 0,
         "Price": 15,
         "Equipped": true,
-        "AttackBonus": 7
+        "AttackBonus": 7,
+        "IsHeavyArmor": false
       }
     ],
     "Skills": [
@@ -155,6 +162,8 @@
         "TreeKey": "",
         "IsSpell": false,
         "BaseFormula": "",
+        "MaxUsesPerTurn": 0,
+        "IsPassive": false,
         "Enhancements": []
       }
     ],
@@ -183,6 +192,7 @@
     "Charisma": -1,
     "DefenseBonusMisc": 0,
     "Tibares": 50,
+    "BonusAbilitySlots": 0,
     "SpellKeyAttribute": "Intelligence",
     "IsBleedingOut": false,
     "IsEnemy": true,
@@ -216,7 +226,8 @@
         "ArmorPenalty": 0,
         "Price": 20,
         "Equipped": true,
-        "AttackBonus": 11
+        "AttackBonus": 11,
+        "IsHeavyArmor": false
       }
     ],
     "Skills": [
@@ -229,6 +240,8 @@
         "TreeKey": "",
         "IsSpell": false,
         "BaseFormula": "1d6",
+        "MaxUsesPerTurn": 0,
+        "IsPassive": false,
         "Enhancements": []
       }
     ],
@@ -257,6 +270,7 @@
     "Charisma": -4,
     "DefenseBonusMisc": 0,
     "Tibares": 50,
+    "BonusAbilitySlots": 0,
     "SpellKeyAttribute": "Intelligence",
     "IsBleedingOut": false,
     "IsEnemy": true,
@@ -290,7 +304,8 @@
         "ArmorPenalty": 0,
         "Price": 0,
         "Equipped": true,
-        "AttackBonus": 17
+        "AttackBonus": 17,
+        "IsHeavyArmor": false
       }
     ],
     "Skills": [
@@ -303,6 +318,86 @@
         "TreeKey": "",
         "IsSpell": false,
         "BaseFormula": "4d6",
+        "MaxUsesPerTurn": 0,
+        "IsPassive": false,
+        "Enhancements": []
+      }
+    ],
+    "UnlockedTreeKeys": [],
+    "TrainedSkills": [],
+    "SkillMiscBonuses": {}
+  },
+  {
+    "Id": 1005,
+    "Name": "Orc Teste",
+    "CharacterClass": "Solo",
+    "Race": "Humanoide",
+    "Origin": "Besti\u00E1rio",
+    "Deity": "Arsenal",
+    "Level": 3,
+    "MaxHp": 52,
+    "CurrentHp": 52,
+    "TempHp": 0,
+    "MaxPm": 6,
+    "CurrentPm": 6,
+    "Strength": 4,
+    "Dexterity": 1,
+    "Constitution": 3,
+    "Intelligence": -1,
+    "Wisdom": 0,
+    "Charisma": -1,
+    "DefenseBonusMisc": 0,
+    "Tibares": 50,
+    "BonusAbilitySlots": 0,
+    "SpellKeyAttribute": "Intelligence",
+    "IsBleedingOut": false,
+    "IsEnemy": true,
+    "ChallengeRating": "2",
+    "CreatureType": "Humanoide",
+    "CreatureSize": "M\u00E9dio",
+    "ThreatRole": "Solo",
+    "SpeedMetersOverride": 9,
+    "FixedDefense": 16,
+    "DamageReduction": 2,
+    "ThreatAttackBonus": 11,
+    "InitiativeOverride": 3,
+    "PerceptionOverride": 3,
+    "FortitudeOverride": 8,
+    "ReflexOverride": 4,
+    "WillOverride": 2,
+    "SensesNotes": "Sensibilidade \u00E0 luz, Vis\u00E3o no escuro",
+    "TreasureNotes": "Padr\u00E3o",
+    "ThreatNotes": "Ativa F\u00FAria Selvagem no 1\u00BA turno e parte para combate corpo a corpo.",
+    "Inventory": [
+      {
+        "Name": "Machado de Guerra",
+        "Description": "Arma pesada brutal",
+        "Type": "Weapon",
+        "Slots": 2,
+        "Damage": "1d12\u002B6",
+        "Critical": "20/x3",
+        "DamageType": "Slashing",
+        "IsRanged": false,
+        "DefenseBonus": 0,
+        "ArmorPenalty": 0,
+        "Price": 20,
+        "Equipped": true,
+        "AttackBonus": 11,
+        "IsHeavyArmor": false
+      }
+    ],
+    "Skills": [
+      {
+        "Name": "F\u00FAria Selvagem",
+        "Description": "Gasta 2 PM para receber \u002B2 em ataque e \u002B1d6 no dano at\u00E9 o fim da cena.",
+        "PmCost": 2,
+        "Action": "Free",
+        "Modifier": 2,
+        "TreeKey": "",
+        "IsSpell": false,
+        "BaseFormula": "1d6",
+        "MaxUsesPerTurn": 0,
+        "IsPassive": false,
         "Enhancements": []
       }
     ],

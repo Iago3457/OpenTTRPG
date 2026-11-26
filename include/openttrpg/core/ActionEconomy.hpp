@@ -53,6 +53,8 @@ struct QueuedAction {
     ds::LinkedList<ActionCostTerm> consumedCosts;   // Lista exata de slots consumidos (simples ou composta)
     int targetId = 0;                               // ID do alvo (0 = sem alvo)
     int priority = 0;                               // Prioridade de execução na PriorityQueue
+    std::string extraHistoryKey;                    // Chave extra (ex.: abilityKey) para remoção ao cancelar
+    bool recordedInTurnHistory = false;             // Evita duplicação ao retirar da fila
 };
 
 /**
@@ -129,17 +131,19 @@ public:
      * @return `actionId` (> 0) em caso de sucesso, ou 0 se não houver ações suficientes.
      */
     int enqueueAction(ActionTypeId requiredType, const std::string& name, int targetId = 0,
-                      ActionTypeId* outConsumedType = nullptr, int cost = 1);
+                      ActionTypeId* outConsumedType = nullptr, int cost = 1,
+                      bool markRecorded = false, const std::string& extraHistoryKey = "");
 
     /**
      * @brief Consome múltiplos tipos de ação de forma atômica e insere na Fila de Prioridades.
      */
     int enqueueCompoundAction(const ActionTypeId* requiredTypes, std::size_t count,
-                              int executionPriority, const std::string& name, int targetId = 0);
+                              int executionPriority, const std::string& name, int targetId = 0,
+                              bool markRecorded = false);
 
     bool popNextAction(QueuedAction& outAction);
     [[nodiscard]] const QueuedAction* peekNextAction() const;
-    bool cancelQueuedAction(int actionId, bool refundSlot = true);
+    bool cancelQueuedAction(int actionId, bool refundSlot = true, QueuedAction* outRemoved = nullptr);
     void clearQueue(bool refundSlots = false);
 
     [[nodiscard]] std::size_t queueSize() const;

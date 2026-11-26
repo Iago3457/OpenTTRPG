@@ -356,6 +356,17 @@ void testActionPriorityQueueAndEconomy() {
     assert(t20Econ.enqueueAction(kStd, "Segundo Ataque Padrão", 0, &failedSlot) == 0);
     assert(t20Econ.remaining(kMove) == 1);
 
+    // 4b. Cancelamento de ação composta (Completa = Padrão + Movimento) deve reembolsar 1 de cada slot!
+    t20Econ.resetTurn();
+    const core::ActionTypeId fullCost[2] = { kStd, kMove };
+    int fullId = t20Econ.enqueueCompoundAction(fullCost, 2, 40, "Investida Completa", 2, true);
+    assert(fullId > 0);
+    assert(t20Econ.remaining(kStd) == 0 && t20Econ.remaining(kMove) == 0);
+    core::QueuedAction removedFull;
+    assert(t20Econ.cancelQueuedAction(fullId, true, &removedFull));
+    assert(removedFull.recordedInTurnHistory);
+    assert(t20Econ.remaining(kStd) == 1 && t20Econ.remaining(kMove) == 1);
+
     // --- Cenário B: Sistema estilo D&D 5e (Ação, Ação Bônus, Movimento em metros, Reação) ---
     // Onde Ação Padrão NÃO pode ser convertida em Ação Bônus mesmo tendo prioridade diferente!
     core::ActionEconomy dnd5e;
@@ -443,15 +454,37 @@ void testAbilityAndPrerequisiteTrees() {
     enc.addCondition(hero, inspired);
     assert(!enc.canUseAbility(hero, "golpe_finalizador"));
 
-    // Enfileira e executa "Agredir" no turno: o histórico do turno registra automaticamente!
+    // Enfileira e executa "Agredir" no turno: o histórico do turno registra exatamente uma vez (sem duplicar no pop)!
+    comb->actions().defineActionType(0, "Livre", 10, -1);
     comb->actions().defineActionType(2, "Padrao", 30, 1);
     assert(enc.enqueueAction(hero, 2, "Agredir") > 0);
     core::QueuedAction executed;
     assert(enc.popNextAction(hero, executed));
     assert(comb->hasUsedActionInTurn("Agredir"));
+    assert(comb->countActionsUsedInTurn("Agredir") == 1);
 
     // Agora todos os pré-requisitos da árvore de uso estão satisfeitos!
     assert(enc.canUseAbility(hero, "golpe_finalizador"));
+
+    // Limite máximo de habilidades aprendidas e limites de uso/ação no turno
+    enc.abilityTree().registerAbility("extra_1", "Extra 1");
+    enc.abilityTree().registerAbility("extra_2", "Extra 2");
+    comb->setMaxAbilities(5); // Já possui 4 aprendidas (encouracado, inexpugnavel, fanatico, golpe_finalizador)
+    assert(enc.learnAbility(hero, "extra_1"));
+    assert(comb->unlockedAbilityCount() == 5);
+    assert(!enc.canLearnAbility(hero, "extra_2")); // Limite 5/5 atingido!
+    comb->setMaxAbilities(6);
+    assert(enc.canLearnAbility(hero, "extra_2"));
+
+    enc.abilityTree().setAbilityActionConfig("extra_1", 0 /* Livre */, 1 /* máx 1x por turno */);
+    enc.abilityTree().setAbilityActionConfig("golpe_finalizador", 2 /* Padrão */, 1);
+    // Padrão já foi gasto por "Agredir": golpe_finalizador bloqueado por economia de ações!
+    assert(!enc.canUseAbility(hero, "golpe_finalizador"));
+    // extra_1 (Livre, 1x/turno) pode ser enfileirado 1 vez e bloqueado na 2ª!
+    assert(enc.enqueueAbility(hero, "extra_1") > 0);
+    assert(comb->countActionsUsedInTurn("extra_1") == 1);
+    assert(!enc.canUseAbility(hero, "extra_1"));
+    assert(enc.enqueueAbility(hero, "extra_1") == 0);
 
     std::cout << "SUCESSO!\n";
 }
@@ -564,8 +597,33 @@ void testC_ApiDll() {
     assert(ottrpg_ability_learn(enc, p2, "ataque_poderoso") == OTTRPG_OK);
     assert(ottrpg_ability_learn(enc, p2, "trespassar") == OTTRPG_OK);
 
-    // Como p2 já executou "Mordida" no pop acima, pode usar "trespassar" neste turno!
+    // Como p2 já executou "Mordida" no pop acima (contagem exata = 1, sem duplicar), pode usar "trespassar" neste turno!
+    assert(ottrpg_combatant_action_count_in_turn(enc, p2, "Mordida") == 1);
     assert(ottrpg_ability_can_use(enc, p2, "trespassar") == 1);
+
+    // Testa limite máximo de habilidades aprendidas e enfileiramento/cancelamento via C API
+    assert(ottrpg_combatant_ability_count(enc, p2) == 2);
+    assert(ottrpg_combatant_set_max_abilities(enc, p2, 2) == OTTRPG_OK);
+    int32_t maxAb = 0;
+    assert(ottrpg_combatant_get_max_abilities(enc, p2, &maxAb) == OTTRPG_OK && maxAb == 2);
+    assert(ottrpg_ability_register(enc, "poder_extra", "Poder Extra", "") == OTTRPG_OK);
+    assert(ottrpg_ability_can_learn(enc, p2, "poder_extra") == 0);
+    assert(ottrpg_combatant_set_max_abilities(enc, p2, 3) == OTTRPG_OK);
+    assert(ottrpg_ability_can_learn(enc, p2, "poder_extra") == 1);
+
+    assert(ottrpg_ability_set_action_config(enc, "trespassar", kActFree, 1) == OTTRPG_OK);
+    int32_t trespActId = 0;
+    assert(ottrpg_ability_enqueue(enc, p2, "trespassar", p1, &trespActId, &consumedType) == OTTRPG_OK);
+    assert(trespActId > 0 && consumedType == kActFree);
+    assert(ottrpg_combatant_action_count_in_turn(enc, p2, "trespassar") == 1);
+    int32_t failedTrespActId = 0;
+    assert(ottrpg_ability_enqueue(enc, p2, "trespassar", p1, &failedTrespActId, &consumedType) != OTTRPG_OK);
+    assert(failedTrespActId == 0);
+
+    // Cancelar reembolsa a contagem no histórico do turno e permite usar novamente
+    assert(ottrpg_action_queue_cancel(enc, p2, trespActId, 1) == OTTRPG_OK);
+    assert(ottrpg_combatant_action_count_in_turn(enc, p2, "trespassar") == 0);
+    assert(ottrpg_ability_enqueue(enc, p2, "trespassar", p1, &trespActId, &consumedType) == OTTRPG_OK);
 
     ottrpg_encounter_destroy(enc);
     std::cout << "SUCESSO!\n";

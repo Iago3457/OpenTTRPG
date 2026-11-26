@@ -1,5 +1,6 @@
 #pragma once
 
+#include "openttrpg/core/Types.hpp"
 #include "openttrpg/data_structures/LinkedList.hpp"
 #include "openttrpg/data_structures/Tree.hpp"
 #include <string>
@@ -97,6 +98,8 @@ struct AbilityNode {
     std::string key;                  // Identificador único (ex.: "ataque_preciso")
     std::string name;                 // Nome de exibição (ex.: "Ataque Preciso")
     std::string parentKey;            // Chave da habilidade-pai na árvore ("" se for habilidade raiz)
+    ActionTypeId requiredActionType = kInvalidActionType; // Categoria de ação no ActionEconomy
+    int maxUsesPerTurn = 0;           // <= 0 = sem limite extra além do slot; > 0 = máximo N usos por turno
     RequirementTree grantRequirements; // Árvore de pré-requisitos para aprender/conceder
     RequirementTree usageRequirements; // Árvore de pré-requisitos para usar/ativar no turno
 };
@@ -126,6 +129,7 @@ public:
      */
     AbilityNode* registerAbility(const std::string& key, const std::string& name,
                                  const std::string& parentKey = "");
+    bool setAbilityActionConfig(const std::string& key, ActionTypeId requiredActionType, int maxUsesPerTurn = 0);
 
     AbilityNode* findAbility(const std::string& key);
     [[nodiscard]] const AbilityNode* findAbility(const std::string& key) const;

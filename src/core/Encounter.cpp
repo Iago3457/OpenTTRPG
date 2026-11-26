@@ -301,7 +301,7 @@ bool Encounter::spendAction(EntityId actor, ActionTypeId requiredType, ActionTyp
 int Encounter::enqueueAction(EntityId actor, ActionTypeId requiredType, const std::string& name, int targetId,
                              ActionTypeId* outConsumedType) {
     Combatant& c = require(actor);
-    const int actId = c.actions().enqueueAction(requiredType, name, targetId, outConsumedType);
+    const int actId = c.actions().enqueueAction(requiredType, name, targetId, outConsumedType, 1, true);
     if (actId > 0) {
         c.recordActionInTurn(name);
     }
@@ -313,8 +313,9 @@ bool Encounter::popNextAction(EntityId actor, QueuedAction& outAction) {
     if (!c.actions().popNextAction(outAction)) {
         return false;
     }
-    if (!outAction.name.empty() && !c.hasUsedActionInTurn(outAction.name)) {
+    if (!outAction.recordedInTurnHistory && !outAction.name.empty()) {
         c.recordActionInTurn(outAction.name);
+        outAction.recordedInTurnHistory = true;
     }
     return true;
 }
@@ -349,6 +350,44 @@ bool Encounter::canUseAbility(EntityId actor, const std::string& abilityKey,
         return false;
     }
     return abilityTree_.canUse(*c, abilityKey, outUnmetReasons);
+}
+
+int Encounter::enqueueAbility(EntityId actor, const std::string& abilityKey, int targetId,
+                              ActionTypeId* outConsumedType, ds::LinkedList<std::string>* outUnmetReasons) {
+    Combatant& c = require(actor);
+    if (!abilityTree_.canUse(c, abilityKey, outUnmetReasons)) {
+        if (outConsumedType != nullptr) {
+            *outConsumedType = kInvalidActionType;
+        }
+        return 0;
+    }
+
+    const AbilityNode* node = abilityTree_.findAbility(abilityKey);
+    if (node == nullptr || node->requiredActionType == kInvalidActionType) {
+        if (outConsumedType != nullptr) {
+            *outConsumedType = kInvalidActionType;
+        }
+        if (outUnmetReasons != nullptr) {
+            outUnmetReasons->push_back("Habilidade '" + abilityKey + "' não possui tipo de ação configurado.");
+        }
+        return 0;
+    }
+
+    const std::string extraKey = (node->key != node->name) ? node->key : "";
+    const int actId = c.actions().enqueueAction(
+        node->requiredActionType, node->name, targetId, outConsumedType, 1, true, extraKey);
+    if (actId <= 0) {
+        if (outUnmetReasons != nullptr) {
+            outUnmetReasons->push_back("Ações insuficientes no turno para usar '" + node->name + "'.");
+        }
+        return 0;
+    }
+
+    c.recordActionInTurn(node->key);
+    if (node->name != node->key) {
+        c.recordActionInTurn(node->name);
+    }
+    return actId;
 }
 
 // ---------------------------------------------------------------------------

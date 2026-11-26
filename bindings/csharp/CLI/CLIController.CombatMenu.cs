@@ -34,11 +34,7 @@ namespace OpenTTRPG.CLI
                 session.AddResource(eid, ManaResourceId, "PM", c.MaxPm, 0);
                 session.SetResourceCurrent(eid, ManaResourceId, c.CurrentPm);
                 Tormenta20ActionRules.ConfigureTurnActions(session, eid, standardActions: 1, movementActions: 1, freeActions: -1);
-                Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-                    session, eid, c.Level,
-                    c.Strength, c.Dexterity, c.Constitution,
-                    c.Intelligence, c.Wisdom, c.Charisma,
-                    c.UnlockedTreeKeys);
+                Tormenta20AbilityTreeRules.SyncCharacterToCore(session, eid, c);
 
                 if (c.IsOverburdened())
                 {
@@ -194,14 +190,17 @@ namespace OpenTTRPG.CLI
                 QueuedActionEntry[] queued = session.GetActionQueue(currentId);
                 if (queued.Length > 0)
                 {
-                    Console.WriteLine(">> FILA DE PRIORIDADES DE AÇÕES (Ordem: Livre -> Movimento -> Padrão):");
+                    Console.WriteLine(">> FILA DE PRIORIDADES DE AÇÕES (Ordem: Reação -> Livre -> Movimento -> Padrão -> Completa):");
                     for (int q = 0; q < queued.Length; q++)
                     {
                         var qa = queued[q];
-                        string reqName = Tormenta20ActionRules.GetActionTypeName((T20ActionType)qa.RequiredType);
+                        T20ActionType displayType = qa.Priority == Tormenta20ActionRules.FullPriority
+                            ? T20ActionType.Full
+                            : (T20ActionType)qa.RequiredType;
+                        string reqName = Tormenta20ActionRules.GetActionTypeName(displayType);
                         string consName = Tormenta20ActionRules.GetActionTypeName((T20ActionType)qa.ConsumedType);
                         string conv = qa.UsedFallback ? $" [Pagou usando {consName}]" : "";
-                        Console.WriteLine($"     {q + 1}º. [{reqName}] {qa.Name}{conv}");
+                        Console.WriteLine($"     {q + 1}º. [Prio {qa.Priority} | {reqName}] {qa.Name}{conv}");
                     }
                 }
                 Console.WriteLine("======================================================================");
@@ -295,7 +294,29 @@ namespace OpenTTRPG.CLI
                         Console.WriteLine($"\nHabilidades de {currentName} (Limite de gasto por uso: {pmLimit} PM):");
                         for (int i = 0; i < skills.Count; i++)
                         {
-                            Console.WriteLine($"  {i + 1}. {skills[i].Name} [{Tormenta20ActionRules.GetActionTypeName(skills[i].Action)} | {skills[i].PmCost} PM] - {skills[i].Description}");
+                            var sk = skills[i];
+                            bool isPassive = sk.IsPassive ||
+                                (!string.IsNullOrEmpty(sk.TreeKey) &&
+                                 (Tormenta20AbilityTreeRules.FindPowerDefinition(sk.TreeKey)?.IsPassive ?? false));
+                            int cap = isPassive ? 0 : Tormenta20MagicRules.GetEffectiveMaxUsesPerTurn(sk);
+                            string usageTag;
+                            if (isPassive)
+                            {
+                                usageTag = " [Passivo]";
+                            }
+                            else if (cap > 0)
+                            {
+                                string usageKey = !string.IsNullOrEmpty(sk.TreeKey) ? sk.TreeKey : sk.Name;
+                                int used = session.GetActionCountInTurn(currentId, usageKey);
+                                usageTag = $" [Usada {used}/{cap} no turno]";
+                            }
+                            else
+                            {
+                                usageTag = "";
+                            }
+
+                            int prio = Tormenta20ActionRules.GetActionPriority(sk.Action);
+                            Console.WriteLine($"  {i + 1}. {sk.Name} [{Tormenta20ActionRules.GetActionTypeName(sk.Action)} (Prio {prio}) | {sk.PmCost} PM]{usageTag} - {sk.Description}");
                         }
                         Console.WriteLine($"  {skills.Count + 1}. Digitar habilidade/magia avulsa");
                         Console.Write("Escolha a habilidade: ");

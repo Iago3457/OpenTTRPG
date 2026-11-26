@@ -659,6 +659,38 @@ namespace OpenTTRPG.Native
             return val;
         }
 
+        public void SetMaxAbilities(int combatantId, int maxAbilities)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_set_max_abilities(_handle, combatantId, maxAbilities);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao definir limite máximo de habilidades: {GetLastError()}");
+            }
+        }
+
+        public int GetMaxAbilities(int combatantId)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_combatant_get_max_abilities(_handle, combatantId, out int val);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao consultar limite máximo de habilidades: {GetLastError()}");
+            }
+            return val;
+        }
+
+        public int GetUnlockedAbilityCount(int combatantId)
+        {
+            EnsureNotDisposed();
+            int count = NativeMethods.ottrpg_combatant_ability_count(_handle, combatantId);
+            if (count < 0)
+            {
+                throw new InvalidOperationException($"Erro ao consultar quantidade de habilidades aprendidas: {GetLastError()}");
+            }
+            return count;
+        }
+
         public void GrantAbilityUnchecked(int combatantId, string abilityKey)
         {
             EnsureNotDisposed();
@@ -702,6 +734,13 @@ namespace OpenTTRPG.Native
             return NativeMethods.ottrpg_combatant_has_used_action_in_turn(_handle, combatantId, actionKey) == 1;
         }
 
+        public int GetActionCountInTurn(int combatantId, string actionKey)
+        {
+            EnsureNotDisposed();
+            int count = NativeMethods.ottrpg_combatant_action_count_in_turn(_handle, combatantId, actionKey);
+            return count < 0 ? 0 : count;
+        }
+
         public void RegisterAbilityInTree(string key, string name, string parentKey = "")
         {
             EnsureNotDisposed();
@@ -709,6 +748,16 @@ namespace OpenTTRPG.Native
             if (res != (int)OttrpgStatus.Ok)
             {
                 throw new InvalidOperationException($"Erro ao registrar habilidade '{key}' na árvore: {GetLastError()}");
+            }
+        }
+
+        public void SetAbilityActionConfig(string abilityKey, int requiredActionType, int maxUsesPerTurn = 0)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_set_action_config(_handle, abilityKey, requiredActionType, maxUsesPerTurn);
+            if (res != (int)OttrpgStatus.Ok)
+            {
+                throw new InvalidOperationException($"Erro ao configurar ação da habilidade '{abilityKey}': {GetLastError()}");
             }
         }
 
@@ -775,6 +824,25 @@ namespace OpenTTRPG.Native
             }
             unmetReasons = res == 1 ? string.Empty : GetLastError();
             return res == 1;
+        }
+
+        public bool EnqueueAbility(int combatantId, string abilityKey, int targetId,
+                                   out int actionId, out int consumedType, out string unmetReasons)
+        {
+            EnsureNotDisposed();
+            int res = NativeMethods.ottrpg_ability_enqueue(_handle, combatantId, abilityKey, targetId,
+                                                           out actionId, out consumedType);
+            if (res == (int)OttrpgStatus.Ok)
+            {
+                unmetReasons = string.Empty;
+                return true;
+            }
+            if (res != (int)OttrpgStatus.ErrInvalidState)
+            {
+                throw new InvalidOperationException($"Erro ao enfileirar habilidade '{abilityKey}': {GetLastError()}");
+            }
+            unmetReasons = GetLastError();
+            return false;
         }
 
         // ----- Mapa Tático Espacial (SparseGrid + QuadTree no Core) -----

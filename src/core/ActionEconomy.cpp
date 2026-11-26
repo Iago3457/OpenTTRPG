@@ -307,7 +307,8 @@ bool ActionEconomy::refund(ActionTypeId consumedType, int amount) {
 }
 
 int ActionEconomy::enqueueAction(ActionTypeId requiredType, const std::string& name, int targetId,
-                                 ActionTypeId* outConsumedType, int cost) {
+                                 ActionTypeId* outConsumedType, int cost,
+                                 bool markRecorded, const std::string& extraHistoryKey) {
     const ActionTypeSlot* reqSlot = slot(requiredType);
     if (reqSlot == nullptr || cost <= 0) {
         return 0;
@@ -334,13 +335,16 @@ int ActionEconomy::enqueueAction(ActionTypeId requiredType, const std::string& n
     action.consumedCosts.push_back(ActionCostTerm{consumedId, cost});
     action.targetId = targetId;
     action.priority = reqSlot->priority;
+    action.extraHistoryKey = extraHistoryKey;
+    action.recordedInTurnHistory = markRecorded;
 
     actionQueue_.enqueue(action, action.priority);
     return action.actionId;
 }
 
 int ActionEconomy::enqueueCompoundAction(const ActionTypeId* requiredTypes, std::size_t count,
-                                         int executionPriority, const std::string& name, int targetId) {
+                                         int executionPriority, const std::string& name, int targetId,
+                                         bool markRecorded) {
     if (count == 0 || requiredTypes == nullptr) {
         return 0;
     }
@@ -358,6 +362,7 @@ int ActionEconomy::enqueueCompoundAction(const ActionTypeId* requiredTypes, std:
     action.consumedCosts = consumedTerms;
     action.targetId = targetId;
     action.priority = executionPriority;
+    action.recordedInTurnHistory = markRecorded;
 
     actionQueue_.enqueue(action, action.priority);
     return action.actionId;
@@ -378,7 +383,7 @@ const QueuedAction* ActionEconomy::peekNextAction() const {
     return &actionQueue_.front();
 }
 
-bool ActionEconomy::cancelQueuedAction(int actionId, bool refundSlot) {
+bool ActionEconomy::cancelQueuedAction(int actionId, bool refundSlot, QueuedAction* outRemoved) {
     QueuedAction removed;
     const bool found = actionQueue_.remove_if(
         [actionId](const QueuedAction& a) { return a.actionId == actionId; },
@@ -397,6 +402,9 @@ bool ActionEconomy::cancelQueuedAction(int actionId, bool refundSlot) {
         } else if (removed.consumedType != kInvalidActionType) {
             refund(removed.consumedType, removed.cost);
         }
+    }
+    if (outRemoved != nullptr) {
+        *outRemoved = removed;
     }
     return true;
 }

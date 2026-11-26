@@ -185,7 +185,9 @@ bool RequirementTree::evaluateSubtree(const ds::TreeNode<RequirementNode>* node,
             return ok;
         }
         case RequirementKind::ActionUsedInTurn: {
-            const bool ok = combatant.hasUsedActionInTurn(req.key);
+            const int count = combatant.countActionsUsedInTurn(req.key);
+            const int needed = req.threshold > 0 ? req.threshold : 1;
+            const bool ok = count >= needed;
             if (!ok && outUnmetReasons != nullptr) {
                 outUnmetReasons->push_back(describeLeaf(req));
             }
@@ -272,6 +274,16 @@ AbilityNode* AbilityTree::findAbility(const std::string& key) {
     return node != nullptr ? &node->data : nullptr;
 }
 
+bool AbilityTree::setAbilityActionConfig(const std::string& key, ActionTypeId requiredActionType, int maxUsesPerTurn) {
+    AbilityNode* node = findAbility(key);
+    if (node == nullptr) {
+        return false;
+    }
+    node->requiredActionType = requiredActionType;
+    node->maxUsesPerTurn = maxUsesPerTurn;
+    return true;
+}
+
 const AbilityNode* AbilityTree::findAbility(const std::string& key) const {
     const ds::TreeNode<AbilityNode>* node = findTreeNode(key);
     return node != nullptr ? &node->data : nullptr;
@@ -302,7 +314,27 @@ bool AbilityTree::canLearn(const Combatant& combatant, const std::string& key,
         return false;
     }
 
+    if (combatant.hasAbility(key)) {
+        if (outUnmetReasons != nullptr) {
+            outUnmetReasons->push_back("Habilidade '" + node->data.name + "' já foi aprendida.");
+        }
+        return false;
+    }
+
     bool ok = true;
+
+    // 0. Verifica capacidade máxima de habilidades permitida (ex.: limite por nível + bônus racial)
+    const int maxAbilities = combatant.maxAbilities();
+    const std::size_t currentCount = combatant.unlockedAbilityCount();
+    if (maxAbilities >= 0 && static_cast<int>(currentCount) >= maxAbilities) {
+        ok = false;
+        if (outUnmetReasons != nullptr) {
+            outUnmetReasons->push_back(
+                "Limite de habilidades na árvore atingido (" +
+                std::to_string(currentCount) + "/" + std::to_string(maxAbilities) + ")."
+            );
+        }
+    }
 
     // 1. Verifica toda a cadeia de nós ancestrais na Árvore de Habilidades (pai, avô, etc.)
     const ds::TreeNode<AbilityNode>* ancestor = node->parent;
@@ -354,6 +386,34 @@ bool AbilityTree::canUse(const Combatant& combatant, const std::string& key,
 
     if (!node->data.usageRequirements.isSatisfied(combatant, outUnmetReasons)) {
         ok = false;
+    }
+
+    if (node->data.maxUsesPerTurn > 0) {
+        const int used = combatant.countActionsUsedInTurn(key);
+        if (used >= node->data.maxUsesPerTurn) {
+            ok = false;
+            if (outUnmetReasons != nullptr) {
+                outUnmetReasons->push_back(
+                    "Habilidade '" + node->data.name + "' já atingiu o limite de usos neste turno (" +
+                    std::to_string(used) + "/" + std::to_string(node->data.maxUsesPerTurn) + ")."
+                );
+            }
+        }
+    }
+
+    if (node->data.requiredActionType != kInvalidActionType &&
+        combatant.actions().hasActionType(node->data.requiredActionType)) {
+        if (!combatant.actions().canUse(node->data.requiredActionType, 1, nullptr)) {
+            ok = false;
+            if (outUnmetReasons != nullptr) {
+                const ActionTypeSlot* reqSlot = combatant.actions().slot(node->data.requiredActionType);
+                const std::string slotName = reqSlot != nullptr ? reqSlot->name : "Ação";
+                outUnmetReasons->push_back(
+                    "Ação necessária indisponível neste turno para '" + node->data.name +
+                    "' (requer " + slotName + ")."
+                );
+            }
+        }
     }
 
     return ok;

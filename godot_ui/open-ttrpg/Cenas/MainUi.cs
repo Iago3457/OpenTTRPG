@@ -1165,11 +1165,7 @@ public partial class MainUi : Control
 			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedCharacter.TempHp);
 			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedCharacter.MaxPm, 0);
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
-			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-				_combatManager.Session, cid, _selectedCharacter.Level,
-				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
-				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
-				_selectedCharacter.UnlockedTreeKeys);
+			Tormenta20AbilityTreeRules.SyncCharacterToCore(_combatManager.Session, cid, _selectedCharacter);
 			Tormenta20ConditionRules.SyncDyingAndUnconsciousState(_combatManager.Session, cid, _selectedCharacter);
 		}
 
@@ -1205,11 +1201,7 @@ public partial class MainUi : Control
 			_combatManager.Session.SetResourceTemp(cid, CombatManager.HealthResourceId, _selectedCharacter.TempHp);
 			_combatManager.Session.AddResource(cid, CombatManager.ManaResourceId, "PM", _selectedCharacter.MaxPm, 0);
 			_combatManager.Session.SetResourceCurrent(cid, CombatManager.ManaResourceId, _selectedCharacter.CurrentPm);
-			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-				_combatManager.Session, cid, _selectedCharacter.Level,
-				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
-				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
-				_selectedCharacter.UnlockedTreeKeys);
+			Tormenta20AbilityTreeRules.SyncCharacterToCore(_combatManager.Session, cid, _selectedCharacter);
 			if (_selectedCharacter.IsOverburdened())
 				Tormenta20ConditionRules.ApplyCondition(_combatManager.Session, cid, T20Condition.Sobrecarregado);
 			else
@@ -2430,11 +2422,7 @@ public partial class MainUi : Control
 		int activeCid = GetSelectedCombatantId();
 		if (activeCid > 0)
 		{
-			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-				_combatManager.Session, activeCid, _selectedCharacter.Level,
-				_selectedCharacter.Strength, _selectedCharacter.Dexterity, _selectedCharacter.Constitution,
-				_selectedCharacter.Intelligence, _selectedCharacter.Wisdom, _selectedCharacter.Charisma,
-				_selectedCharacter.UnlockedTreeKeys);
+			Tormenta20AbilityTreeRules.SyncCharacterToCore(_combatManager.Session, activeCid, _selectedCharacter);
 		}
 	}
 
@@ -2443,12 +2431,22 @@ public partial class MainUi : Control
 		if (_selectedCharacter == null || power == null) return;
 
 		if (!_selectedCharacter.UnlockedTreeKeys.Contains(power.Key))
+		{
+			int usedSlots = Tormenta20AbilityTreeRules.GetUsedAbilitySlots(_selectedCharacter);
+			int maxSlots = Tormenta20AbilityTreeRules.GetMaxAbilitySlots(_selectedCharacter);
+			if (usedSlots >= maxSlots)
+			{
+				ShowToast($"Limite de habilidades por nível atingido ({Tormenta20AbilityTreeRules.FormatAbilitySlotBudget(_selectedCharacter)})!", new Color(1f, 0.45f, 0.45f));
+				return;
+			}
 			_selectedCharacter.UnlockedTreeKeys.Add(power.Key);
+		}
 
 		if (!_selectedCharacter.Skills.Any(s => s.TreeKey == power.Key))
 		{
 			_selectedCharacter.Skills.Add(new CharacterSkill(
-				power.Name, power.Description, power.PmCost, power.ActionType, 0, power.Key, false, power.BaseFormula));
+				power.Name, power.Description, power.PmCost, power.ActionType, 0, power.Key, false,
+				power.BaseFormula, power.IsPassive ? 0 : power.MaxUsesPerTurn, power.IsPassive));
 		}
 
 		SincronizarArvoreComCombateAtivo();
@@ -2477,9 +2475,9 @@ public partial class MainUi : Control
 				.FirstOrDefault(p => p.Key == st.Definition.ParentKey)?.Name ?? st.Definition.ParentKey;
 			parentLabel = $"Pré-requisito: {parentName}";
 		}
-		string costLabel = st.Definition.PmCost > 0
-			? $"{st.Definition.PmCost} PM ({Tormenta20ActionRules.GetActionTypeName(st.Definition.ActionType)})"
-			: "Passivo / Sem custo de PM";
+		string costLabel = st.Definition.IsPassive
+			? "Passivo / Sem custo de PM"
+			: $"{st.Definition.PmCost} PM ({Tormenta20ActionRules.GetActionTypeName(st.Definition.ActionType)} | Prio {Tormenta20ActionRules.GetActionPriority(st.Definition.ActionType)}, {st.Definition.MaxUsesPerTurn}x/turno)";
 
 		_lblArvoreNodeTitle.Text = $"{st.Definition.Name}   —   [{st.Definition.BranchName}]   |   {parentLabel}   |   {costLabel}";
 		_lblArvoreNodeDesc.Text  = st.Definition.Description;
@@ -2517,15 +2515,14 @@ public partial class MainUi : Control
 	{
 		if (_selectedCharacter == null) return;
 
-		int totalPowers = Tormenta20AbilityTreeRules.CanonicalPowers.Count;
-		int unlockedCount = _selectedCharacter.UnlockedTreeKeys.Count;
+		string slotBudget = Tormenta20AbilityTreeRules.FormatAbilitySlotBudget(_selectedCharacter);
 		if (_lblArvoreCharResumo != null)
 		{
 			_lblArvoreCharResumo.Text =
 				$"{_selectedCharacter.Name} ({_selectedCharacter.Race} {_selectedCharacter.CharacterClass} Nv.{_selectedCharacter.Level})   |   " +
 				$"FOR {FormatAttr(_selectedCharacter.Strength)}  DES {FormatAttr(_selectedCharacter.Dexterity)}  CON {FormatAttr(_selectedCharacter.Constitution)}  " +
 				$"INT {FormatAttr(_selectedCharacter.Intelligence)}  SAB {FormatAttr(_selectedCharacter.Wisdom)}  CAR {FormatAttr(_selectedCharacter.Charisma)}   |   " +
-				$"Desbloqueados: {unlockedCount}/{totalPowers}";
+				$"Slots na Árvore: {slotBudget}";
 		}
 
 		int activeCid = GetSelectedCombatantId();
@@ -4304,7 +4301,10 @@ public partial class MainUi : Control
 		{
 			var entry = entries[i];
 			string actionLabel = string.IsNullOrWhiteSpace(entry.Name) ? "Ação" : entry.Name;
-			string tipoTag = entry.RequiredType switch
+			int effectiveReq = entry.Priority == Tormenta20ActionRules.FullPriority
+				? (int)T20ActionType.Full
+				: entry.RequiredType;
+			string tipoTag = effectiveReq switch
 			{
 				(int)T20ActionType.Reaction => "Reação",
 				(int)T20ActionType.Free     => "Ação Livre",
@@ -4324,7 +4324,7 @@ public partial class MainUi : Control
 
 			var lbl = new Label
 			{
-				Text = $"{i + 1}. {actionLabel} ({tipoTag}){pmSuffix}",
+				Text = $"{i + 1}. {actionLabel} ({tipoTag} | Prio {entry.Priority}){pmSuffix}",
 				SizeFlagsHorizontal = SizeFlags.ExpandFill,
 				AutowrapMode = TextServer.AutowrapMode.WordSmart
 			};
@@ -4580,7 +4580,31 @@ public partial class MainUi : Control
 		foreach (var sk in actorSheet.Skills)
 		{
 			string tipo = sk.IsSpell ? "[Magia]" : "[Poder]";
-			_listHabilidadesCombate.AddItem($"{tipo} {sk.Name} ({sk.PmCost} PM) — {sk.Description}");
+			bool isPassive = sk.IsPassive ||
+				(!string.IsNullOrEmpty(sk.TreeKey) &&
+				 (Tormenta20AbilityTreeRules.FindPowerDefinition(sk.TreeKey)?.IsPassive ?? false));
+			string statusTag;
+			if (isPassive)
+			{
+				statusTag = "[Passivo]";
+			}
+			else
+			{
+				string actionName = Tormenta20ActionRules.GetActionTypeName(sk.Action);
+				int prio = Tormenta20ActionRules.GetActionPriority(sk.Action);
+				int cap = Tormenta20MagicRules.GetEffectiveMaxUsesPerTurn(sk);
+				if (cap > 0)
+				{
+					string usageKey = !string.IsNullOrEmpty(sk.TreeKey) ? sk.TreeKey : sk.Name;
+					int used = _combatManager.Session.GetActionCountInTurn(actorId, usageKey);
+					statusTag = $"[{actionName} | Prio {prio} | Usada {used}/{cap}]";
+				}
+				else
+				{
+					statusTag = $"[{actionName} | Prio {prio}]";
+				}
+			}
+			_listHabilidadesCombate.AddItem($"{tipo} {sk.Name} {statusTag} ({sk.PmCost} PM) — {sk.Description}");
 		}
 		_listHabilidadesCombate.Select(0);
 		_dlgUsarHabilidadeCombate.PopupCentered();

@@ -92,6 +92,9 @@ public:
     [[nodiscard]] const ds::LinkedList<NamedStat>& stats() const;
 
     // ----- Habilidades / Poderes Concedidos -----
+    void setMaxAbilities(int maxAbilities);
+    [[nodiscard]] int maxAbilities() const;
+    [[nodiscard]] std::size_t unlockedAbilityCount() const;
     bool unlockAbility(const std::string& key);
     bool revokeAbility(const std::string& key);
     [[nodiscard]] bool hasAbility(const std::string& key) const;
@@ -100,6 +103,7 @@ public:
     // ----- Histórico de Ações Executadas no Turno Atual -----
     void recordActionInTurn(const std::string& actionKey);
     bool unrecordActionInTurn(const std::string& actionKey);
+    [[nodiscard]] int countActionsUsedInTurn(const std::string& actionKey) const;
     [[nodiscard]] bool hasUsedActionInTurn(const std::string& actionKey) const;
     void clearTurnActionHistory();
     [[nodiscard]] const ds::LinkedList<std::string>& turnActionHistory() const;
@@ -110,6 +114,7 @@ private:
     int initiativeModifier_;
     int team_;
     bool forcedOut_ = false;
+    int maxAbilities_ = -1; // < 0 significa sem limite no Core genérico
     ResourceId vitalResource_ = kHealthResource;
 
     ds::LinkedList<NamedResource> resources_;
