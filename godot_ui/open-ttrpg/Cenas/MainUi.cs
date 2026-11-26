@@ -105,6 +105,9 @@ public partial class MainUi : Control
 	private Label _lblActionQueueSlots;
 	private Button _btnPopNextAction;
 	private CheckBox _chkAtaquePoderoso;
+	private CheckBox _chkFlancoPlus2;
+	private CheckBox _chkFlancoVantagem;
+	private CheckBox _chkFlancoManual;
 	private readonly Dictionary<(int cid, int actionId), int> _queuedActionPmSpent = new();
 	private readonly HashSet<(int cid, int actionId)> _resolvedQueuedActions = new();
 
@@ -150,6 +153,7 @@ public partial class MainUi : Control
 	private string _inspectedPowerKey = "estilo_uma_arma";
 	private Window _dlgUsarHabilidadeCombate;
 	private ItemList _listHabilidadesCombate;
+	private readonly List<CharacterSkill> _combatSelectableSkills = new();
 	private SpinBox _spinAprimoramentoPm;
 	private Label _lblLimitePmCombate;
 	private Window _dlgCondicoesCombate;
@@ -222,6 +226,9 @@ public partial class MainUi : Control
 	private Button _btnReguaMapa;
 	private Button _btnMapaCorrer;
 	private Button _btnMapaAtacar;
+	private CheckBox _chkMapaFlancoPlus2;
+	private CheckBox _chkMapaFlancoVantagem;
+	private CheckBox _chkMapaFlancoManual;
 	private Button _btnMapaIniciarCombate;
 	private Button _btnMapaProximoTurno;
 	private Button _btnMapaSalvar;
@@ -760,6 +767,42 @@ public partial class MainUi : Control
 		_chkAtaquePoderoso.AddThemeFontSizeOverride("font_size", 11);
 		_chkAtaquePoderoso.AddThemeColorOverride("font_color", new Color(1f, 0.72f, 0.42f));
 		leftActions.AddChild(_chkAtaquePoderoso);
+
+		var lblFlank = new Label { Text = "Regra de Flanco:" };
+		lblFlank.AddThemeFontSizeOverride("font_size", 11);
+		lblFlank.AddThemeColorOverride("font_color", new Color(0.95f, 0.85f, 0.45f));
+		leftActions.AddChild(lblFlank);
+
+		_chkFlancoPlus2 = new CheckBox
+		{
+			Text = "Flanco: +2 Atq (T20)",
+			ButtonPressed = true,
+			TooltipText = "Concede +2 nos testes de ataque corpo a corpo ao flanquear (desmarque ambos para alvos imunes)."
+		};
+		_chkFlancoPlus2.AddThemeFontSizeOverride("font_size", 11);
+		_chkFlancoPlus2.Toggled += (bool _) => UpdateFlankingModeFromUi(_chkFlancoPlus2.ButtonPressed, _chkFlancoVantagem?.ButtonPressed ?? false, _chkFlancoManual?.ButtonPressed);
+		leftActions.AddChild(_chkFlancoPlus2);
+
+		_chkFlancoVantagem = new CheckBox
+		{
+			Text = "Flanco: Vantagem (2d20)",
+			ButtonPressed = false,
+			TooltipText = "Rola 2d20 e mantém o maior (2d20kh1) ao atacar um alvo flanqueado."
+		};
+		_chkFlancoVantagem.AddThemeFontSizeOverride("font_size", 11);
+		_chkFlancoVantagem.Toggled += (bool _) => UpdateFlankingModeFromUi(_chkFlancoPlus2?.ButtonPressed ?? false, _chkFlancoVantagem.ButtonPressed, _chkFlancoManual?.ButtonPressed);
+		leftActions.AddChild(_chkFlancoVantagem);
+
+		_chkFlancoManual = new CheckBox
+		{
+			Text = "Flanqueando Alvo (Manual)",
+			ButtonPressed = false,
+			TooltipText = "Considera o alvo flanqueado mesmo sem posicionar aliados no mapa tático."
+		};
+		_chkFlancoManual.AddThemeFontSizeOverride("font_size", 11);
+		_chkFlancoManual.AddThemeColorOverride("font_color", new Color(0.75f, 0.90f, 1f));
+		_chkFlancoManual.Toggled += (bool pressed) => UpdateFlankingModeFromUi(_chkFlancoPlus2?.ButtonPressed ?? false, _chkFlancoVantagem?.ButtonPressed ?? false, pressed);
+		leftActions.AddChild(_chkFlancoManual);
 
 		// Painel de ações planejadas no turno
 		var queueCard = new PanelContainer
@@ -2600,9 +2643,9 @@ public partial class MainUi : Control
 			if (!_combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet)) { win.Hide(); return; }
 
 			var selected = _listHabilidadesCombate.GetSelectedItems();
-			if (selected.Length == 0 || selected[0] >= actorSheet.Skills.Count) return;
+			if (selected.Length == 0 || selected[0] >= _combatSelectableSkills.Count) return;
 
-			var sk = actorSheet.Skills[selected[0]];
+			var sk = _combatSelectableSkills[selected[0]];
 			int extraPm = (int)_spinAprimoramentoPm.Value;
 			int targetId = GetSelectedCombatTargetId(actorId);
 
@@ -4510,7 +4553,9 @@ public partial class MainUi : Control
 
 		var resultado = Tormenta20CombatRules.ResolveWeaponAttack(
 			_combatManager.Session, actorSheet, actorId, targetSheet, targetId, weapon,
-			useAtaquePoderoso: usePowerAttack);
+			useAtaquePoderoso: usePowerAttack,
+			flankingRule: _combatManager.FlankingRuleMode,
+			forceFlanking: _combatManager.ManualFlankingActive);
 
 		if (resultado.ActionSucceeded)
 		{
@@ -4521,17 +4566,29 @@ public partial class MainUi : Control
 			}
 		}
 
+		string flankTag = string.Empty;
+		if (resultado.WasFlanking)
+		{
+			flankTag = resultado.AppliedFlankingMode switch
+			{
+				T20FlankingRuleMode.Both => " [Flanco +2 e 2d20]",
+				T20FlankingRuleMode.Advantage => " [Flanco 2d20]",
+				T20FlankingRuleMode.BonusPlus2 => " [Flanco +2]",
+				_ => " [Flanco: Imune]"
+			};
+		}
+
 		if (!resultado.ActionSucceeded)
 			AppendCombatLog(resultado.Message, "#ff9999");
 		else if (resultado.Hit)
 		{
 			string crit = resultado.IsCritical ? " [CRÍTICO!]" : "";
 			string rdInfo = resultado.CoreDamageResult.ReducedBy > 0 ? $" [RD absorveu {resultado.CoreDamageResult.ReducedBy}]" : "";
-			AppendCombatLog($"{actorSheet.Name} atacou {targetSheet.Name} com {weapon.Name}{crit} ({resultado.AttackTotal} vs Def {resultado.TargetDefense})! Dano: {resultado.CoreDamageResult.FinalAmount}{rdInfo} ({resultado.DamageExpression})", "#ffaa44");
+			AppendCombatLog($"{actorSheet.Name} atacou {targetSheet.Name} com {weapon.Name}{crit}{flankTag} ({resultado.AttackTotal} vs Def {resultado.TargetDefense})! Dano: {resultado.CoreDamageResult.FinalAmount}{rdInfo} ({resultado.DamageExpression})", "#ffaa44");
 		}
 		else
 		{
-			AppendCombatLog($"{actorSheet.Name} atacou {targetSheet.Name} com {weapon.Name}: ERROU ({resultado.AttackTotal} vs Def {resultado.TargetDefense})", "#99bbff");
+			AppendCombatLog($"{actorSheet.Name} atacou {targetSheet.Name} com {weapon.Name}{flankTag}: ERROU ({resultado.AttackTotal} vs Def {resultado.TargetDefense})", "#99bbff");
 		}
 
 		UpdateCombatStatusDisplay();
@@ -4565,6 +4622,7 @@ public partial class MainUi : Control
 		if (!_combatManager.CombatantIdToSheet.TryGetValue(actorId, out var actorSheet)) return;
 
 		_listHabilidadesCombate.Clear();
+		_combatSelectableSkills.Clear();
 		if (actorSheet.Skills.Count == 0)
 		{
 			AppendCombatLog($"{actorSheet.Name} não possui poderes ou magias na ficha.", "#ff9999");
@@ -4579,33 +4637,36 @@ public partial class MainUi : Control
 
 		foreach (var sk in actorSheet.Skills)
 		{
+			if (Tormenta20MagicRules.IsPassiveSkill(sk))
+				continue;
+
 			string tipo = sk.IsSpell ? "[Magia]" : "[Poder]";
-			bool isPassive = sk.IsPassive ||
-				(!string.IsNullOrEmpty(sk.TreeKey) &&
-				 (Tormenta20AbilityTreeRules.FindPowerDefinition(sk.TreeKey)?.IsPassive ?? false));
+			string actionName = Tormenta20ActionRules.GetActionTypeName(sk.Action);
+			int prio = Tormenta20ActionRules.GetActionPriority(sk.Action);
+			int cap = Tormenta20MagicRules.GetEffectiveMaxUsesPerTurn(sk);
 			string statusTag;
-			if (isPassive)
+			if (cap > 0)
 			{
-				statusTag = "[Passivo]";
+				string usageKey = !string.IsNullOrEmpty(sk.TreeKey) ? sk.TreeKey : sk.Name;
+				int used = _combatManager.Session.GetActionCountInTurn(actorId, usageKey);
+				statusTag = $"[{actionName} | Prio {prio} | Usada {used}/{cap}]";
 			}
 			else
 			{
-				string actionName = Tormenta20ActionRules.GetActionTypeName(sk.Action);
-				int prio = Tormenta20ActionRules.GetActionPriority(sk.Action);
-				int cap = Tormenta20MagicRules.GetEffectiveMaxUsesPerTurn(sk);
-				if (cap > 0)
-				{
-					string usageKey = !string.IsNullOrEmpty(sk.TreeKey) ? sk.TreeKey : sk.Name;
-					int used = _combatManager.Session.GetActionCountInTurn(actorId, usageKey);
-					statusTag = $"[{actionName} | Prio {prio} | Usada {used}/{cap}]";
-				}
-				else
-				{
-					statusTag = $"[{actionName} | Prio {prio}]";
-				}
+				statusTag = $"[{actionName} | Prio {prio}]";
 			}
+
+			_combatSelectableSkills.Add(sk);
 			_listHabilidadesCombate.AddItem($"{tipo} {sk.Name} {statusTag} ({sk.PmCost} PM) — {sk.Description}");
 		}
+
+		if (_combatSelectableSkills.Count == 0)
+		{
+			AppendCombatLog($"{actorSheet.Name} possui apenas habilidades passivas (seus bônus já são aplicados automaticamente).", "#99bbff");
+			ShowToast("Apenas habilidades passivas na ficha — bônus já aplicados automaticamente.", new Color(0.55f, 0.85f, 1f));
+			return;
+		}
+
 		_listHabilidadesCombate.Select(0);
 		_dlgUsarHabilidadeCombate.PopupCentered();
 	}
@@ -6017,6 +6078,43 @@ public partial class MainUi : Control
 		_btnMapaAtacar.Pressed += OnAtacarPressed;
 		vSide.AddChild(_btnMapaAtacar);
 
+		var hMapaFlank = new HBoxContainer();
+		hMapaFlank.AddThemeConstantOverride("separation", 6);
+		vSide.AddChild(hMapaFlank);
+
+		_chkMapaFlancoPlus2 = new CheckBox
+		{
+			Text = "Flanco +2",
+			ButtonPressed = true,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			TooltipText = "Regra oficial T20: +2 no ataque ao flanquear (desmarque ambos se o alvo for imune)."
+		};
+		_chkMapaFlancoPlus2.AddThemeFontSizeOverride("font_size", 11);
+		_chkMapaFlancoPlus2.Toggled += (bool _) => UpdateFlankingModeFromUi(_chkMapaFlancoPlus2.ButtonPressed, _chkMapaFlancoVantagem?.ButtonPressed ?? false);
+		hMapaFlank.AddChild(_chkMapaFlancoPlus2);
+
+		_chkMapaFlancoVantagem = new CheckBox
+		{
+			Text = "Vantagem (2d20)",
+			ButtonPressed = false,
+			SizeFlagsHorizontal = SizeFlags.Expand | SizeFlags.Fill,
+			TooltipText = "Rola 2d20 e mantém o maior ao flanquear (pode combinar com +2)."
+		};
+		_chkMapaFlancoVantagem.AddThemeFontSizeOverride("font_size", 11);
+		_chkMapaFlancoVantagem.Toggled += (bool _) => UpdateFlankingModeFromUi(_chkMapaFlancoPlus2?.ButtonPressed ?? false, _chkMapaFlancoVantagem.ButtonPressed);
+		hMapaFlank.AddChild(_chkMapaFlancoVantagem);
+
+		_chkMapaFlancoManual = new CheckBox
+		{
+			Text = "Forçar Flanco (manual)",
+			ButtonPressed = false,
+			TooltipText = "Força flanco no próximo ataque mesmo sem aliado posicionado no lado oposto."
+		};
+		_chkMapaFlancoManual.AddThemeFontSizeOverride("font_size", 11);
+		_chkMapaFlancoManual.AddThemeColorOverride("font_color", new Color(0.75f, 0.90f, 1f));
+		_chkMapaFlancoManual.Toggled += (bool pressed) => UpdateFlankingModeFromUi(_chkMapaFlancoPlus2?.ButtonPressed ?? false, _chkMapaFlancoVantagem?.ButtonPressed ?? false, pressed);
+		vSide.AddChild(_chkMapaFlancoManual);
+
 		_btnMapaCorrer = new Button
 		{
 			Text = "Correr (2x Desloc. | Ação Completa)",
@@ -6313,7 +6411,7 @@ public partial class MainUi : Control
 			"- [b]Diagonais:[/b] Regra alternada 1-2-1-2.\n" +
 			"- [b]Terreno Difícil:[/b] Cada quadrado custa 2 quadrados de deslocamento.\n" +
 			"- [b]Cobertura Leve:[/b] +5 na Defesa contra ataques que cruzem o obstáculo.\n" +
-			"- [b]Flanqueamento:[/b] Aliados em lados opostos do inimigo concedem +2 no ataque corpo a corpo.\n" +
+			"- [b]Flanqueamento:[/b] Aliados em lados opostos do inimigo aplicam os benefícios ativos no painel (+2 no ataque, Vantagem 2d20, ambos ou nenhum para alvos imunes).\n" +
 			"- [b]Névoa de Guerra:[/b] Oculta inimigos fora da linha de visão dos heróis.\n" +
 			"- [b]H ou F1:[/b] Alterna rapidamente entre as abas Combate e Ajuda.";
 
@@ -6541,6 +6639,8 @@ public partial class MainUi : Control
 			_btnFogToggle.Text = _combatManager.FogOfWarEnabled ? "Névoa de Guerra" : "Visão do Mestre";
 		}
 
+		SyncFlankingControlsFromManager();
+
 		_tacticalGridCanvas.SyncFromSession(
 			_combatManager.Session,
 			_combatManager.CombatantIdToSheet,
@@ -6552,6 +6652,31 @@ public partial class MainUi : Control
 			weaponRange);
 	}
 
+	private void UpdateFlankingModeFromUi(bool plus2, bool advantage, bool? manual = null)
+	{
+		T20FlankingRuleMode mode = T20FlankingRuleMode.None;
+		if (plus2) mode |= T20FlankingRuleMode.BonusPlus2;
+		if (advantage) mode |= T20FlankingRuleMode.Advantage;
+		_combatManager.FlankingRuleMode = mode;
+		if (manual.HasValue) _combatManager.ManualFlankingActive = manual.Value;
+		SyncFlankingControlsFromManager();
+		RefreshTacticalMapView();
+	}
+
+	private void SyncFlankingControlsFromManager()
+	{
+		bool plus2 = _combatManager.FlankingRuleMode.HasFlag(T20FlankingRuleMode.BonusPlus2);
+		bool adv = _combatManager.FlankingRuleMode.HasFlag(T20FlankingRuleMode.Advantage);
+		bool manual = _combatManager.ManualFlankingActive;
+
+		_chkFlancoPlus2?.SetPressedNoSignal(plus2);
+		_chkFlancoVantagem?.SetPressedNoSignal(adv);
+		_chkFlancoManual?.SetPressedNoSignal(manual);
+		_chkMapaFlancoPlus2?.SetPressedNoSignal(plus2);
+		_chkMapaFlancoVantagem?.SetPressedNoSignal(adv);
+		_chkMapaFlancoManual?.SetPressedNoSignal(manual);
+	}
+
 	private void AtualizarResumoAlvoNoMapa(int actorId, int targetId, CharacterItem weapon)
 	{
 		if (_lblMapaAlvoResumo == null) return;
@@ -6561,7 +6686,8 @@ public partial class MainUi : Control
 			return;
 		}
 
-		var ctx = Tormenta20TacticalRules.EvaluateAttackContext(_combatManager.Session, actorId, targetId, weapon);
+		var ctx = Tormenta20TacticalRules.EvaluateAttackContext(
+			_combatManager.Session, actorId, targetId, weapon, _combatManager.FlankingRuleMode);
 		string armaNome = weapon?.Name ?? "Ataque Desarmado";
 		if (!ctx.MapActive)
 		{
@@ -6575,7 +6701,10 @@ public partial class MainUi : Control
 		else tags.Add("No alcance");
 
 		if (ctx.Cover == T20CoverLevel.Light) tags.Add("Cobertura Leve (+5 Def)");
-		if (ctx.IsFlanking) tags.Add("Flanqueando (+2 Atk)");
+		if ((ctx.IsFlanking && !(weapon != null && weapon.IsRanged)) || (_combatManager.ManualFlankingActive && !(weapon != null && weapon.IsRanged)))
+		{
+			tags.Add($"Flanco: {Tormenta20TacticalRules.FormatFlankingModeLabel(_combatManager.FlankingRuleMode)}");
+		}
 
 		_lblMapaAlvoResumo.Text =
 			$"Alvo: {targetSheet.Name} (PV {targetSheet.CurrentHp}/{targetSheet.MaxHp} | Def {targetSheet.GetDefense(_combatManager.Session, targetId)})\n" +
@@ -6670,8 +6799,35 @@ public partial class MainUi : Control
 				throw new InvalidOperationException("Executar Próxima Ação não consumiu a ação preparada!");
 			GD.Print("[SELF-TEST 5/8] Painel de Ações do Turno e Fila de Prioridades... OK!");
 
-			// 6. Mesa de Combate: Ataque respeitando alcance no mapa (sem gastar Ação Padrão quando distante)
+			// 6. Mesa de Combate: Ataque respeitando alcance no mapa, seleção de flanco e filtro de passivos
 			int firstEnemyId = initOrder.FirstOrDefault(id => id != currentActor);
+			UpdateFlankingModeFromUi(false, false, false);
+			if (_combatManager.FlankingRuleMode != T20FlankingRuleMode.None)
+				throw new InvalidOperationException("Modo de flanco Nenhum não foi aplicado!");
+			UpdateFlankingModeFromUi(false, true, false);
+			if (_combatManager.FlankingRuleMode != T20FlankingRuleMode.Advantage)
+				throw new InvalidOperationException("Modo de flanco Vantagem não foi aplicado!");
+			UpdateFlankingModeFromUi(true, true, false);
+			if (_combatManager.FlankingRuleMode != T20FlankingRuleMode.Both)
+				throw new InvalidOperationException("Modo de flanco Ambos não foi aplicado!");
+			UpdateFlankingModeFromUi(true, false, false);
+
+			if (_combatManager.CombatantIdToSheet.TryGetValue(currentActor, out var currentActorSheet))
+			{
+				var addedPassive = new CharacterSkill("_SelfTestPassivo", "Teste", 0, T20ActionType.Free, isPassive: true);
+				var addedActive = new CharacterSkill("_SelfTestAtivo", "Teste", 1, T20ActionType.Free, isPassive: false);
+				currentActorSheet.Skills.Add(addedPassive);
+				currentActorSheet.Skills.Add(addedActive);
+				OnAbrirUsarHabilidadeCombate();
+				if (_dlgUsarHabilidadeCombate.Visible) _dlgUsarHabilidadeCombate.Hide();
+				bool hasPassiveInSelector = _combatSelectableSkills.Any(s => Tormenta20MagicRules.IsPassiveSkill(s));
+				bool hasActiveInSelector = _combatSelectableSkills.Any(s => s.Name == "_SelfTestAtivo");
+				currentActorSheet.Skills.Remove(addedPassive);
+				currentActorSheet.Skills.Remove(addedActive);
+				if (hasPassiveInSelector || !hasActiveInSelector)
+					throw new InvalidOperationException("Seletor de habilidades em combate não filtrou habilidades passivas corretamente!");
+			}
+
 			OnAtacarPressed();
 			GD.Print("[SELF-TEST 6/8] Validação tática de ataque na Mesa de Combate... OK!");
 

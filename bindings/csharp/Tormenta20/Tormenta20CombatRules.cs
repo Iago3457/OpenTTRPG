@@ -12,6 +12,9 @@ namespace OpenTTRPG.Tormenta20
         public bool IsCritical { get; set; }
         public bool IsNatural20 { get; set; }
         public bool IsNatural1 { get; set; }
+        public bool WasFlanking { get; set; }
+        public bool UsedAdvantage { get; set; }
+        public T20FlankingRuleMode AppliedFlankingMode { get; set; } = T20FlankingRuleMode.None;
         public int NaturalAttackRoll { get; set; }
         public int AttackModifier { get; set; }
         public int AttackTotal { get; set; }
@@ -84,7 +87,9 @@ namespace OpenTTRPG.Tormenta20
             int extraAttackBonus = 0,
             int extraDamageBonus = 0,
             bool useAtaquePoderoso = false,
-            bool consumeStandardAction = true)
+            bool consumeStandardAction = true,
+            T20FlankingRuleMode flankingRule = T20FlankingRuleMode.BonusPlus2,
+            bool forceFlanking = false)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (attacker == null) throw new ArgumentNullException(nameof(attacker));
@@ -235,7 +240,12 @@ namespace OpenTTRPG.Tormenta20
                 // então +10 transforma o modificador líquido contra ataque à distância em +5 na Defesa.
                 baseDef += 10;
             }
-            skillMod += tacticalCtx.FlankingAttackBonus;
+
+            bool isFlanking = !weapon.IsRanged && (forceFlanking || tacticalCtx.IsFlanking);
+            int flankBonus = (isFlanking && flankingRule.HasFlag(T20FlankingRuleMode.BonusPlus2)) ? 2 : 0;
+            bool useAdvantage = isFlanking && flankingRule.HasFlag(T20FlankingRuleMode.Advantage);
+            T20FlankingRuleMode appliedFlankMode = isFlanking ? flankingRule : T20FlankingRuleMode.None;
+            skillMod += flankBonus;
 
             bool hasDisparoPreciso = attacker.UnlockedTreeKeys.Contains("disparo_preciso") ||
                                      session.HasAbility(attackerId, "disparo_preciso");
@@ -249,14 +259,24 @@ namespace OpenTTRPG.Tormenta20
             }
 
             string tacticalNotes = string.Empty;
+            if (isFlanking)
+            {
+                tacticalNotes += appliedFlankMode switch
+                {
+                    T20FlankingRuleMode.Both => " [Flanqueando +2 Atk + Vantagem 2d20kh1]",
+                    T20FlankingRuleMode.Advantage => " [Flanqueando Vantagem 2d20kh1]",
+                    T20FlankingRuleMode.BonusPlus2 => " [Flanqueando +2 Atk]",
+                    _ => " [Flanqueado (Imune/Desativado)]"
+                };
+            }
             if (tacticalCtx.MapActive)
             {
-                if (tacticalCtx.IsFlanking) tacticalNotes += " [Flanqueando +2 Atk]";
                 if (tacticalCtx.Cover == T20CoverLevel.Light) tacticalNotes += " [Cobertura Leve +5 Def]";
                 if (engagedInMeleePenalty) tacticalNotes += " [Alvo em Corpo a Corpo -5 Atk]";
             }
 
-            RollResult d20 = session.Roll("1d20");
+            string attackRollExpr = useAdvantage ? "2d20kh1" : "1d20";
+            RollResult d20 = session.Roll(attackRollExpr);
             int natural = d20.DiceTotal;
             int attackTotal = natural + skillMod;
             bool isNat20 = d20.NaturalMaxCount > 0;
@@ -274,13 +294,16 @@ namespace OpenTTRPG.Tormenta20
                     IsCritical = false,
                     IsNatural20 = isNat20,
                     IsNatural1 = isNat1,
+                    WasFlanking = isFlanking,
+                    UsedAdvantage = useAdvantage,
+                    AppliedFlankingMode = appliedFlankMode,
                     NaturalAttackRoll = natural,
                     AttackModifier = skillMod,
                     AttackTotal = attackTotal,
                     TargetDefense = baseDef,
                     ThreatRange = threatRange,
                     CriticalMultiplier = critMultiplier,
-                    Message = $"[ATAQUE ERROU] {attacker.Name} atacou {defender.Name} com {weapon.Name}: rolou {attackTotal} (1d20={natural}{FormatSigned(skillMod)}) vs Defesa {baseDef}{tacticalNotes}."
+                    Message = $"[ATAQUE ERROU] {attacker.Name} atacou {defender.Name} com {weapon.Name}: rolou {attackTotal} ({attackRollExpr}={natural}{FormatSigned(skillMod)}) vs Defesa {baseDef}{tacticalNotes}."
                 };
             }
 
@@ -337,6 +360,9 @@ namespace OpenTTRPG.Tormenta20
                 IsCritical = isCrit,
                 IsNatural20 = isNat20,
                 IsNatural1 = isNat1,
+                WasFlanking = isFlanking,
+                UsedAdvantage = useAdvantage,
+                AppliedFlankingMode = appliedFlankMode,
                 NaturalAttackRoll = natural,
                 AttackModifier = skillMod,
                 AttackTotal = attackTotal,

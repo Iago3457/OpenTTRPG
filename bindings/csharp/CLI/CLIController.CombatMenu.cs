@@ -255,8 +255,26 @@ namespace OpenTTRPG.CLI
                         int targetIdx = charEntityIds.IndexOf(targetId);
                         if (targetId > 0 && targetIdx >= 0)
                         {
+                            Console.Write("Regra de flanco (0=Desativado/Imune, 1=+2 T20, 2=Vantagem 2d20kh1, 3=+2 e Vantagem [Enter=1]): ");
+                            string fInput = GetCleanLine();
+                            int fChoice = string.IsNullOrEmpty(fInput) ? 1 : ParseSignedInt(fInput, 1);
+                            T20FlankingRuleMode flankMode = fChoice switch
+                            {
+                                0 => T20FlankingRuleMode.None,
+                                2 => T20FlankingRuleMode.Advantage,
+                                3 => T20FlankingRuleMode.Both,
+                                _ => T20FlankingRuleMode.BonusPlus2
+                            };
+                            bool forceFlank = false;
+                            if (flankMode != T20FlankingRuleMode.None && !session.IsMapActive)
+                            {
+                                Console.Write("Está flanqueando o alvo? (s/N): ");
+                                forceFlank = GetCleanLine().Equals("s", StringComparison.OrdinalIgnoreCase);
+                            }
+
                             var atkRes = Tormenta20CombatRules.ResolveWeaponAttack(
-                                session, currentSheet, currentId, _characters[targetIdx], targetId);
+                                session, currentSheet, currentId, _characters[targetIdx], targetId,
+                                flankingRule: flankMode, forceFlanking: forceFlank);
                             SyncBackToSheets();
                             Console.WriteLine(atkRes.Message);
                         }
@@ -289,54 +307,50 @@ namespace OpenTTRPG.CLI
                 {
                     if (currentSheet != null && currentSheet.Skills.Count > 0)
                     {
-                        List<CharacterSkill> skills = currentSheet.Skills;
-                        int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(currentSheet, session, currentId);
-                        Console.WriteLine($"\nHabilidades de {currentName} (Limite de gasto por uso: {pmLimit} PM):");
-                        for (int i = 0; i < skills.Count; i++)
+                        List<CharacterSkill> activeSkills = currentSheet.Skills.FindAll(sk => !Tormenta20MagicRules.IsPassiveSkill(sk));
+                        if (activeSkills.Count > 0)
                         {
-                            var sk = skills[i];
-                            bool isPassive = sk.IsPassive ||
-                                (!string.IsNullOrEmpty(sk.TreeKey) &&
-                                 (Tormenta20AbilityTreeRules.FindPowerDefinition(sk.TreeKey)?.IsPassive ?? false));
-                            int cap = isPassive ? 0 : Tormenta20MagicRules.GetEffectiveMaxUsesPerTurn(sk);
-                            string usageTag;
-                            if (isPassive)
+                            int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(currentSheet, session, currentId);
+                            Console.WriteLine($"\nHabilidades ativas de {currentName} (Limite de gasto por uso: {pmLimit} PM):");
+                            for (int i = 0; i < activeSkills.Count; i++)
                             {
-                                usageTag = " [Passivo]";
-                            }
-                            else if (cap > 0)
-                            {
-                                string usageKey = !string.IsNullOrEmpty(sk.TreeKey) ? sk.TreeKey : sk.Name;
-                                int used = session.GetActionCountInTurn(currentId, usageKey);
-                                usageTag = $" [Usada {used}/{cap} no turno]";
-                            }
-                            else
-                            {
-                                usageTag = "";
-                            }
+                                var sk = activeSkills[i];
+                                int cap = Tormenta20MagicRules.GetEffectiveMaxUsesPerTurn(sk);
+                                string usageTag = string.Empty;
+                                if (cap > 0)
+                                {
+                                    string usageKey = !string.IsNullOrEmpty(sk.TreeKey) ? sk.TreeKey : sk.Name;
+                                    int used = session.GetActionCountInTurn(currentId, usageKey);
+                                    usageTag = $" [Usada {used}/{cap} no turno]";
+                                }
 
-                            int prio = Tormenta20ActionRules.GetActionPriority(sk.Action);
-                            Console.WriteLine($"  {i + 1}. {sk.Name} [{Tormenta20ActionRules.GetActionTypeName(sk.Action)} (Prio {prio}) | {sk.PmCost} PM]{usageTag} - {sk.Description}");
+                                int prio = Tormenta20ActionRules.GetActionPriority(sk.Action);
+                                Console.WriteLine($"  {i + 1}. {sk.Name} [{Tormenta20ActionRules.GetActionTypeName(sk.Action)} (Prio {prio}) | {sk.PmCost} PM]{usageTag} - {sk.Description}");
+                            }
+                            Console.WriteLine($"  {activeSkills.Count + 1}. Digitar habilidade/magia avulsa");
+                            Console.Write("Escolha a habilidade: ");
+                            int skChoice = ParsePositiveInt(GetCleanLine(), 0);
+
+                            if (skChoice >= 1 && skChoice <= activeSkills.Count)
+                            {
+                                CharacterSkill chosen = activeSkills[skChoice - 1];
+                                int enhPm = 0;
+                                if (chosen.IsSpell || chosen.Enhancements.Count > 0)
+                                {
+                                    Console.Write($"PM extras em Aprimoramentos (0 para base, máx permitido pelo limite={Math.Max(0, pmLimit - chosen.PmCost)}): ");
+                                    enhPm = Math.Max(0, ParseSignedInt(GetCleanLine(), 0));
+                                }
+
+                                var res = Tormenta20MagicRules.EnqueueSkillWithEnhancements(
+                                    session, currentId, currentSheet, chosen, enhPm);
+                                SyncBackToSheets();
+                                Console.WriteLine(res.Message);
+                                continue;
+                            }
                         }
-                        Console.WriteLine($"  {skills.Count + 1}. Digitar habilidade/magia avulsa");
-                        Console.Write("Escolha a habilidade: ");
-                        int skChoice = ParsePositiveInt(GetCleanLine(), 0);
-
-                        if (skChoice >= 1 && skChoice <= skills.Count)
+                        else
                         {
-                            CharacterSkill chosen = skills[skChoice - 1];
-                            int enhPm = 0;
-                            if (chosen.IsSpell || chosen.Enhancements.Count > 0)
-                            {
-                                Console.Write($"PM extras em Aprimoramentos (0 para base, máx permitido pelo limite={Math.Max(0, pmLimit - chosen.PmCost)}): ");
-                                enhPm = Math.Max(0, ParseSignedInt(GetCleanLine(), 0));
-                            }
-
-                            var res = Tormenta20MagicRules.EnqueueSkillWithEnhancements(
-                                session, currentId, currentSheet, chosen, enhPm);
-                            SyncBackToSheets();
-                            Console.WriteLine(res.Message);
-                            continue;
+                            Console.WriteLine($"\nTodas as habilidades na ficha de {currentName} são passivas. Você pode digitar uma habilidade/magia avulsa abaixo.");
                         }
                     }
 

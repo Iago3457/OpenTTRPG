@@ -285,8 +285,11 @@ namespace OpenTTRPG.Tests
             session.SetInitiative(foeId, 5);
             session.StartCombat();
 
-            // 1. Poder passivo NÃO pode ser ativado como ação em combate
+            // 1. Poder passivo NÃO pode ser ativado como ação em combate e é filtrado por IsPassiveSkill
             var passiveSkill = hero.Skills.Find(s => s.TreeKey == "estilo_uma_arma")!;
+            var atkEspecialSkill = hero.Skills.Find(s => s.Name == "Ataque Especial")!;
+            AssertTrue(Tormenta20MagicRules.IsPassiveSkill(passiveSkill), "Poder passivo deve ser identificado por IsPassiveSkill");
+            AssertTrue(!Tormenta20MagicRules.IsPassiveSkill(atkEspecialSkill), "Poder ativo não deve ser marcado como passivo");
             var passiveRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, passiveSkill);
             AssertTrue(!passiveRes.Success && passiveRes.Message.Contains("PASSIVO"), "Habilidade passiva deve ser bloqueada como ação");
 
@@ -784,10 +787,42 @@ namespace OpenTTRPG.Tests
             AssertEqual(0, session.GetActionSlot(heroId, (int)T20ActionType.Movement).Current, "Movimento deve gastar Ação de Movimento");
             AssertTrue(session.TryGetToken(heroId, out var movedTok) && movedTok.X == 5 && movedTok.Y == 4, "Posição no C++ atualizada");
 
-            // 7. Flanqueamento (+2 Ataque): hero(5,4) e ally(7,4) em lados opostos de goblin(6,4); adjacentes não-opostos NÃO flanqueiam
-            var ctxFlank = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada);
+            // 7. Flanqueamento configurável (Nenhum/Imune, +2 T20, Vantagem 2d20kh1, Ambos): hero(5,4) e ally(7,4) em lados opostos de goblin(6,4)
+            var ctxFlank = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada, T20FlankingRuleMode.BonusPlus2);
             AssertTrue(ctxFlank.IsFlanking, "Herói(5,4) e Aliado(7,4) devem flanquear Goblin(6,4)");
-            AssertEqual(2, ctxFlank.FlankingAttackBonus, "Flanqueamento deve conceder +2 no ataque");
+            AssertEqual(2, ctxFlank.FlankingAttackBonus, "Flanqueamento +2 deve conceder +2 no ataque");
+            AssertTrue(!ctxFlank.GrantsFlankingAdvantage, "Modo +2 isolado não deve conceder Vantagem");
+
+            var ctxAdv = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada, T20FlankingRuleMode.Advantage);
+            AssertTrue(ctxAdv.IsFlanking && ctxAdv.GrantsFlankingAdvantage, "Modo Vantagem deve sinalizar GrantsFlankingAdvantage");
+            AssertEqual(0, ctxAdv.FlankingAttackBonus, "Modo Vantagem isolado não soma +2");
+
+            var ctxBoth = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada, T20FlankingRuleMode.Both);
+            AssertEqual(2, ctxBoth.FlankingAttackBonus, "Modo Ambos soma +2");
+            AssertTrue(ctxBoth.GrantsFlankingAdvantage, "Modo Ambos concede Vantagem");
+
+            var ctxNone = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada, T20FlankingRuleMode.None);
+            AssertEqual(0, ctxNone.FlankingAttackBonus, "Modo Nenhum (alvo imune) não soma +2");
+            AssertTrue(!ctxNone.GrantsFlankingAdvantage, "Modo Nenhum (alvo imune) não concede Vantagem");
+
+            // Resolução de ataque no modo Vantagem (2d20kh1), Ambos e Imune
+            goblin.FixedDefense = 30;
+            var resAdv = Tormenta20CombatRules.ResolveWeaponAttack(
+                session, humano, heroId, goblin, goblinId, espada,
+                consumeStandardAction: false, flankingRule: T20FlankingRuleMode.Advantage);
+            var resBoth = Tormenta20CombatRules.ResolveWeaponAttack(
+                session, humano, heroId, goblin, goblinId, espada,
+                consumeStandardAction: false, flankingRule: T20FlankingRuleMode.Both);
+            var resImmune = Tormenta20CombatRules.ResolveWeaponAttack(
+                session, humano, heroId, goblin, goblinId, espada,
+                consumeStandardAction: false, flankingRule: T20FlankingRuleMode.None);
+            AssertTrue(resAdv.WasFlanking && resAdv.UsedAdvantage, "Modo Vantagem deve rolar 2d20kh1 ao flanquear");
+            AssertEqual(2, resBoth.AttackModifier - resAdv.AttackModifier, "Modo Ambos deve conceder +2 a mais que modo Vantagem isolado");
+            AssertTrue(resBoth.UsedAdvantage, "Modo Ambos também deve usar 2d20kh1");
+            AssertTrue(resImmune.WasFlanking && !resImmune.UsedAdvantage && resImmune.AppliedFlankingMode == T20FlankingRuleMode.None, "Modo Imune não deve aplicar +2 nem Vantagem");
+            AssertEqual(resAdv.AttackModifier, resImmune.AttackModifier, "Sem +2, modificador de ataque é igual no modo Imune e Vantagem isolada");
+            goblin.FixedDefense = 0;
+
             session.MoveToken(allyId, 6, 3);
             var ctxNonOpposite = Tormenta20TacticalRules.EvaluateAttackContext(session, heroId, goblinId, espada);
             AssertTrue(!ctxNonOpposite.IsFlanking, "Adjacentes não-opostos (5,4) e (6,3) não devem flanquear");

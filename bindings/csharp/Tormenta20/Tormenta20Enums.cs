@@ -95,6 +95,19 @@ namespace OpenTTRPG.Tormenta20
     }
 
     /// <summary>
+    /// Configura quais benefícios se aplicam ao atacar um alvo flanqueado:
+    /// Nenhum (para criaturas imunes a flanco), +2 oficial de Tormenta20 JdA, Vantagem (2d20kh1) ou Ambos.
+    /// </summary>
+    [System.Flags]
+    public enum T20FlankingRuleMode : int
+    {
+        None       = 0,
+        BonusPlus2 = 1 << 0,
+        Advantage  = 1 << 1,
+        Both       = BonusPlus2 | Advantage
+    }
+
+    /// <summary>
     /// Qualidade do descanso entre encontros em Tormenta20.
     /// </summary>
     public enum RestQuality

@@ -32,6 +32,8 @@ public partial class CombatManager : Node
 	public int DefaultMapHeight { get; set; } = 12;
 	public string CurrentMapBackgroundPath { get; set; } = string.Empty;
 	public bool FogOfWarEnabled { get; set; } = false;
+	public T20FlankingRuleMode FlankingRuleMode { get; set; } = T20FlankingRuleMode.BonusPlus2;
+	public bool ManualFlankingActive { get; set; } = false;
 
 	[Signal]
 	public delegate void TurnChangedEventHandler(int combatantId, string combatantName, int round);
