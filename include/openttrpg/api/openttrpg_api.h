@@ -376,6 +376,9 @@ OTTRPG_API int32_t ottrpg_combatant_set_stat(OttrpgEncounter* encounter, OttrpgI
                                              const char* key_utf8, int32_t value);
 OTTRPG_API int32_t ottrpg_combatant_get_stat(OttrpgEncounter* encounter, OttrpgId id,
                                              const char* key_utf8, int32_t default_value, int32_t* out_value);
+OTTRPG_API int32_t ottrpg_combatant_set_max_abilities(OttrpgEncounter* encounter, OttrpgId id, int32_t max_abilities);
+OTTRPG_API int32_t ottrpg_combatant_get_max_abilities(OttrpgEncounter* encounter, OttrpgId id, int32_t* out_max_abilities);
+OTTRPG_API int32_t ottrpg_combatant_ability_count(OttrpgEncounter* encounter, OttrpgId id);
 OTTRPG_API int32_t ottrpg_combatant_unlock_ability(OttrpgEncounter* encounter, OttrpgId id,
                                                    const char* ability_key_utf8);
 OTTRPG_API int32_t ottrpg_combatant_revoke_ability(OttrpgEncounter* encounter, OttrpgId id,
@@ -386,10 +389,14 @@ OTTRPG_API int32_t ottrpg_combatant_record_action_in_turn(OttrpgEncounter* encou
                                                           const char* action_key_utf8);
 OTTRPG_API int32_t ottrpg_combatant_has_used_action_in_turn(OttrpgEncounter* encounter, OttrpgId id,
                                                             const char* action_key_utf8);
+OTTRPG_API int32_t ottrpg_combatant_action_count_in_turn(OttrpgEncounter* encounter, OttrpgId id,
+                                                         const char* action_key_utf8);
 
 /* Construção da Árvore de Habilidades (`parent_key_utf8` pode ser NULL/"" para raiz) */
 OTTRPG_API int32_t ottrpg_ability_register(OttrpgEncounter* encounter, const char* key_utf8,
                                            const char* name_utf8, const char* parent_key_utf8);
+OTTRPG_API int32_t ottrpg_ability_set_action_config(OttrpgEncounter* encounter, const char* ability_key_utf8,
+                                                    int32_t required_action_type, int32_t max_uses_per_turn);
 /* `is_usage_req`: 0 = árvore de pré-requisitos para aprender (grant), 1 = árvore para usar em combate (usage) */
 OTTRPG_API int32_t ottrpg_ability_set_req_root(OttrpgEncounter* encounter, const char* ability_key_utf8,
                                                int32_t is_usage_req, int32_t root_kind, int32_t threshold);
@@ -404,6 +411,8 @@ OTTRPG_API int32_t ottrpg_ability_add_req_node(OttrpgEncounter* encounter, const
 OTTRPG_API int32_t ottrpg_ability_can_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
 OTTRPG_API int32_t ottrpg_ability_learn(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
 OTTRPG_API int32_t ottrpg_ability_can_use(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8);
+OTTRPG_API int32_t ottrpg_ability_enqueue(OttrpgEncounter* encounter, OttrpgId id, const char* ability_key_utf8,
+                                          OttrpgId target_id, int32_t* out_action_id, int32_t* out_consumed_type);
 
 /* ------------------------------------------------------------------------- */
 /* Dados (usam o gerador do encontro: mesma semente => mesma sequência)      */

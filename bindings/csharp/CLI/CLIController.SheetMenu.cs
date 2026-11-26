@@ -215,24 +215,30 @@ namespace OpenTTRPG.CLI
                 using var session = new EncounterSession();
                 Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
                 int eid = session.AddCombatant(selected.Name, selected.Dexterity, selected.MaxHp, 1);
-                Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-                    session, eid, selected.Level,
-                    selected.Strength, selected.Dexterity, selected.Constitution,
-                    selected.Intelligence, selected.Wisdom, selected.Charisma,
-                    selected.UnlockedTreeKeys);
+                Tormenta20AbilityTreeRules.SyncCharacterToCore(session, eid, selected);
 
-                Console.WriteLine($"\n--- ÁRVORE DE PODERES DE TORMENTA20 ({selected.Name} Nv.{selected.Level}) ---");
+                Console.WriteLine($"\n--- ÁRVORE DE PODERES DE TORMENTA20 ({selected.Name} Nv.{selected.Level} | {selected.Race}) ---");
+                Console.WriteLine($"Capacidade na Árvore (1/nível + bônus racial): {Tormenta20AbilityTreeRules.FormatAbilitySlotBudget(selected)}");
+                string racialReason = Tormenta20AbilityTreeRules.GetRacialBonusAbilityReason(selected.Race);
+                if (!string.IsNullOrEmpty(racialReason))
+                {
+                    Console.WriteLine($"Bônus Racial Ativo: {racialReason}");
+                }
+
                 var powers = Tormenta20AbilityTreeRules.CanonicalPowers;
                 for (int i = 0; i < powers.Count; i++)
                 {
                     var p = powers[i];
                     bool alreadyHas = session.HasAbility(eid, p.Key);
-                    bool canLearn = session.CanLearnAbility(eid, p.Key, out string unmet);
+                    bool canLearn = Tormenta20AbilityTreeRules.CanLearnPower(session, eid, selected, p.Key, out string unmet);
+                    string actionTag = p.IsPassive
+                        ? "Passivo"
+                        : $"{Tormenta20ActionRules.GetActionTypeName(p.ActionType)} (Prio {Tormenta20ActionRules.GetActionPriority(p.ActionType)}, máx {p.MaxUsesPerTurn}x/turno)";
                     string status = alreadyHas
                         ? "[JÁ APRENDIDO]"
                         : (canLearn ? "[DISPONÍVEL]" : $"[BLOQUEADO: {unmet}]");
                     string indent = string.IsNullOrEmpty(p.ParentKey) ? "  " : "    -> ";
-                    Console.WriteLine($"{indent}{i + 1}. {p.Name} {status} — {p.Description}");
+                    Console.WriteLine($"{indent}{i + 1}. {p.Name} [{actionTag}] {status} — {p.Description}");
                 }
 
                 Console.Write("\nEscolha o número do poder para tentar aprender (ou 0 para cancelar): ");
@@ -240,22 +246,8 @@ namespace OpenTTRPG.CLI
                 if (pChoice >= 1 && pChoice <= powers.Count)
                 {
                     var chosenPower = powers[pChoice - 1];
-                    if (session.HasAbility(eid, chosenPower.Key))
-                    {
-                        Console.WriteLine($"[AVISO] {selected.Name} já possui '{chosenPower.Name}'.");
-                    }
-                    else if (session.TryLearnAbility(eid, chosenPower.Key, out string unmet))
-                    {
-                        selected.UnlockedTreeKeys.Add(chosenPower.Key);
-                        selected.Skills.Add(new CharacterSkill(
-                            chosenPower.Name, chosenPower.Description, chosenPower.PmCost, chosenPower.ActionType,
-                            0, chosenPower.Key, false, chosenPower.BaseFormula));
-                        Console.WriteLine($"[SUCESSO] '{chosenPower.Name}' desbloqueado na Árvore de Poderes e adicionado à ficha!");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[PRÉ-REQUISITOS NÃO ATENDIDOS NA ÁRVORE] Não foi possível aprender '{chosenPower.Name}': {unmet}");
-                    }
+                    Tormenta20AbilityTreeRules.TryLearnPower(session, eid, selected, chosenPower.Key, out string learnMsg);
+                    Console.WriteLine(learnMsg);
                 }
             }
             else if (subOpt == 8)

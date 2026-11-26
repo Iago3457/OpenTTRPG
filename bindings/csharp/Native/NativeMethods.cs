@@ -272,6 +272,15 @@ namespace OpenTTRPG.Native
         public static extern int ottrpg_combatant_get_stat(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string keyUtf8, int defaultValue, out int outValue);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_set_max_abilities(IntPtr encounter, int id, int maxAbilities);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_get_max_abilities(IntPtr encounter, int id, out int outMaxAbilities);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_ability_count(IntPtr encounter, int id);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_combatant_unlock_ability(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
@@ -287,10 +296,18 @@ namespace OpenTTRPG.Native
         public static extern int ottrpg_combatant_has_used_action_in_turn(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string actionKeyUtf8);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_combatant_action_count_in_turn(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string actionKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_ability_register(IntPtr encounter,
                                                          [MarshalAs(UnmanagedType.LPUTF8Str)] string keyUtf8,
                                                          [MarshalAs(UnmanagedType.LPUTF8Str)] string nameUtf8,
                                                          [MarshalAs(UnmanagedType.LPUTF8Str)] string parentKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_set_action_config(IntPtr encounter,
+                                                                  [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8,
+                                                                  int requiredActionType, int maxUsesPerTurn);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_ability_set_req_root(IntPtr encounter,
@@ -312,6 +329,10 @@ namespace OpenTTRPG.Native
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int ottrpg_ability_can_use(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8);
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int ottrpg_ability_enqueue(IntPtr encounter, int id, [MarshalAs(UnmanagedType.LPUTF8Str)] string abilityKeyUtf8,
+                                                        int targetId, out int outActionId, out int outConsumedType);
 
         // Mapa Tático Espacial (SparseGrid + QuadTree no Core)
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]

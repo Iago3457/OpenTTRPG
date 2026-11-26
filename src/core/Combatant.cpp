@@ -150,6 +150,18 @@ const ds::LinkedList<NamedStat>& Combatant::stats() const {
 
 // ----- Habilidades / Poderes Concedidos -----
 
+void Combatant::setMaxAbilities(int maxAbilities) {
+    maxAbilities_ = maxAbilities < 0 ? -1 : maxAbilities;
+}
+
+int Combatant::maxAbilities() const {
+    return maxAbilities_;
+}
+
+std::size_t Combatant::unlockedAbilityCount() const {
+    return unlockedAbilities_.size();
+}
+
 bool Combatant::unlockAbility(const std::string& key) {
     if (key.empty() || hasAbility(key)) {
         return false;
@@ -180,6 +192,9 @@ void Combatant::recordActionInTurn(const std::string& actionKey) {
 }
 
 bool Combatant::unrecordActionInTurn(const std::string& actionKey) {
+    if (actionKey.empty()) {
+        return false;
+    }
     const std::size_t idx = turnActionHistory_.find_index([&actionKey](const std::string& k) {
         return k == actionKey;
     });
@@ -187,6 +202,19 @@ bool Combatant::unrecordActionInTurn(const std::string& actionKey) {
         return false;
     }
     return turnActionHistory_.remove_at(idx);
+}
+
+int Combatant::countActionsUsedInTurn(const std::string& actionKey) const {
+    if (actionKey.empty()) {
+        return 0;
+    }
+    int count = 0;
+    turnActionHistory_.for_each([&](const std::string& k, std::size_t) {
+        if (k == actionKey) {
+            ++count;
+        }
+    });
+    return count;
 }
 
 bool Combatant::hasUsedActionInTurn(const std::string& actionKey) const {

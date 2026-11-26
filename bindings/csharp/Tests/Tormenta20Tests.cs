@@ -29,6 +29,8 @@ namespace OpenTTRPG.Tests
             TestSkillSystemAndArmorPenalty();
             TestActionEconomyAndPriorityQueue();
             TestAbilityTreeAndPrerequisites();
+            TestAbilityTreeLevelAndRaceLimits();
+            TestCombatAbilityPriorityAndTurnUsageLimits();
             TestCombatAttackCriticalAndDamagePipeline();
             TestCanonicalConditionsCatalog();
             TestSpellEnhancementsAndPmSpendLimit();
@@ -178,6 +180,189 @@ namespace OpenTTRPG.Tests
 
             Tormenta20ActionRules.EnqueueTurnAction(session, id, T20ActionType.Standard, "Agredir (Ataque Padrão)");
             AssertTrue(session.CanUseAbility(id, "trespassar", out _), "Pode usar Trespassar após Agredir no turno");
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestAbilityTreeLevelAndRaceLimits()
+        {
+            Console.Write("[TEST C#] Árvore de Habilidades por Nível + Bônus Racial (Tormenta20)... ");
+            using var session = new EncounterSession(177);
+            Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
+
+            // 1. Anão Nível 1 -> Limite base 1 habilidade (sem bônus racial de slot)
+            var dwarf = new CharacterSheetData(1, "Thorin", "Guerreiro", "Anão", "Soldado", "Khalmyr", 1, 25, 3)
+            {
+                Strength = 2,
+                Dexterity = 2,
+                Constitution = 2
+            };
+            int dwarfId = session.AddCombatant(dwarf.Name, 2, dwarf.MaxHp, 1);
+            Tormenta20AbilityTreeRules.SyncCharacterToCore(session, dwarfId, dwarf);
+            AssertEqual(1, Tormenta20AbilityTreeRules.GetMaxAbilitySlots(dwarf), "Anão Nv.1 deve ter 1 slot de habilidade");
+
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, dwarfId, dwarf, "ataque_poderoso", out _),
+                "Anão Nv.1 aprende 1ª habilidade");
+            AssertEqual(0, Tormenta20AbilityTreeRules.GetRemainingAbilitySlots(dwarf), "Saldo deve zerar após aprender 1 habilidade no Nv.1");
+            AssertTrue(!Tormenta20AbilityTreeRules.CanLearnPower(session, dwarfId, dwarf, "encouracado", out string limitReason),
+                "Anão Nv.1 não pode aprender 2ª habilidade");
+            AssertTrue(limitReason.Contains("1/1"), $"Motivo deve citar limite 1/1 (obtido: {limitReason})");
+            AssertTrue(!Tormenta20AbilityTreeRules.TryLearnPower(session, dwarfId, dwarf, "encouracado", out _),
+                "TryLearnPower deve bloquear ao atingir limite do nível");
+
+            // Subir para Nível 2 libera +1 slot na árvore!
+            dwarf.Level = 2;
+            Tormenta20AbilityTreeRules.SyncCharacterToCore(session, dwarfId, dwarf);
+            AssertEqual(2, Tormenta20AbilityTreeRules.GetMaxAbilitySlots(dwarf), "Anão Nv.2 passa a ter 2 slots");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, dwarfId, dwarf, "encouracado", out _),
+                "Anão Nv.2 consegue aprender a 2ª habilidade");
+
+            // 2. Raças com poder extra no Nv.1 (Humano/Lefou/Osteon) recebem +1 slot -> total 2 no Nível 1!
+            var human = new CharacterSheetData(2, "Valeros", "Guerreiro", "Humano", "Soldado", "Valkaria", 1, 24, 3)
+            {
+                Strength = 2,
+                Dexterity = 2,
+                Constitution = 1
+            };
+            var lefou = new CharacterSheetData(3, "Kael", "Lutador", "Lefou", "Forasteiro", "Aharadak", 1, 22, 3)
+            {
+                Strength = 2,
+                Constitution = 1
+            };
+            var osteon = new CharacterSheetData(4, "Osso", "Arcanista", "Osteon", "Erudito", "Tenebra", 1, 12, 8)
+            {
+                Intelligence = 3,
+                Dexterity = 1
+            };
+            AssertEqual(2, Tormenta20AbilityTreeRules.GetMaxAbilitySlots(human), "Humano Nv.1 tem 2 slots (1 nível + 1 Versátil)");
+            AssertEqual(2, Tormenta20AbilityTreeRules.GetMaxAbilitySlots(lefou), "Lefou Nv.1 tem 2 slots (1 nível + 1 Cria da Tormenta)");
+            AssertEqual(2, Tormenta20AbilityTreeRules.GetMaxAbilitySlots(osteon), "Osteon Nv.1 tem 2 slots (1 nível + 1 Memória Póstuma)");
+
+            int humanId = session.AddCombatant(human.Name, 2, human.MaxHp, 1);
+            Tormenta20AbilityTreeRules.SyncCharacterToCore(session, humanId, human);
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, humanId, human, "estilo_uma_arma", out _),
+                "Humano Nv.1 aprende 1ª habilidade");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, humanId, human, "ataque_preciso", out _),
+                "Humano Nv.1 aprende 2ª habilidade graças ao bônus racial");
+            AssertTrue(!Tormenta20AbilityTreeRules.TryLearnPower(session, humanId, human, "ataque_poderoso", out _),
+                "Humano Nv.1 é bloqueado na 3ª habilidade");
+
+            Console.WriteLine("SUCESSO!");
+        }
+
+        private static void TestCombatAbilityPriorityAndTurnUsageLimits()
+        {
+            Console.Write("[TEST C#] Habilidades em Combate: Prioridades, Limite por Turno, Passivos, Undo e Fallback... ");
+            using var session = new EncounterSession(288);
+            Tormenta20AbilityTreeRules.RegisterTormenta20PowerTrees(session);
+
+            // Herói Nível 10 com 10 slots -> aprende ramos necessários (incluindo finta_aprimorada Nv.4 e golpe_demolidor Nv.8)
+            var hero = new CharacterSheetData(10, "Kaelen", "Guerreiro", "Humano", "Soldado", "Valkaria", 10, 75, 40)
+            {
+                Strength = 3,
+                Dexterity = 2,
+                Constitution = 2
+            };
+            int eid = session.AddCombatant(hero.Name, 2, hero.MaxHp, 1);
+            int foeId = session.AddCombatant("Orc", 1, 50, 2);
+            session.AddResource(eid, Tormenta20ActionRules.ManaResourceId, "PM", hero.MaxPm, 0);
+            Tormenta20ActionRules.ConfigureTurnActions(session, eid);
+            Tormenta20ActionRules.ConfigureTurnActions(session, foeId);
+            Tormenta20AbilityTreeRules.SyncCharacterToCore(session, eid, hero);
+
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, eid, hero, "estilo_uma_arma", out _), "Aprende Estilo de Uma Arma");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, eid, hero, "ataque_preciso", out _), "Aprende Ataque Preciso");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, eid, hero, "finta_aprimorada", out _), "Aprende Finta Aprimorada (Movimento)");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, eid, hero, "ataque_poderoso", out _), "Aprende Ataque Poderoso (Livre)");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, eid, hero, "trespassar", out _), "Aprende Trespassar (Livre)");
+            AssertTrue(Tormenta20AbilityTreeRules.TryLearnPower(session, eid, hero, "golpe_demolidor", out _), "Aprende Golpe Devastador/Demolidor (Padrão)");
+
+            hero.Skills.Add(new CharacterSkill("Ataque Especial", "Gasta 1 PM para +4", 1, T20ActionType.Free));
+            hero.Skills.Add(new CharacterSkill("Contra-Ataque", "Reação defensiva", 1, T20ActionType.Reaction));
+
+            session.RollInitiativeForAll(1, 20);
+            session.SetInitiative(eid, 20);
+            session.SetInitiative(foeId, 5);
+            session.StartCombat();
+
+            // 1. Poder passivo NÃO pode ser ativado como ação em combate
+            var passiveSkill = hero.Skills.Find(s => s.TreeKey == "estilo_uma_arma")!;
+            var passiveRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, passiveSkill);
+            AssertTrue(!passiveRes.Success && passiveRes.Message.Contains("PASSIVO"), "Habilidade passiva deve ser bloqueada como ação");
+
+            // 2. Habilidade livre de classe (Ataque Especial) respeita limite 1x por turno e Undo reembolsa o uso e PM!
+            var atkEspecial = hero.Skills.Find(s => s.Name == "Ataque Especial")!;
+            var esp1 = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, atkEspecial, targetId: foeId);
+            var esp2 = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, atkEspecial, targetId: foeId);
+            AssertTrue(esp1.Success, "1º uso de Ataque Especial no turno deve funcionar");
+            AssertTrue(!esp2.Success, "2º uso de Ataque Especial no mesmo turno deve ser bloqueado");
+
+            // Cancelar libera novamente neste turno
+            AssertTrue(session.CancelQueuedAction(eid, esp1.ActionId, refundSlot: true), "CancelQueuedAction deve remover ação livre");
+            session.RestoreResource(eid, Tormenta20ActionRules.ManaResourceId, esp1.PmSpent);
+            hero.CurrentPm = session.GetResource(eid, Tormenta20ActionRules.ManaResourceId).Current;
+            var espAfterCancel = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, atkEspecial, targetId: foeId);
+            AssertTrue(espAfterCancel.Success, "Após cancelar ação livre, habilidade pode ser usada novamente no turno");
+
+            // 3. Golpe Demolidor (Padrão) bloqueia outro uso de Ação Padrão no mesmo turno!
+            var golpeDem = hero.Skills.Find(s => s.TreeKey == "golpe_demolidor")!;
+            var std1 = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, golpeDem, targetId: foeId);
+            var std2 = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, golpeDem, targetId: foeId);
+            AssertTrue(std1.Success, "Golpe Demolidor (Padrão) deve ser aceito na 1ª vez");
+            AssertTrue(!std2.Success, "2ª Ação Padrão no mesmo turno deve ser bloqueada pela economia de ações");
+
+            // Undo do poder de árvore (EnqueueAbility com extraHistoryKey) deve devolver slot Padrão e TurnHistory
+            AssertTrue(session.CancelQueuedAction(eid, std1.ActionId, refundSlot: true), "CancelQueuedAction em poder de árvore deve funcionar");
+            session.RestoreResource(eid, Tormenta20ActionRules.ManaResourceId, std1.PmSpent);
+            hero.CurrentPm = session.GetResource(eid, Tormenta20ActionRules.ManaResourceId).Current;
+            AssertEqual(0, session.GetActionCountInTurn(eid, "golpe_demolidor"), "Undo deve limpar contagem de golpe_demolidor no turno");
+            var stdRequeued = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, golpeDem, targetId: foeId);
+            AssertTrue(stdRequeued.Success, "Golpe Demolidor deve poder ser re-enfileirado após Undo");
+
+            // 4. Enfileira Finta Aprimorada (Movimento), Ataque Poderoso (Livre) e Contra-Ataque (Reação) fora de ordem
+            var finta = hero.Skills.Find(s => s.TreeKey == "finta_aprimorada")!;
+            var atkPod = hero.Skills.Find(s => s.TreeKey == "ataque_poderoso")!;
+            var reacao = hero.Skills.Find(s => s.Name == "Contra-Ataque")!;
+
+            var movRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, finta, targetId: foeId);
+            var freeTreeRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, atkPod);
+            var reactRes = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, reacao);
+            AssertTrue(movRes.Success && freeTreeRes.Success && reactRes.Success, "Movimento, Livre e Reação devem entrar na fila");
+
+            // Ordem na fila de prioridades DEVE obedecer: Reação (5) -> Livre (10) -> Movimento (20) -> Padrão (30)
+            var drained = Tormenta20ActionRules.DrainPriorityQueueInOrder(session, eid);
+            AssertEqual(5, drained.Count, "5 ações enfileiradas no turno");
+            AssertEqual("Contra-Ataque", drained[0].Name, "1º na fila: Reação (Prio 5)");
+            AssertEqual("Ataque Especial", drained[1].Name, "2º na fila: 1ª Ação Livre FIFO (Prio 10)");
+            AssertEqual("Ataque Poderoso", drained[2].Name, "3º na fila: 2ª Ação Livre FIFO (Prio 10)");
+            AssertEqual("Finta Aprimorada", drained[3].Name, "4º na fila: Ação de Movimento (Prio 20)");
+            AssertEqual("Golpe Demolidor", drained[4].Name, "5º na fila: Ação Padrão (Prio 30)");
+
+            // 5. No próximo turno do herói, os contadores e slots resetam e tudo volta a ficar disponível!
+            session.NextTurn(); // Orc
+            session.NextTurn(); // Kaelen
+            AssertEqual(eid, session.CurrentTurn, "Turno retornou para Kaelen");
+            AssertTrue(Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, atkEspecial).Success,
+                "Ataque Especial volta a ficar disponível no próximo turno");
+
+            // 6. Fallback Padrão -> Movimento para habilidade de Movimento, bloqueando Padrão depois (mas inverso proibido)
+            var avanco = Tormenta20ActionRules.EnqueueTurnAction(session, eid, T20ActionType.Movement, "Avanço Tático");
+            AssertTrue(avanco.Success && !avanco.UsedStandardAsMovement, "1º Movimento usa slot de Movimento");
+            var fintaFallback = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, finta, targetId: foeId);
+            AssertTrue(fintaFallback.Success && fintaFallback.UsedStandardAsMovement,
+                "Habilidade de Movimento (Finta Aprimorada) pode consumir Ação Padrão quando Movimento acabou");
+            var stdAfterFallback = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, golpeDem, targetId: foeId);
+            AssertTrue(!stdAfterFallback.Success, "Após converter Padrão em Movimento, habilidade Padrão deve ser bloqueada");
+
+            // 7. Aplicar e remover Lento no meio do turno NÃO recarrega Ação Padrão já gasta!
+            session.NextTurn(); // Orc
+            session.NextTurn(); // Kaelen
+            AssertTrue(Tormenta20ActionRules.EnqueueTurnAction(session, eid, T20ActionType.Standard, "Agredir", foeId).Success,
+                "Gasta Ação Padrão com Agredir");
+            Tormenta20ConditionRules.ApplyCondition(session, eid, T20Condition.Lento);
+            Tormenta20ConditionRules.RemoveCondition(session, eid, T20Condition.Lento);
+            var afterSlowStd = Tormenta20MagicRules.EnqueueSkillWithEnhancements(session, eid, hero, golpeDem, targetId: foeId);
+            AssertTrue(!afterSlowStd.Success, "Remover Lento no meio do turno não deve devolver Ação Padrão já gasta");
 
             Console.WriteLine("SUCESSO!");
         }

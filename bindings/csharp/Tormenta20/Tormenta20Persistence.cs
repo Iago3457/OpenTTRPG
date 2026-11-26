@@ -27,6 +27,8 @@ namespace OpenTTRPG.Tormenta20
         public string TreeKey { get; set; } = string.Empty;
         public bool IsSpell { get; set; }
         public string BaseFormula { get; set; } = string.Empty;
+        public int MaxUsesPerTurn { get; set; } = 0;
+        public bool IsPassive { get; set; } = false;
         public List<SpellEnhancementDto> Enhancements { get; set; } = new();
     }
 
@@ -73,6 +75,7 @@ namespace OpenTTRPG.Tormenta20
 
         public int DefenseBonusMisc { get; set; }
         public int Tibares { get; set; }
+        public int BonusAbilitySlots { get; set; } = 0;
         public AttributeType SpellKeyAttribute { get; set; } = AttributeType.Intelligence;
         public bool IsBleedingOut { get; set; }
 
@@ -189,6 +192,7 @@ namespace OpenTTRPG.Tormenta20
                 Charisma = sheet.Charisma,
                 DefenseBonusMisc = sheet.DefenseBonusMisc,
                 Tibares = sheet.Tibares,
+                BonusAbilitySlots = sheet.BonusAbilitySlots,
                 SpellKeyAttribute = sheet.SpellKeyAttribute,
                 IsBleedingOut = sheet.IsBleedingOut,
                 IsEnemy = sheet.IsEnemy,
@@ -245,7 +249,9 @@ namespace OpenTTRPG.Tormenta20
                     Modifier = sk.Modifier,
                     TreeKey = sk.TreeKey,
                     IsSpell = sk.IsSpell,
-                    BaseFormula = sk.BaseFormula
+                    BaseFormula = sk.BaseFormula,
+                    MaxUsesPerTurn = sk.MaxUsesPerTurn,
+                    IsPassive = sk.IsPassive
                 };
                 foreach (var enh in sk.Enhancements)
                 {
@@ -279,6 +285,7 @@ namespace OpenTTRPG.Tormenta20
                 Charisma = dto.Charisma,
                 DefenseBonusMisc = dto.DefenseBonusMisc,
                 Tibares = dto.Tibares,
+                BonusAbilitySlots = dto.BonusAbilitySlots,
                 SpellKeyAttribute = dto.SpellKeyAttribute,
                 IsBleedingOut = dto.IsBleedingOut,
                 IsEnemy = dto.IsEnemy,
@@ -314,7 +321,8 @@ namespace OpenTTRPG.Tormenta20
             {
                 var skill = new CharacterSkill(
                     skDto.Name, skDto.Description, skDto.PmCost, skDto.Action,
-                    skDto.Modifier, skDto.TreeKey, skDto.IsSpell, skDto.BaseFormula);
+                    skDto.Modifier, skDto.TreeKey, skDto.IsSpell, skDto.BaseFormula,
+                    skDto.MaxUsesPerTurn, skDto.IsPassive);
                 foreach (var enhDto in skDto.Enhancements ?? new List<SpellEnhancementDto>())
                 {
                     skill.Enhancements.Add(new SpellEnhancement(

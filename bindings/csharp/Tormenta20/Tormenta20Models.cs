@@ -206,10 +206,13 @@ namespace OpenTTRPG.Tormenta20
         public string TreeKey { get; set; }
         public bool IsSpell { get; set; }
         public string BaseFormula { get; set; }
+        public int MaxUsesPerTurn { get; set; }
+        public bool IsPassive { get; set; }
         public List<SpellEnhancement> Enhancements { get; } = new List<SpellEnhancement>();
 
         public CharacterSkill(string name, string description, int pmCost, T20ActionType action,
-                              int modifier = 0, string treeKey = "", bool isSpell = false, string baseFormula = "")
+                              int modifier = 0, string treeKey = "", bool isSpell = false, string baseFormula = "",
+                              int maxUsesPerTurn = 0, bool isPassive = false)
         {
             Name = name ?? string.Empty;
             Description = description ?? string.Empty;
@@ -219,6 +222,8 @@ namespace OpenTTRPG.Tormenta20
             TreeKey = treeKey ?? string.Empty;
             IsSpell = isSpell;
             BaseFormula = baseFormula ?? string.Empty;
+            MaxUsesPerTurn = maxUsesPerTurn;
+            IsPassive = isPassive;
         }
     }
 
@@ -245,6 +250,7 @@ namespace OpenTTRPG.Tormenta20
 
         public int DefenseBonusMisc { get; set; }
         public int Tibares { get; set; } = 50;
+        public int BonusAbilitySlots { get; set; } = 0;
         public AttributeType SpellKeyAttribute { get; set; } = AttributeType.Intelligence;
         public bool IsBleedingOut { get; set; }
 
@@ -490,6 +496,7 @@ namespace OpenTTRPG.Tormenta20
                 CurrentPm = MaxPm,
                 DefenseBonusMisc = DefenseBonusMisc,
                 Tibares = Tibares,
+                BonusAbilitySlots = BonusAbilitySlots,
                 SpellKeyAttribute = SpellKeyAttribute,
                 IsBleedingOut = false,
                 IsEnemy = IsEnemy,
@@ -527,7 +534,8 @@ namespace OpenTTRPG.Tormenta20
             {
                 var skCopy = new CharacterSkill(
                     sk.Name, sk.Description, sk.PmCost, sk.Action,
-                    sk.Modifier, sk.TreeKey, sk.IsSpell, sk.BaseFormula);
+                    sk.Modifier, sk.TreeKey, sk.IsSpell, sk.BaseFormula,
+                    sk.MaxUsesPerTurn, sk.IsPassive);
                 foreach (var enh in sk.Enhancements)
                 {
                     skCopy.Enhancements.Add(new SpellEnhancement(enh.ExtraPmCost, enh.Description, enh.ExtraDice));
@@ -650,8 +658,10 @@ namespace OpenTTRPG.Tormenta20
         {
             string overburdenTag = IsOverburdened() ? " [SOBRECARREGADO!]" : "";
             int pmLimit = Tormenta20MagicRules.GetPmSpendLimit(this, session, combatantId);
+            string treeBudget = Tormenta20AbilityTreeRules.FormatAbilitySlotBudget(this);
             return $"  {Name} ({Race} {CharacterClass} Nv.{Level} | Origem: {Origin} | Devoto: {Deity} | T$ {Tibares})\n" +
                    $"  Estado: {GetHealthStateLabel(session, combatantId)} | PV: {CurrentHp}/{MaxHp} (Morte: {GetDeathThreshold()}) | PM: {CurrentPm}/{MaxPm} (Limite Gasto: {pmLimit} PM) | Defesa: {GetDefense(session, combatantId)}\n" +
+                   $"  Árvore de Poderes: {treeBudget}\n" +
                    $"  Carga: {GetCurrentSlots()}/{GetMaxSlots()} espaços{overburdenTag} | Penalidade Armadura: {GetTotalArmorPenalty(session, combatantId)}\n" +
                    $"  FOR: {FormatSigned(Strength)} | DES: {FormatSigned(Dexterity)} | CON: {FormatSigned(Constitution)} | " +
                    $"INT: {FormatSigned(Intelligence)} | SAB: {FormatSigned(Wisdom)} | CAR: {FormatSigned(Charisma)}";

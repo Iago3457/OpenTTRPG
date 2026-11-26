@@ -85,12 +85,14 @@ run-csharp: run
 run-ui: $(SHARED_TARGET)
 	@cp -f $(SHARED_TARGET) godot_ui/open-ttrpg/libopenttrpg_core.so
 	@echo "==> Iniciando Interface Gráfica Godot 4 (.NET + $(SHARED_TARGET))..."
-	@if command -v godot-mono >/dev/null 2>&1; then \
-		godot-mono --path godot_ui/open-ttrpg; \
-	elif command -v godot >/dev/null 2>&1; then \
-		godot --path godot_ui/open-ttrpg; \
+	@GODOT_BIN=""; \
+	for cand in godot-mono godot_mono godot "$$HOME/.local/bin/godot-mono" "$$HOME/.local/bin/godot_mono" "$$HOME/.local/bin/godot"; do \
+		if command -v "$$cand" >/dev/null 2>&1 || [ -x "$$cand" ]; then GODOT_BIN="$$cand"; break; fi; \
+	done; \
+	if [ -n "$$GODOT_BIN" ]; then \
+		"$$GODOT_BIN" --path godot_ui/open-ttrpg; \
 	else \
-		echo "Erro: 'godot-mono' ou 'godot' não encontrado no PATH."; exit 1; \
+		echo "Erro: 'godot-mono', 'godot_mono' ou 'godot' não encontrado no PATH."; exit 1; \
 	fi
 
 release: $(SHARED_TARGET)
@@ -114,19 +116,20 @@ release: $(SHARED_TARGET)
 	echo "==> Compilando scripts C# da Interface Gráfica (OpenTTRPG.csproj)..."; \
 	dotnet build godot_ui/open-ttrpg/OpenTTRPG.csproj -c ExportRelease; \
 	GODOT_BIN=""; \
-	if command -v godot-mono >/dev/null 2>&1; then GODOT_BIN="godot-mono"; \
-	elif command -v godot >/dev/null 2>&1; then GODOT_BIN="godot"; fi; \
+	for cand in godot-mono godot_mono godot "$$ORIG_HOME/.local/bin/godot-mono" "$$ORIG_HOME/.local/bin/godot_mono" "$$ORIG_HOME/.local/bin/godot"; do \
+		if command -v "$$cand" >/dev/null 2>&1 || [ -x "$$cand" ]; then GODOT_BIN="$$cand"; break; fi; \
+	done; \
 	if [ -z "$$GODOT_BIN" ]; then \
-		echo "Erro: 'godot-mono' ou 'godot' (Godot 4 .NET) não encontrado no PATH."; \
+		echo "Erro: 'godot-mono', 'godot_mono' ou 'godot' (Godot 4 .NET) não encontrado no PATH."; \
 		exit 1; \
 	fi; \
 	rm -f $(BIN_DIR)/release/linux-x64/OpenTTRPG.pck; \
 	echo "==> Exportando release Godot Linux (x86_64)..."; \
-	if $$GODOT_BIN --headless --path godot_ui/open-ttrpg --export-release "Linux" ../../$(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 && [ -f $(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 ] && [ -f $(BIN_DIR)/release/linux-x64/OpenTTRPG.pck ]; then \
+	if "$$GODOT_BIN" --headless --path godot_ui/open-ttrpg --export-release "Linux" ../../$(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 && [ -f $(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 ] && [ -f $(BIN_DIR)/release/linux-x64/OpenTTRPG.pck ]; then \
 		echo "==> Executável Linux e pacote (.pck) exportados via --export-release."; \
 	else \
 		echo "==> Aviso: --export-release Linux indisponível (verifique se os Export Templates do Godot .NET estão instalados). Usando --export-pack..."; \
-		$$GODOT_BIN --headless --path godot_ui/open-ttrpg --export-pack "Linux" ../../$(BIN_DIR)/release/linux-x64/OpenTTRPG.pck; \
+		"$$GODOT_BIN" --headless --path godot_ui/open-ttrpg --export-pack "Linux" ../../$(BIN_DIR)/release/linux-x64/OpenTTRPG.pck; \
 		if [ ! -f $(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 ]; then \
 			echo "================================================================================"; \
 			echo "  AVISO: $(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 não foi gerado porque"; \
@@ -148,12 +151,14 @@ release: $(SHARED_TARGET)
 		'SCRIPT_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")" && pwd)"' \
 		'ROOT_DIR="$$(cd "$$SCRIPT_DIR/../../.." && pwd)"' \
 		'cp -f "$$ROOT_DIR/bin/libopenttrpg_core.so" "$$ROOT_DIR/godot_ui/open-ttrpg/libopenttrpg_core.so" 2>/dev/null || true' \
-		'if command -v godot-mono >/dev/null 2>&1; then' \
-		'    exec godot-mono --path "$$ROOT_DIR/godot_ui/open-ttrpg" "$$@"' \
-		'elif command -v godot >/dev/null 2>&1; then' \
-		'    exec godot --path "$$ROOT_DIR/godot_ui/open-ttrpg" "$$@"' \
+		'GODOT_BIN=""' \
+		'for cand in godot-mono godot_mono godot "$$HOME/.local/bin/godot-mono" "$$HOME/.local/bin/godot_mono" "$$HOME/.local/bin/godot"; do' \
+		'    if command -v "$$cand" >/dev/null 2>&1 || [ -x "$$cand" ]; then GODOT_BIN="$$cand"; break; fi' \
+		'done' \
+		'if [ -n "$$GODOT_BIN" ]; then' \
+		'    exec "$$GODOT_BIN" --path "$$ROOT_DIR/godot_ui/open-ttrpg" "$$@"' \
 		'else' \
-		'    echo "Erro: Executável godot-mono ou godot não encontrado no PATH."' \
+		'    echo "Erro: Executável godot-mono, godot_mono ou godot não encontrado no PATH."' \
 		'    exit 1' \
 		'fi' > $(BIN_DIR)/release/linux-x64/OpenTTRPG_GodotUI.sh
 	@printf '%s\n' \
@@ -196,19 +201,20 @@ release-windows:
 	echo "==> Compilando scripts C# da Interface Gráfica (OpenTTRPG.csproj)..."; \
 	dotnet build godot_ui/open-ttrpg/OpenTTRPG.csproj -c ExportRelease; \
 	GODOT_BIN=""; \
-	if command -v godot-mono >/dev/null 2>&1; then GODOT_BIN="godot-mono"; \
-	elif command -v godot >/dev/null 2>&1; then GODOT_BIN="godot"; fi; \
+	for cand in godot-mono godot_mono godot "$$ORIG_HOME/.local/bin/godot-mono" "$$ORIG_HOME/.local/bin/godot_mono" "$$ORIG_HOME/.local/bin/godot"; do \
+		if command -v "$$cand" >/dev/null 2>&1 || [ -x "$$cand" ]; then GODOT_BIN="$$cand"; break; fi; \
+	done; \
 	if [ -z "$$GODOT_BIN" ]; then \
-		echo "Erro: 'godot-mono' ou 'godot' (Godot 4 .NET) não encontrado no PATH."; \
+		echo "Erro: 'godot-mono', 'godot_mono' ou 'godot' (Godot 4 .NET) não encontrado no PATH."; \
 		exit 1; \
 	fi; \
 	rm -f $(BIN_DIR)/release/win-x64/OpenTTRPG.pck; \
 	echo "==> Exportando release Godot Windows (x86_64)..."; \
-	if $$GODOT_BIN --headless --path godot_ui/open-ttrpg --export-release "Windows Desktop" ../../$(BIN_DIR)/release/win-x64/OpenTTRPG.exe && [ -f $(BIN_DIR)/release/win-x64/OpenTTRPG.exe ] && [ -f $(BIN_DIR)/release/win-x64/OpenTTRPG.pck ]; then \
+	if "$$GODOT_BIN" --headless --path godot_ui/open-ttrpg --export-release "Windows Desktop" ../../$(BIN_DIR)/release/win-x64/OpenTTRPG.exe && [ -f $(BIN_DIR)/release/win-x64/OpenTTRPG.exe ] && [ -f $(BIN_DIR)/release/win-x64/OpenTTRPG.pck ]; then \
 		echo "==> Executável Windows (.exe) e pacote (.pck) exportados via --export-release."; \
 	else \
 		echo "==> Aviso: --export-release Windows Desktop indisponível (verifique se os Export Templates do Godot .NET estão instalados). Usando --export-pack..."; \
-		$$GODOT_BIN --headless --path godot_ui/open-ttrpg --export-pack "Windows Desktop" ../../$(BIN_DIR)/release/win-x64/OpenTTRPG.pck; \
+		"$$GODOT_BIN" --headless --path godot_ui/open-ttrpg --export-pack "Windows Desktop" ../../$(BIN_DIR)/release/win-x64/OpenTTRPG.pck; \
 		if [ ! -f $(BIN_DIR)/release/win-x64/OpenTTRPG.exe ]; then \
 			echo "================================================================================"; \
 			echo "  AVISO: $(BIN_DIR)/release/win-x64/OpenTTRPG.exe não foi gerado porque"; \
@@ -226,14 +232,17 @@ release-windows:
 
 release-all: release release-windows
 	@echo "==> Executando auto-teste da Release Linux (Godot UI <-> C# <-> C++ Core)..."
-	@[ -w "$$HOME" ] || export HOME=/tmp; \
+	@ORIG_HOME="$$HOME"; \
+	[ -w "$$HOME" ] || export HOME=/tmp; \
 	[ -w "$$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/tmp; \
+	GODOT_BIN=""; \
+	for cand in godot-mono godot_mono godot "$$ORIG_HOME/.local/bin/godot-mono" "$$ORIG_HOME/.local/bin/godot_mono" "$$ORIG_HOME/.local/bin/godot"; do \
+		if command -v "$$cand" >/dev/null 2>&1 || [ -x "$$cand" ]; then GODOT_BIN="$$cand"; break; fi; \
+	done; \
 	if [ -x ./$(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 ]; then \
 		timeout 30s ./$(BIN_DIR)/release/linux-x64/OpenTTRPG.x86_64 --headless -- --self-test; \
-	elif command -v godot-mono >/dev/null 2>&1; then \
-		timeout 30s godot-mono --headless --path godot_ui/open-ttrpg -- --self-test; \
-	elif command -v godot >/dev/null 2>&1; then \
-		timeout 30s godot --headless --path godot_ui/open-ttrpg -- --self-test; \
+	elif [ -n "$$GODOT_BIN" ]; then \
+		timeout 30s "$$GODOT_BIN" --headless --path godot_ui/open-ttrpg -- --self-test; \
 	else \
 		echo "Erro: Nem OpenTTRPG.x86_64 nem godot-mono/godot encontrados para rodar --self-test."; \
 		exit 1; \

@@ -102,11 +102,7 @@ public partial class AbilityTreeCanvas : Control
 				evalId = evalSession.AddCombatant(character.Name, character.Dexterity, character.MaxHp, 1);
 			}
 
-			Tormenta20AbilityTreeRules.SyncCharacterStatsToCore(
-				evalSession, evalId, character.Level,
-				character.Strength, character.Dexterity, character.Constitution,
-				character.Intelligence, character.Wisdom, character.Charisma,
-				character.UnlockedTreeKeys);
+			Tormenta20AbilityTreeRules.SyncCharacterToCore(evalSession, evalId, character);
 
 			foreach (var def in Tormenta20AbilityTreeRules.CanonicalPowers)
 			{
