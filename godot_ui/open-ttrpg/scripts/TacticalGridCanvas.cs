@@ -910,6 +910,11 @@ public partial class TacticalGridCanvas : Control
 			if (tok.EntityId == _selectedTargetId && tok.EntityId != _currentTurnId)
 			{
 				DrawArc(center, radius + 4.5f * _zoom, 0, Mathf.Tau, 24, new Color(1f, 0.32f, 0.32f, 0.95f), 2.4f);
+				if (!IsEditorMode && _sessionRef != null && _currentTurnId > 0 &&
+					Tormenta20TacticalRules.IsFlankingTarget(_sessionRef, _currentTurnId, _selectedTargetId))
+				{
+					DrawBadge(font, center + new Vector2(0f, -radius - 13f * _zoom), "FLANCO", new Color(1f, 0.78f, 0.25f, 0.95f));
+				}
 			}
 			// Seleção no editor de movimento
 			if (IsEditorMode && tok.EntityId == _selectedMoveTokenId)

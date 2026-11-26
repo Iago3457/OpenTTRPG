@@ -71,6 +71,17 @@ namespace OpenTTRPG.Tormenta20
             return 0;
         }
 
+        public static bool IsPassiveSkill(CharacterSkill? skill)
+        {
+            if (skill == null) return false;
+            if (skill.IsPassive) return true;
+            if (!string.IsNullOrEmpty(skill.TreeKey))
+            {
+                return Tormenta20AbilityTreeRules.FindPowerDefinition(skill.TreeKey)?.IsPassive ?? false;
+            }
+            return false;
+        }
+
         public static T20ActionResult EnqueueSkillWithEnhancements(
             EncounterSession session,
             int combatantId,
@@ -93,12 +104,7 @@ namespace OpenTTRPG.Tormenta20
                 };
             }
 
-            T20PowerTreeDefinition? treeDef = !string.IsNullOrEmpty(skill.TreeKey)
-                ? Tormenta20AbilityTreeRules.FindPowerDefinition(skill.TreeKey)
-                : null;
-
-            bool isPassive = skill.IsPassive || (treeDef != null && treeDef.IsPassive);
-            if (isPassive)
+            if (IsPassiveSkill(skill))
             {
                 return new T20ActionResult
                 {
@@ -107,6 +113,10 @@ namespace OpenTTRPG.Tormenta20
                     Message = $"[PODER PASSIVO] '{skill.Name}' é uma habilidade passiva da árvore e aplica seus bônus automaticamente."
                 };
             }
+
+            T20PowerTreeDefinition? treeDef = !string.IsNullOrEmpty(skill.TreeKey)
+                ? Tormenta20AbilityTreeRules.FindPowerDefinition(skill.TreeKey)
+                : null;
 
             if (!string.IsNullOrEmpty(skill.TreeKey) &&
                 !session.CanUseAbility(combatantId, skill.TreeKey, out string unmetUsage))

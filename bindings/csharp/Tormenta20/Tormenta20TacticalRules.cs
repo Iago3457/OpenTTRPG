@@ -49,6 +49,7 @@ namespace OpenTTRPG.Tormenta20
         public int MaxRangeSquares { get; set; }
         public int DefenseCoverBonus { get; set; }
         public int FlankingAttackBonus { get; set; }
+        public bool GrantsFlankingAdvantage { get; set; }
         public string BlockingReason { get; set; } = string.Empty;
     }
 
@@ -606,8 +607,18 @@ namespace OpenTTRPG.Tormenta20
             return false;
         }
 
+        public static string FormatFlankingModeLabel(T20FlankingRuleMode mode) => mode switch
+        {
+            T20FlankingRuleMode.None => "Nenhum (Imune)",
+            T20FlankingRuleMode.BonusPlus2 => "+2 Ataque",
+            T20FlankingRuleMode.Advantage => "Vantagem (2d20)",
+            T20FlankingRuleMode.Both => "+2 Ataque + Vantagem (2d20)",
+            _ => "+2 Ataque"
+        };
+
         public static TacticalAttackContext EvaluateAttackContext(
-            EncounterSession session, int attackerId, int defenderId, CharacterItem? weapon = null)
+            EncounterSession session, int attackerId, int defenderId, CharacterItem? weapon = null,
+            T20FlankingRuleMode flankingRule = T20FlankingRuleMode.BonusPlus2)
         {
             var ctx = new TacticalAttackContext();
             if (session == null || !session.IsMapActive ||
@@ -651,7 +662,8 @@ namespace OpenTTRPG.Tormenta20
             if (!isRanged && attackerId != defenderId && IsFlankingTarget(session, attackerId, defenderId))
             {
                 ctx.IsFlanking = true;
-                ctx.FlankingAttackBonus = 2;
+                ctx.FlankingAttackBonus = flankingRule.HasFlag(T20FlankingRuleMode.BonusPlus2) ? 2 : 0;
+                ctx.GrantsFlankingAdvantage = flankingRule.HasFlag(T20FlankingRuleMode.Advantage);
             }
 
             return ctx;
